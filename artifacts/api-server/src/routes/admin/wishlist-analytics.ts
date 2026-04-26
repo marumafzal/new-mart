@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { wishlistTable, productsTable } from "@workspace/db/schema";
-import { eq, desc, count, sql } from "drizzle-orm";
+import { eq, desc, count, sql, gte } from "drizzle-orm";
 import { sendSuccess } from "../../lib/response.js";
 
 const router = Router();
 
+/* ── GET /wishlist-analytics — top products by wishlist count ── */
 router.get("/wishlist-analytics", async (_req, res) => {
   const results = await db
     .select({
@@ -32,6 +33,28 @@ router.get("/wishlist-analytics", async (_req, res) => {
     .orderBy(desc(count()));
 
   sendSuccess(res, { products: results });
+});
+
+/* ── GET /wishlist-analytics/timeline?days=30 ──
+   Returns daily wishlist addition counts for the past N days.
+   Used for the "Wishlist Additions Over Time" line chart.
+─────────────────────────────────────────────────────────── */
+router.get("/wishlist-analytics/timeline", async (req, res) => {
+  const days = Math.min(parseInt(req.query.days as string) || 30, 90);
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const rows = await db
+    .select({
+      date: sql<string>`DATE(${wishlistTable.createdAt})`.as("date"),
+      total: count(),
+    })
+    .from(wishlistTable)
+    .where(gte(wishlistTable.createdAt, since))
+    .groupBy(sql`DATE(${wishlistTable.createdAt})`)
+    .orderBy(sql`DATE(${wishlistTable.createdAt})`);
+
+  sendSuccess(res, { timeline: rows, days });
 });
 
 export default router;

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Megaphone, Send, Bell } from "lucide-react";
+import { Megaphone, Send, Bell, Users } from "lucide-react";
 import { useBroadcast } from "@/hooks/use-admin";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,17 +20,24 @@ export default function Broadcast() {
     title: "",
     body: "",
     type: "system",
-    icon: "notifications-outline"
+    icon: "notifications-outline",
+    targetRole: "all",
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.body) return;
-    
-    broadcastMutation.mutate(formData, {
+
+    const payload = {
+      ...formData,
+      targetRole: formData.targetRole === "all" ? undefined : formData.targetRole,
+    };
+
+    broadcastMutation.mutate(payload, {
       onSuccess: (data) => {
-        toast({ title: "Broadcast Sent!", description: `Sent to ${data.sent} active users.` });
-        setFormData({ title: "", body: "", type: "system", icon: "notifications-outline" });
+        const audience = formData.targetRole === "all" ? "all active users" : `${formData.targetRole}s only`;
+        toast({ title: "Broadcast Sent!", description: `Sent to ${data.sent} ${audience}.` });
+        setFormData({ title: "", body: "", type: "system", icon: "notifications-outline", targetRole: "all" });
       },
       onError: (err) => {
         toast({ title: "Failed to send", description: err.message, variant: "destructive" });
@@ -76,6 +83,25 @@ export default function Broadcast() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-muted-foreground" />
+                  Target Audience
+                </label>
+                <Select value={formData.targetRole} onValueChange={v => setFormData({...formData, targetRole: v})}>
+                  <SelectTrigger className="h-12 rounded-xl bg-muted/30">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Active Users</SelectItem>
+                    <SelectItem value="customer">Customers Only</SelectItem>
+                    <SelectItem value="rider">Riders Only</SelectItem>
+                    <SelectItem value="vendor">Vendors Only</SelectItem>
+                    <SelectItem value="admin">Admins Only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-foreground">{T("type")}</label>
@@ -112,7 +138,11 @@ export default function Broadcast() {
                 disabled={broadcastMutation.isPending || !formData.title || !formData.body} 
                 className="w-full h-14 rounded-xl text-base font-bold shadow-lg shadow-primary/25 hover:shadow-xl hover:-translate-y-0.5 transition-all mt-4"
               >
-                {broadcastMutation.isPending ? T("loading") : "Send to All Users"}
+                {broadcastMutation.isPending
+                  ? T("loading")
+                  : formData.targetRole === "all"
+                    ? "Send to All Users"
+                    : `Send to ${formData.targetRole.charAt(0).toUpperCase() + formData.targetRole.slice(1)}s Only`}
                 {!broadcastMutation.isPending && <Send className="w-5 h-5 ml-2" />}
               </Button>
             </form>

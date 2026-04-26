@@ -246,11 +246,19 @@ router.delete("/products/:id", async (req, res) => {
 
 /* ── Broadcast Notification ── */
 router.post("/broadcast", async (req, res) => {
-  const { title, body, titleKey, bodyKey, type = "system", icon = "notifications-outline" } = req.body;
+  const { title, body, titleKey, bodyKey, type = "system", icon = "notifications-outline", targetRole } = req.body;
   if (!title && !titleKey) { sendValidationError(res, "title or titleKey required"); return; }
   if (!body && !bodyKey) { sendValidationError(res, "body or bodyKey required"); return; }
 
-  const users = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.isActive, true));
+  const validRoles = ["customer", "rider", "vendor", "admin"];
+  const roleFilter = targetRole && validRoles.includes(targetRole) ? targetRole : null;
+
+  const conditions = [eq(usersTable.isActive, true)];
+  if (roleFilter) {
+    conditions.push(sql`${usersTable.roles} LIKE ${"%" + roleFilter + "%"}`);
+  }
+
+  const users = await db.select({ id: usersTable.id }).from(usersTable).where(and(...conditions));
   let sent = 0;
   for (const user of users) {
     let localTitle = title as string;
@@ -270,7 +278,7 @@ router.post("/broadcast", async (req, res) => {
     }).catch(() => {});
     sent++;
   }
-  sendSuccess(res, { success: true, sent });
+  sendSuccess(res, { success: true, sent, targetRole: roleFilter ?? "all" });
 });
 
 /* ── Wallet Transactions ── */

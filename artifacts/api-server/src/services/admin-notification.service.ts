@@ -14,7 +14,7 @@ import {
   usersTable,
   notificationsTable,
 } from "@workspace/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { logger } from "../lib/logger.js";
 import { sendSms } from "./sms.js";
@@ -273,17 +273,22 @@ export class NotificationService {
   static async broadcast(input: BroadcastInput) {
     try {
       // Get all users matching filter
-      let query = db.select().from(usersTable).limit(10000);
-
-      if (input.userFilter?.roles) {
-        // Filter users by role - TODO: implement role filtering based on schema
+      // Build a role condition using raw SQL LIKE so comma-separated role strings are handled
+      let roleCondition: ReturnType<typeof sql> | undefined;
+      if (input.userFilter?.roles && input.userFilter.roles.length > 0) {
+        const roleConditions = input.userFilter.roles.map(
+          (role) => sql`${usersTable.roles} LIKE ${"%" + role + "%"}`
+        );
+        roleCondition = roleConditions.length === 1
+          ? roleConditions[0]!
+          : sql`(${sql.join(roleConditions, sql` OR `)})`;
       }
 
-      if (input.userFilter?.status) {
-        // query = query.where(eq(usersTable.status, input.userFilter.status));
-      }
-
-      const users = await query;
+      const users = await db
+        .select()
+        .from(usersTable)
+        .where(roleCondition)
+        .limit(10000);
 
       const results = {
         sent: 0,

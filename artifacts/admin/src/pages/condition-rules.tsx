@@ -161,6 +161,7 @@ function RuleFormModal({ rule, onClose }: { rule?: any; onClose: () => void }) {
                   <SelectItem value="customer">Customer</SelectItem>
                   <SelectItem value="rider">Rider</SelectItem>
                   <SelectItem value="vendor">Vendor</SelectItem>
+                  <SelectItem value="van_driver">Van Driver</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -350,10 +351,10 @@ export default function ConditionRules() {
             </div>
           </div>
           <div className="flex gap-2 mt-3">
-            {["all", "customer", "rider", "vendor"].map(r => (
+            {["all", "customer", "rider", "van_driver", "vendor"].map(r => (
               <button key={r} onClick={() => setRoleTab(r)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${roleTab === r ? "bg-indigo-100 text-indigo-700" : "bg-muted/50 text-muted-foreground hover:bg-muted"}`}>
-                {r === "all" ? "All" : r.charAt(0).toUpperCase() + r.slice(1)}
+                {r === "all" ? "All" : r.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
               </button>
             ))}
           </div>

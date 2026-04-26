@@ -1,50 +1,123 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import {
+  ResponsiveContainer,
+  LineChart, Line, AreaChart, Area,
+  BarChart, Bar,
+  PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, CartesianGrid, Legend,
+} from "recharts";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { usePlatformConfig, useCurrency } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
-import { fc, CARD, CARD_HEADER, BADGE_GREEN, BADGE_ORANGE, BADGE_RED, BADGE_GRAY } from "../lib/ui";
+import { fc, CARD, CARD_HEADER } from "../lib/ui";
 
-const RANGES = [
-  { value: 7  },
-  { value: 30 },
-  { value: 90 },
+type Granularity = "daily" | "weekly" | "monthly";
+type RangePreset = 7 | 30 | 90 | "custom";
+
+const PRESETS: { value: Exclude<RangePreset, "custom">; label: string }[] = [
+  { value: 7,  label: "7d"  },
+  { value: 30, label: "30d" },
+  { value: 90, label: "90d" },
 ];
 
-function MiniBar({ pct, color }: { pct: number; color: string }) {
-  return (
-    <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${Math.max(pct, 2)}%` }}/>
-    </div>
-  );
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  pending:          { label: "Pending",      color: "#f59e0b" },
+  confirmed:        { label: "Confirmed",    color: "#fb923c" },
+  preparing:        { label: "Preparing",    color: "#fdba74" },
+  ready:            { label: "Ready",        color: "#a3a3a3" },
+  picked_up:        { label: "Picked Up",    color: "#94a3b8" },
+  out_for_delivery: { label: "Out Delivery", color: "#64748b" },
+  delivered:        { label: "Delivered",    color: "#22c55e" },
+  cancelled:        { label: "Cancelled",    color: "#ef4444" },
+};
+
+function startOfWeekIso(d: Date): string {
+  const x = new Date(d);
+  const day = x.getDay();
+  const diff = (day === 0 ? -6 : 1 - day);
+  x.setDate(x.getDate() + diff);
+  x.setHours(0, 0, 0, 0);
+  return x.toISOString().slice(0, 10);
+}
+
+function aggregate(
+  daily: Array<{ date: string; orders: number; revenue: number }>,
+  granularity: Granularity,
+): Array<{ key: string; label: string; orders: number; revenue: number }> {
+  if (granularity === "daily") {
+    return daily.map(d => ({
+      key: d.date,
+      label: d.date.slice(5),
+      orders: d.orders,
+      revenue: d.revenue,
+    }));
+  }
+  const buckets = new Map<string, { label: string; orders: number; revenue: number }>();
+  for (const d of daily) {
+    const dt = new Date(`${d.date}T00:00:00`);
+    let key: string;
+    let label: string;
+    if (granularity === "weekly") {
+      key = startOfWeekIso(dt);
+      label = `Week ${key.slice(5)}`;
+    } else {
+      key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      label = key;
+    }
+    const cur = buckets.get(key) ?? { label, orders: 0, revenue: 0 };
+    cur.orders  += d.orders;
+    cur.revenue += d.revenue;
+    buckets.set(key, cur);
+  }
+  return [...buckets.entries()].map(([k, v]) => ({ key: k, ...v, revenue: parseFloat(v.revenue.toFixed(2)) }));
+}
+
+function ChartSkeleton({ height = 220 }: { height?: number }) {
+  return <div className="skeleton rounded-xl w-full" style={{ height }} />;
+}
+
+function EmptyState({ msg }: { msg: string }) {
+  return <div className="flex items-center justify-center text-gray-400 text-sm py-12">{msg}</div>;
 }
 
 export default function Analytics() {
-  const [days, setDays] = useState(30);
+  const [preset, setPreset] = useState<RangePreset>(30);
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo]   = useState<string>("");
+  const [granularity, setGranularity] = useState<Granularity>("daily");
+
   const { user } = useAuth();
   const { config } = usePlatformConfig();
   const { symbol: currencySymbol } = useCurrency();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["vendor-analytics", days],
-    queryFn: () => api.getAnalytics(days),
-    staleTime: 60000,
+  const queryKey = preset === "custom"
+    ? ["vendor-analytics", "custom", customFrom, customTo]
+    : ["vendor-analytics", preset];
+
+  const customReady = preset === "custom" && customFrom && customTo;
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey,
+    queryFn: () => preset === "custom"
+      ? api.getAnalyticsRange(customFrom, customTo)
+      : api.getAnalytics(preset),
+    staleTime: 60_000,
+    enabled: preset !== "custom" || Boolean(customReady),
   });
 
-  const summary     = data?.summary     || {};
-  const dailyData   = data?.daily       || [];
-  const topProducts = data?.topProducts || [];
-  const byStatus    = data?.byStatus    || {};
-
-  const revValues = dailyData.map((d: any) => d.revenue || 0);
-  const ordValues = dailyData.map((d: any) => d.orders  || 0);
-  const maxRev = revValues.length > 0 ? Math.max(...revValues, 1) : 1;
-  const maxOrd = ordValues.length > 0 ? Math.max(...ordValues, 1) : 1;
+  const summary     = data?.summary     || { totalOrders: 0, totalRevenue: 0 };
+  const dailyData   = (data?.daily as Array<{ date: string; orders: number; revenue: number }>) || [];
+  const topProducts = (data?.topProducts as Array<{ productId: string; name: string; orders: number; quantity?: number; revenue: number }>) || [];
+  const byStatus    = (data?.byStatus as Record<string, number>) || {};
+  const peakHours   = (data?.peakHours as Array<{ hour: number; orders: number; revenue: number }>) || [];
+  const returnRate  = (data?.returnRate as { totalCustomers: number; returningCustomers: number; rate: number }) || { totalCustomers: 0, returningCustomers: 0, rate: 0 };
+  const period      = (data?.period as { days: number; from: string; to: string }) || { days: preset === "custom" ? 0 : (preset as number), from: "", to: "" };
 
   const totalOrders   = Number(summary.totalOrders   || 0);
   const totalRevenue  = Number(summary.totalRevenue  || 0);
@@ -53,16 +126,22 @@ export default function Analytics() {
     ? Math.round(((byStatus.delivered || 0) / totalOrders) * 100)
     : 0;
 
-  const statuses = [
-    { key: "pending",            label: "Pending",       badge: BADGE_ORANGE },
-    { key: "confirmed",          label: "Confirmed",     badge: BADGE_ORANGE },
-    { key: "preparing",          label: "Preparing",     badge: BADGE_ORANGE },
-    { key: "ready",              label: "Ready",         badge: BADGE_GRAY   },
-    { key: "picked_up",          label: "Picked Up",     badge: BADGE_GRAY   },
-    { key: "out_for_delivery",   label: "Out Delivery",  badge: BADGE_GRAY   },
-    { key: "delivered",          label: "Delivered",     badge: BADGE_GREEN  },
-    { key: "cancelled",          label: "Cancelled",     badge: BADGE_RED    },
-  ];
+  const trendSeries = useMemo(() => aggregate(dailyData, granularity), [dailyData, granularity]);
+  const statusPie = useMemo(() => Object.entries(byStatus)
+    .filter(([, c]) => c > 0)
+    .map(([k, c]) => ({ name: STATUS_META[k]?.label || k, value: c, color: STATUS_META[k]?.color || "#94a3b8", key: k })),
+  [byStatus]);
+  const topProductsBars = useMemo(() => topProducts.slice(0, 5).map(p => ({
+    name: p.name?.length > 18 ? p.name.slice(0, 17) + "…" : (p.name || p.productId),
+    orders: p.orders,
+    revenue: p.revenue,
+  })), [topProducts]);
+
+  const rangeLabel = preset === "custom"
+    ? (customReady ? `${customFrom} → ${customTo}` : "Pick dates")
+    : `${preset} ${T("daysLabel")}`;
+
+  const loading = isLoading || (preset === "custom" && !customReady) || isFetching && !data;
 
   return (
     <div className="bg-gray-50 md:bg-transparent">
@@ -70,174 +149,193 @@ export default function Analytics() {
         title={T("analytics")}
         subtitle={T("storePerformance")}
         actions={
-          <div className="flex gap-1.5">
-            {RANGES.map(r => (
-              <button key={r.value} onClick={() => setDays(r.value)}
+          <div className="flex flex-wrap gap-1.5">
+            {PRESETS.map(p => (
+              <button key={p.value} onClick={() => setPreset(p.value)}
                 className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 transition-all
-                  ${days === r.value ? "bg-white text-orange-500 md:bg-orange-500 md:text-white" : "bg-white/20 text-white md:bg-gray-100 md:text-gray-600"}`}>
-                {r.value} {T("daysLabel")}
+                  ${preset === p.value ? "bg-white text-orange-500 md:bg-orange-500 md:text-white" : "bg-white/20 text-white md:bg-gray-100 md:text-gray-600"}`}>
+                {p.label}
               </button>
             ))}
+            <button onClick={() => setPreset("custom")}
+              className={`h-8 px-3 text-xs font-bold rounded-xl android-press min-h-0 transition-all
+                ${preset === "custom" ? "bg-white text-orange-500 md:bg-orange-500 md:text-white" : "bg-white/20 text-white md:bg-gray-100 md:text-gray-600"}`}>
+              Custom
+            </button>
           </div>
         }
       />
 
       <div className="px-4 py-4 space-y-4 md:px-0 md:py-4">
+        {/* ── Custom range pickers ── */}
+        {preset === "custom" && (
+          <div className={`${CARD} p-3 flex flex-wrap items-center gap-3`}>
+            <label className="text-xs font-semibold text-gray-600 flex items-center gap-2">
+              From
+              <input type="date" value={customFrom} max={customTo || undefined} onChange={e => setCustomFrom(e.target.value)}
+                className="h-9 rounded-lg border border-gray-200 px-2 text-sm font-medium text-gray-800"/>
+            </label>
+            <label className="text-xs font-semibold text-gray-600 flex items-center gap-2">
+              To
+              <input type="date" value={customTo} min={customFrom || undefined} onChange={e => setCustomTo(e.target.value)}
+                className="h-9 rounded-lg border border-gray-200 px-2 text-sm font-medium text-gray-800"/>
+            </label>
+            <span className="text-xs text-gray-400">{customReady ? `${period.days || 0} days` : "Select start and end dates"}</span>
+          </div>
+        )}
+
         {/* ── KPI Cards ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {[
-            { label: T("revenue"),       value: fc(totalRevenue, currencySymbol),             icon: "💰", sub: `${days} ${T("dayTrend")}`, bg: "bg-orange-50", val: "text-orange-600" },
-            { label: T("orders"),        value: String(totalOrders),                          icon: "📦", sub: `${days} ${T("dayTrend")}`, bg: "bg-blue-50",   val: "text-blue-600"   },
-            { label: T("avgOrder"),      value: fc(avgOrderValue, currencySymbol),            icon: "📊", sub: T("avgOrder"),       bg: "bg-purple-50", val: "text-purple-600" },
-            { label: T("completion"),    value: `${completionRate}%`,         icon: "✅", sub: T("delivered"),      bg: "bg-green-50",  val: "text-green-600"  },
+            { label: T("revenue"),    value: fc(totalRevenue, currencySymbol),  icon: "💰", sub: rangeLabel,         bg: "bg-orange-50",  val: "text-orange-600"  },
+            { label: T("orders"),     value: String(totalOrders),               icon: "📦", sub: rangeLabel,         bg: "bg-blue-50",    val: "text-blue-600"    },
+            { label: T("avgOrder"),   value: fc(avgOrderValue, currencySymbol), icon: "📊", sub: T("avgOrder"),      bg: "bg-purple-50",  val: "text-purple-600"  },
+            { label: T("completion"), value: `${completionRate}%`,              icon: "✅", sub: T("delivered"),     bg: "bg-green-50",   val: "text-green-600"   },
+            { label: "Return Rate",   value: `${returnRate.rate}%`,             icon: "🔁", sub: `${returnRate.returningCustomers}/${returnRate.totalCustomers} customers`, bg: "bg-pink-50", val: "text-pink-600" },
           ].map(k => (
-            <div key={k.label} className={`${k.bg} rounded-2xl p-4`}>
+            <div key={k.label} className={`${k.bg} rounded-2xl p-4 col-span-1 md:col-span-1`}>
               <p className="text-2xl">{k.icon}</p>
-              {isLoading ? (
+              {loading ? (
                 <div className="h-6 w-24 skeleton rounded-lg mt-2"/>
               ) : (
                 <p className={`text-xl font-extrabold ${k.val} mt-1 leading-tight`}>{k.value}</p>
               )}
               <p className="text-xs text-gray-500 font-medium mt-0.5">{k.label}</p>
-              <p className="text-[10px] text-gray-400">{k.sub}</p>
+              <p className="text-[10px] text-gray-400 truncate">{k.sub}</p>
             </div>
           ))}
         </div>
 
-        <div className="md:grid md:grid-cols-2 md:gap-6 space-y-4 md:space-y-0">
-          {/* ── Revenue Chart ── */}
-          <div className={CARD}>
-            <div className={CARD_HEADER}>
-              <div>
-                <p className="font-bold text-gray-800 text-sm">{T("dailyRevenue")}</p>
-                <p className="text-xs text-gray-400">{days} {T("dayTrend")}</p>
-              </div>
-              <span className="text-xs font-bold text-orange-500 bg-orange-50 px-2.5 py-1 rounded-full">{currencySymbol}</span>
+        {/* ── Revenue Trend ── */}
+        <div className={CARD}>
+          <div className={CARD_HEADER}>
+            <div>
+              <p className="font-bold text-gray-800 text-sm">{T("dailyRevenue")} & {T("dailyOrders")}</p>
+              <p className="text-xs text-gray-400">{rangeLabel}</p>
             </div>
-            <div className="p-4">
-              {isLoading ? (
-                <div className="h-40 skeleton rounded-xl"/>
-              ) : dailyData.length === 0 ? (
-                <div className="h-40 flex items-center justify-center text-gray-400 text-sm">{T("noDataYet")}</div>
-              ) : (
-                <>
-                  <div className="flex items-end gap-0.5 h-40 px-1 overflow-x-auto">
-                    {dailyData.slice(-days).map((d: any, i: number) => {
-                      const pct = ((d.revenue || 0) / maxRev) * 100;
-                      return (
-                        <div key={i} className="flex-shrink-0 flex flex-col items-center justify-end gap-0.5 group relative" style={{ minWidth: `${Math.max(4, Math.floor(100 / days))}%`, width: `${Math.max(4, Math.floor(100 / days))}%` }}>
-                          <div className="absolute bottom-full mb-1 bg-gray-800 text-white text-[10px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                            {fc(d.revenue || 0, currencySymbol)}<br/>{d.date}
-                          </div>
-                          <div className="w-full bg-orange-400 rounded-t-sm hover:bg-orange-500 transition-colors"
-                            style={{ height: `${Math.max(pct, 2)}%` }}/>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between mt-2">
-                    <p className="text-[10px] text-gray-400">{dailyData[0]?.date || ""}</p>
-                    <p className="text-[10px] text-gray-400">{dailyData[dailyData.length-1]?.date || ""}</p>
-                  </div>
-                </>
-              )}
+            <div className="flex gap-1">
+              {(["daily","weekly","monthly"] as Granularity[]).map(g => (
+                <button key={g} onClick={() => setGranularity(g)}
+                  className={`h-7 px-2.5 text-[11px] font-bold rounded-lg transition-colors capitalize
+                    ${granularity === g ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                  {g}
+                </button>
+              ))}
             </div>
           </div>
-
-          {/* ── Orders Chart ── */}
-          <div className={CARD}>
-            <div className={CARD_HEADER}>
-              <div>
-                <p className="font-bold text-gray-800 text-sm">{T("dailyOrders")}</p>
-                <p className="text-xs text-gray-400">{days} {T("dayTrend")}</p>
-              </div>
-              <span className="text-xs font-bold text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full">#</span>
-            </div>
-            <div className="p-4">
-              {isLoading ? (
-                <div className="h-40 skeleton rounded-xl"/>
-              ) : dailyData.length === 0 ? (
-                <div className="h-40 flex items-center justify-center text-gray-400 text-sm">{T("noDataYet")}</div>
-              ) : (
-                <>
-                  <div className="flex items-end gap-0.5 h-40 px-1 overflow-x-auto">
-                    {dailyData.slice(-days).map((d: any, i: number) => {
-                      const pct = ((d.orders || 0) / maxOrd) * 100;
-                      return (
-                        <div key={i} className="flex-shrink-0 flex flex-col items-center justify-end gap-0.5 group relative" style={{ minWidth: `${Math.max(4, Math.floor(100 / days))}%`, width: `${Math.max(4, Math.floor(100 / days))}%` }}>
-                          <div className="absolute bottom-full mb-1 bg-gray-800 text-white text-[10px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                            {d.orders || 0} orders<br/>{d.date}
-                          </div>
-                          <div className="w-full bg-blue-400 rounded-t-sm hover:bg-blue-500 transition-colors"
-                            style={{ height: `${Math.max(pct, 2)}%` }}/>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between mt-2">
-                    <p className="text-[10px] text-gray-400">{dailyData[0]?.date || ""}</p>
-                    <p className="text-[10px] text-gray-400">{dailyData[dailyData.length-1]?.date || ""}</p>
-                  </div>
-                </>
-              )}
-            </div>
+          <div className="p-3">
+            {loading ? <ChartSkeleton height={260}/> : trendSeries.length === 0 ? <EmptyState msg={T("noDataYet")}/> : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={trendSeries} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="revGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#fb923c" stopOpacity={0.5}/>
+                      <stop offset="100%" stopColor="#fb923c" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                  <YAxis yAxisId="left"  tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={(v) => Math.round(Number(v)).toLocaleString()} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                  <Tooltip
+                    formatter={(value: number, name: string) => name === "revenue"
+                      ? [fc(Number(value), currencySymbol), "Revenue"]
+                      : [Number(value), "Orders"]}
+                    contentStyle={{ borderRadius: 12, fontSize: 12, border: "1px solid #f1f5f9" }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }}/>
+                  <Area  yAxisId="left"  type="monotone" dataKey="revenue" stroke="#fb923c" strokeWidth={2} fill="url(#revGradient)" name="revenue" />
+                  <Line  yAxisId="right" type="monotone" dataKey="orders"  stroke="#3b82f6" strokeWidth={2} dot={false} name="orders" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="md:grid md:grid-cols-2 md:gap-6 space-y-4 md:space-y-0">
-          {/* ── Order Status Breakdown ── */}
-          <div className={CARD}>
-            <div className={`${CARD_HEADER} bg-gray-50`}>
-              <p className="font-bold text-gray-800 text-sm">{T("orderStatusBreakdown")}</p>
-            </div>
-            <div className="p-4 space-y-3">
-              {isLoading ? (
-                [1,2,3,4,5].map(i => <div key={i} className="h-8 skeleton rounded-lg"/>)
-              ) : (
-                statuses.map(s => {
-                  const count = byStatus[s.key] || 0;
-                  const pct   = totalOrders > 0 ? Math.round((count / totalOrders) * 100) : 0;
-                  return (
-                    <div key={s.key} className="flex items-center gap-3">
-                      <span className={`${s.badge} w-20 text-center flex-shrink-0`}>{s.label}</span>
-                      <MiniBar pct={pct} color={s.key === "delivered" ? "bg-green-400" : s.key === "cancelled" ? "bg-red-400" : "bg-orange-400"}/>
-                      <span className="text-sm font-bold text-gray-700 w-8 text-right">{count}</span>
-                      <span className="text-xs text-gray-400 w-8">{pct}%</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* ── Top Products ── */}
+          {/* ── Top Products (horizontal bar) ── */}
           <div className={CARD}>
             <div className={`${CARD_HEADER} bg-gray-50`}>
               <p className="font-bold text-gray-800 text-sm">🏆 {T("topProducts")}</p>
               <span className="text-xs text-gray-400">{T("byOrders")}</span>
             </div>
-            <div className="divide-y divide-gray-50">
-              {isLoading ? (
-                [1,2,3,4,5].map(i => <div key={i} className="h-14 skeleton rounded-lg m-3"/>)
-              ) : topProducts.length === 0 ? (
-                <div className="px-4 py-10 text-center text-gray-400 text-sm">{T("noDataYet")}</div>
-              ) : (
-                topProducts.slice(0, 8).map((p: any, i: number) => (
-                  <div key={p.productId || i} className="px-4 py-3 flex items-center gap-3">
-                    <span className={`text-lg font-extrabold w-6 text-center ${i === 0 ? "text-yellow-500" : i === 1 ? "text-gray-400" : i === 2 ? "text-amber-600" : "text-gray-300"}`}>
-                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i+1}`}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate">{p.name}</p>
-                      <p className="text-xs text-gray-400">{p.orders} {T("ordersSold")}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-orange-500">{fc(p.revenue || 0, currencySymbol)}</p>
-                    </div>
-                  </div>
-                ))
+            <div className="p-3">
+              {loading ? <ChartSkeleton height={260}/> : topProductsBars.length === 0 ? <EmptyState msg={T("noDataYet")}/> : (
+                <ResponsiveContainer width="100%" height={Math.max(220, topProductsBars.length * 48)}>
+                  <BarChart data={topProductsBars} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false}/>
+                    <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                    <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 11, fill: "#475569" }} />
+                    <Tooltip formatter={(value: number, name: string) => name === "revenue"
+                      ? [fc(Number(value), currencySymbol), "Revenue"]
+                      : [Number(value), "Orders"]}
+                      contentStyle={{ borderRadius: 12, fontSize: 12, border: "1px solid #f1f5f9" }}/>
+                    <Bar dataKey="orders"  fill="#fb923c" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               )}
             </div>
+            {topProducts.length > 0 && !loading && (
+              <div className="border-t border-gray-100 px-4 py-3 grid gap-1.5">
+                {topProducts.slice(0, 5).map((p, i) => (
+                  <div key={p.productId || i} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-700 font-medium truncate flex-1">{i + 1}. {p.name}</span>
+                    <span className="text-orange-600 font-bold ml-2">{fc(p.revenue || 0, currencySymbol)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Order Status (donut) ── */}
+          <div className={CARD}>
+            <div className={`${CARD_HEADER} bg-gray-50`}>
+              <p className="font-bold text-gray-800 text-sm">{T("orderStatusBreakdown")}</p>
+              <span className="text-xs text-gray-400">{totalOrders} orders</span>
+            </div>
+            <div className="p-3">
+              {loading ? <ChartSkeleton height={260}/> : statusPie.length === 0 ? <EmptyState msg={T("noDataYet")}/> : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie data={statusPie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                      {statusPie.map((s) => (
+                        <Cell key={s.key} fill={s.color}/>
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number, name: string) => [`${value} (${totalOrders > 0 ? Math.round((value / totalOrders) * 100) : 0}%)`, name]}
+                      contentStyle={{ borderRadius: 12, fontSize: 12, border: "1px solid #f1f5f9" }}/>
+                    <Legend wrapperStyle={{ fontSize: 11 }}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Peak Order Hours ── */}
+        <div className={CARD}>
+          <div className={`${CARD_HEADER} bg-gray-50`}>
+            <p className="font-bold text-gray-800 text-sm">⏰ Peak Order Hours</p>
+            <span className="text-xs text-gray-400">{rangeLabel}</span>
+          </div>
+          <div className="p-3">
+            {loading ? <ChartSkeleton height={220}/> : peakHours.every(h => h.orders === 0) ? <EmptyState msg={T("noDataYet")}/> : (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={peakHours} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
+                  <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "#94a3b8" }}
+                    tickFormatter={(h) => `${String(h).padStart(2, "0")}:00`} interval={2}/>
+                  <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }}/>
+                  <Tooltip
+                    labelFormatter={(h) => `${String(h).padStart(2, "0")}:00 – ${String((Number(h) + 1) % 24).padStart(2, "0")}:00`}
+                    formatter={(value: number, name: string) => name === "revenue"
+                      ? [fc(Number(value), currencySymbol), "Revenue"]
+                      : [Number(value), "Orders"]}
+                    contentStyle={{ borderRadius: 12, fontSize: 12, border: "1px solid #f1f5f9" }}/>
+                  <Bar dataKey="orders" fill="#3b82f6" radius={[6, 6, 0, 0]}/>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 

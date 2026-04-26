@@ -1,7 +1,7 @@
 # AJKMart Platform — Admin Config & Live Status Tracker
 # AJKMart پلیٹ فارم — ایڈمن کنفگ اور لائیو اسٹیٹس ٹریکر
 
-> **Last updated:** 2026-04-26 (Van Driver metrics + Condition Rules CRUD/eligibility fix)  
+> **Last updated:** 2026-04-26 (Vendor App analytics charts upgrade)  
 > **Status legend:** ✅ Complete | 🔄 In Progress | ⚠️ Partial | ❌ Missing | ⏳ Pending (not started)  
 > **Scope:** Monorepo at `/home/runner/workspace` — pnpm workspaces
 
@@ -514,7 +514,7 @@ Framework: **React + Vite** | Port: varies (dev)
 | Products | `Products.tsx` | ✅ Complete | CRUD, images |
 | Orders | `Orders.tsx` | ✅ Complete | Accept, ready, dispatch |
 | Store Settings | `Store.tsx` | ✅ Complete | Hours, delivery zone |
-| Analytics | `Analytics.tsx` | ⚠️ Partial | Charts upgrade task open |
+| Analytics | `Analytics.tsx` | ✅ Complete | Recharts-based revenue area+line, top-products horizontal bar, status donut, peak-hours bar; daily/weekly/monthly toggle; 7d/30d/90d/Custom range picker; Return-rate KPI |
 | Campaigns | `Campaigns.tsx` | ✅ Complete | Promo campaigns |
 | Promotions | `Promos.tsx` | ✅ Complete | Discount codes |
 | Reviews | `Reviews.tsx` | ✅ Complete | Rating responses |
@@ -678,10 +678,9 @@ Default values are set by AI-recommended configuration.
 
 | # | Issue | Component | Severity |
 |---|-------|-----------|----------|
-| 1 | Analytics charts in Vendor App need upgrade | Vendor App → Analytics | 🟡 Medium |
-| 2 | Integration test results not persisted (lost on page reload) | Admin → Settings → Integrations | 🟢 Low |
-| 3 | No live API latency shown in Integration Health panel | Admin → Settings → Integrations | 🟢 Low |
-| 4 | Payment gateway settings accessible only under Settings → Payment, not Settings → Integrations tab | Admin → Settings | 🟢 Low |
+| 1 | Integration test results not persisted (lost on page reload) | Admin → Settings → Integrations | 🟢 Low |
+| 2 | No live API latency shown in Integration Health panel | Admin → Settings → Integrations | 🟢 Low |
+| 3 | Payment gateway settings accessible only under Settings → Payment, not Settings → Integrations tab | Admin → Settings | 🟢 Low |
 
 ---
 
@@ -694,7 +693,7 @@ Default values are set by AI-recommended configuration.
 | T2 | Integration Health-Check Dashboard | ✅ Complete | — |
 | T3 | Create admin-config.md Live Status Tracker | ✅ Complete | — |
 | T4 | Fix Admin Broadcast Role Filtering | ✅ Complete | 🔴 High |
-| T5 | Analytics Charts & Visualizations Upgrade | ⏳ Pending | 🟡 Medium |
+| T5 | Analytics Charts & Visualizations Upgrade | ✅ Complete | — |
 | T6 | Fix Van Driver Metrics & Condition Rules | ✅ Complete | — |
 | T7 | KYC Review & Verification Improvements | ✅ Complete | — |
 | T8 | Show Live API Latency in Integration Health Panel | ⏳ Pending | 🟢 Low |

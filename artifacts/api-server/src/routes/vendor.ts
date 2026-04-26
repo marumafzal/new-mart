@@ -584,47 +584,159 @@ router.patch("/notifications/:id/read", async (req, res) => {
 /* ── GET /vendor/analytics ── ── */
 router.get("/analytics", async (req, res) => {
   const vendorId = req.vendorId!;
-  const days = parseInt(String(req.query["days"] || "7"));
-  const since = new Date(); since.setDate(since.getDate() - days); since.setHours(0,0,0,0);
+  const fromQ = req.query["from"] ? String(req.query["from"]) : "";
+  const toQ   = req.query["to"]   ? String(req.query["to"])   : "";
+
+  /* Resolve effective range. Custom from/to wins; otherwise fall back to ?days=N (default 7). */
+  let fromDate: Date;
+  let toDate: Date;
+  if (fromQ && /^\d{4}-\d{2}-\d{2}$/.test(fromQ) && toQ && /^\d{4}-\d{2}-\d{2}$/.test(toQ)) {
+    fromDate = new Date(`${fromQ}T00:00:00`);
+    toDate   = new Date(`${toQ}T23:59:59.999`);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || fromDate > toDate) {
+      sendValidationError(res, "Invalid from/to date range");
+      return;
+    }
+  } else {
+    const days = Math.max(1, Math.min(365, parseInt(String(req.query["days"] || "7"))));
+    toDate = new Date();
+    fromDate = new Date(); fromDate.setDate(fromDate.getDate() - (days - 1)); fromDate.setHours(0,0,0,0);
+  }
+  const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1);
+
   const s = await getPlatformSettings();
   const vendorShare = 1 - (parseFloat(s["vendor_commission_pct"] ?? "15") / 100);
 
-  const [revenueData, topProductsRaw, ordersByStatusRaw] = await Promise.all([
-    db.select({ c: count(), s: sum(ordersTable.total), date: sql<string>`DATE(${ordersTable.createdAt})` }).from(ordersTable)
-      .where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, since))).groupBy(sql`DATE(${ordersTable.createdAt})`).orderBy(sql`DATE(${ordersTable.createdAt})`),
-    db.select({ id: productsTable.id, name: productsTable.name, orderCount: count() }).from(ordersTable)
-      .innerJoin(productsTable, sql`${ordersTable.items}::text LIKE '%' || ${productsTable.id} || '%'`)
-      .where(eq(ordersTable.vendorId, vendorId)).groupBy(productsTable.id, productsTable.name).orderBy(desc(count())).limit(5).catch(() => []),
-    db.select({ status: ordersTable.status, c: count() }).from(ordersTable).where(and(eq(ordersTable.vendorId, vendorId), gte(ordersTable.createdAt, since))).groupBy(ordersTable.status),
+  const baseWhere = and(
+    eq(ordersTable.vendorId, vendorId),
+    gte(ordersTable.createdAt, fromDate),
+    sql`${ordersTable.createdAt} <= ${toDate}`,
+  );
+  const baseLifetime = eq(ordersTable.vendorId, vendorId);
+
+  const [
+    revenueData,
+    ordersByStatusRaw,
+    inRangeOrders,
+    customerCountsAllTime,
+  ] = await Promise.all([
+    db.select({
+      c: count(),
+      s: sum(ordersTable.total),
+      date: sql<string>`DATE(${ordersTable.createdAt})`,
+    }).from(ordersTable).where(baseWhere)
+      .groupBy(sql`DATE(${ordersTable.createdAt})`)
+      .orderBy(sql`DATE(${ordersTable.createdAt})`),
+    db.select({ status: ordersTable.status, c: count() }).from(ordersTable)
+      .where(baseWhere).groupBy(ordersTable.status),
+    /* fetch items + createdAt for in-range orders to aggregate top products + peak hours in JS */
+    db.select({
+      id: ordersTable.id,
+      items: ordersTable.items,
+      total: ordersTable.total,
+      createdAt: ordersTable.createdAt,
+    }).from(ordersTable).where(baseWhere),
+    /* lifetime customer order counts → return rate = customers w/ ≥2 orders / total customers */
+    db.select({
+      userId: ordersTable.userId,
+      orderCount: count(),
+    }).from(ordersTable).where(baseLifetime).groupBy(ordersTable.userId),
   ]);
 
-  const daily = revenueData.map(d => ({
-    date: d.date,
-    orders: d.c ?? 0,
-    revenue: parseFloat((safeNum(d.s) * vendorShare).toFixed(2)),
-  }));
-
-  const totalOrders = daily.reduce((sum, d) => sum + d.orders, 0);
-  const totalRevenue = daily.reduce((sum, d) => sum + d.revenue, 0);
-
-  const byStatus: Record<string, number> = {};
-  for (const row of ordersByStatusRaw) {
-    byStatus[row.status] = row.c ?? 0;
+  /* daily series — fill gaps so charts show continuous x-axis */
+  const dailyMap = new Map<string, { orders: number; revenue: number }>();
+  for (const d of revenueData) {
+    dailyMap.set(d.date, {
+      orders: d.c ?? 0,
+      revenue: parseFloat((safeNum(d.s) * vendorShare).toFixed(2)),
+    });
+  }
+  const daily: Array<{ date: string; orders: number; revenue: number }> = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(fromDate); d.setDate(fromDate.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    const v = dailyMap.get(key) ?? { orders: 0, revenue: 0 };
+    daily.push({ date: key, orders: v.orders, revenue: v.revenue });
   }
 
-  const topProducts = topProductsRaw.map(p => ({
-    productId: p.id,
-    name: p.name,
-    orders: Number(p.orderCount) || 0,
-    revenue: 0,
-  }));
+  const totalOrders  = daily.reduce((acc, d) => acc + d.orders, 0);
+  const totalRevenue = parseFloat(daily.reduce((acc, d) => acc + d.revenue, 0).toFixed(2));
+
+  const byStatus: Record<string, number> = {};
+  for (const row of ordersByStatusRaw) byStatus[row.status] = row.c ?? 0;
+
+  /* top products — aggregate from items JSON */
+  const productAgg = new Map<string, { orders: number; revenue: number; quantity: number; name?: string }>();
+  /* peak hours — bucket by hour-of-day (local) */
+  const hourBuckets: Array<{ hour: number; orders: number; revenue: number }> =
+    Array.from({ length: 24 }, (_, h) => ({ hour: h, orders: 0, revenue: 0 }));
+
+  for (const o of inRangeOrders) {
+    const orderRevenue = parseFloat((safeNum(o.total) * vendorShare).toFixed(2));
+    /* hour bucket */
+    const hr = new Date(o.createdAt as Date).getHours();
+    if (hr >= 0 && hr < 24) {
+      hourBuckets[hr]!.orders += 1;
+      hourBuckets[hr]!.revenue = parseFloat((hourBuckets[hr]!.revenue + orderRevenue).toFixed(2));
+    }
+    /* products */
+    const items = Array.isArray(o.items) ? (o.items as Array<Record<string, unknown>>) : [];
+    for (const it of items) {
+      const pid = typeof it["productId"] === "string" ? (it["productId"] as string) : "";
+      if (!pid) continue;
+      const qty = Number(it["quantity"]) || 1;
+      const price = Number(it["price"]) || 0;
+      const lineRev = parseFloat((qty * price * vendorShare).toFixed(2));
+      const cur = productAgg.get(pid) ?? { orders: 0, revenue: 0, quantity: 0 };
+      cur.orders   += 1;
+      cur.quantity += qty;
+      cur.revenue  = parseFloat((cur.revenue + lineRev).toFixed(2));
+      if (typeof it["name"] === "string" && !cur.name) cur.name = it["name"] as string;
+      productAgg.set(pid, cur);
+    }
+  }
+
+  /* hydrate names for products without a snapshot name */
+  const missingNameIds = [...productAgg.entries()].filter(([, v]) => !v.name).map(([k]) => k);
+  if (missingNameIds.length > 0) {
+    const rows = await db.select({ id: productsTable.id, name: productsTable.name })
+      .from(productsTable).where(sql`${productsTable.id} = ANY(${missingNameIds})`).catch(() => []);
+    for (const r of rows) {
+      const cur = productAgg.get(r.id);
+      if (cur) cur.name = r.name ?? cur.name ?? r.id;
+    }
+  }
+
+  const topProducts = [...productAgg.entries()]
+    .map(([productId, v]) => ({
+      productId,
+      name: v.name ?? productId,
+      orders: v.orders,
+      quantity: v.quantity,
+      revenue: v.revenue,
+    }))
+    .sort((a, b) => b.orders - a.orders)
+    .slice(0, 5);
+
+  /* return rate — based on lifetime orders per customer */
+  const totalCustomers = customerCountsAllTime.length;
+  const returningCustomers = customerCountsAllTime.filter((c: { orderCount: number | null }) => (c.orderCount ?? 0) >= 2).length;
+  const returnRate = totalCustomers > 0
+    ? parseFloat(((returningCustomers / totalCustomers) * 100).toFixed(1))
+    : 0;
 
   sendSuccess(res, {
     summary: { totalOrders, totalRevenue },
     daily,
     topProducts,
     byStatus,
-    period: days,
+    peakHours: hourBuckets,
+    returnRate: { totalCustomers, returningCustomers, rate: returnRate },
+    period: {
+      days,
+      from: fromDate.toISOString().slice(0, 10),
+      to:   toDate.toISOString().slice(0, 10),
+    },
   });
 });
 

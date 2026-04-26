@@ -214,6 +214,7 @@ export const api = {
   /* Stats & Analytics */
   getStats:      () => apiFetch("/vendor/stats"),
   getAnalytics:  (days?: number) => apiFetch(`/vendor/analytics${days ? `?days=${days}` : ""}`),
+  getAnalyticsRange: (from: string, to: string) => apiFetch(`/vendor/analytics?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 
   /* Orders */
   getOrders:     (status?: string) => apiFetch(`/vendor/orders${status ? `?status=${status}` : ""}`),

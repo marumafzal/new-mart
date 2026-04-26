@@ -12,6 +12,7 @@ import type { Request, Response, NextFunction } from "express";
 import { customerAuth, riderAuth } from "../middleware/security.js";
 import { adminAuth } from "./admin.js";
 import { getPlatformSettings } from "./admin-shared.js";
+import { evaluateRulesForUser } from "./admin/conditions.js";
 import {
   sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden,
 } from "../lib/response.js";
@@ -889,20 +890,25 @@ router.get("/driver/eligibility", riderAuth, async (req, res) => {
       return;
     }
 
-    // Trigger rule engine (best-effort; errors don't block the response).
-    // evaluateRulesForUser returns { triggered: number, details: { triggered: [...] } }
-    // — we surface the array under `triggered` and the count under `triggeredCount`.
-    let triggered: any[] = [];
+    // Trigger rule engine deterministically — fail closed if it errors,
+    // since this gate decides whether the driver may enter van mode.
+    let triggered: Array<{ ruleId: string; ruleName: string; metric: string; value: number; conditionId?: string }> = [];
     let triggeredCount = 0;
     try {
-      const mod = await import("./admin/conditions.js");
-      if (typeof (mod as any).evaluateRulesForUser === "function") {
-        const result = await (mod as any).evaluateRulesForUser(driverId);
-        triggered = result?.details?.triggered ?? [];
-        triggeredCount = typeof result?.triggered === "number" ? result.triggered : triggered.length;
-      }
+      const result = await evaluateRulesForUser(driverId);
+      triggered = result.details.triggered;
+      triggeredCount = result.triggered;
     } catch (err) {
-      logger.warn({ err }, "[van] rule evaluation failed (non-fatal)");
+      logger.error({ err }, "[van] rule evaluation failed — denying van mode");
+      sendSuccess(res, {
+        eligible: false,
+        reason: "Eligibility check failed. Please retry shortly or contact support.",
+        conditions: [],
+        triggered: [],
+        triggeredCount: 0,
+        evaluationError: true,
+      });
+      return;
     }
 
     const activeConditions = await db

@@ -842,6 +842,120 @@ router.patch("/driver/schedules/:scheduleId/date/:date/complete", vanDriverAuth,
   }
 });
 
+/* ─── Driver metrics: trips today, earnings today, online hours, 30d totals ─── */
+router.get("/driver/metrics", vanDriverAuth, async (req, res) => {
+  try {
+    const driverId = req.riderId!;
+    const now = new Date();
+    const today = now.toISOString().split("T")[0]!;
+    const startOfDay = new Date(today + "T00:00:00");
+    const ago30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const driverSchedules = await db
+      .select({ id: vanSchedulesTable.id, tripStatus: vanSchedulesTable.tripStatus })
+      .from(vanSchedulesTable)
+      .where(eq(vanSchedulesTable.driverId, driverId));
+    const scheduleIds = driverSchedules.map((s) => s.id);
+
+    if (scheduleIds.length === 0) {
+      sendSuccess(res, {
+        tripsToday: 0,
+        earningsToday: 0,
+        onlineHoursToday: 0,
+        passengersToday: 0,
+        tripsThisMonth: 0,
+        earningsThisMonth: 0,
+        cancellationsLast30d: 0,
+        noShowsLast30d: 0,
+      });
+      return;
+    }
+
+    const todayBookings = await db
+      .select({
+        id: vanBookingsTable.id,
+        status: vanBookingsTable.status,
+        fare: vanBookingsTable.fare,
+        boardedAt: vanBookingsTable.boardedAt,
+        completedAt: vanBookingsTable.completedAt,
+        scheduleId: vanBookingsTable.scheduleId,
+      })
+      .from(vanBookingsTable)
+      .where(and(
+        inArray(vanBookingsTable.scheduleId, scheduleIds),
+        eq(vanBookingsTable.travelDate, today),
+      ));
+
+    const boardedToday = todayBookings.filter((b) => b.status === "boarded" || b.status === "completed");
+    const passengersToday = boardedToday.length;
+    const earningsToday = boardedToday.reduce((sum, b) => sum + parseFloat(b.fare ?? "0"), 0);
+    const tripsToday = new Set(boardedToday.map((b) => b.scheduleId)).size;
+
+    let onlineMs = 0;
+    const tripGroups = new Map<string, { firstBoard?: Date; lastEnd?: Date }>();
+    for (const b of boardedToday) {
+      const g = tripGroups.get(b.scheduleId) ?? {};
+      if (b.boardedAt && (!g.firstBoard || b.boardedAt < g.firstBoard)) g.firstBoard = b.boardedAt;
+      const endAt = b.completedAt ?? (b.status === "boarded" ? now : undefined);
+      if (endAt && (!g.lastEnd || endAt > g.lastEnd)) g.lastEnd = endAt;
+      tripGroups.set(b.scheduleId, g);
+    }
+    for (const g of tripGroups.values()) {
+      if (g.firstBoard && g.lastEnd && g.lastEnd > g.firstBoard) {
+        onlineMs += g.lastEnd.getTime() - g.firstBoard.getTime();
+      }
+    }
+    const onlineHoursToday = Math.round((onlineMs / 3_600_000) * 10) / 10;
+
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfMonthDate = startOfMonth.toISOString().split("T")[0]!;
+    const monthBookings = await db
+      .select({ fare: vanBookingsTable.fare, status: vanBookingsTable.status, scheduleId: vanBookingsTable.scheduleId, travelDate: vanBookingsTable.travelDate })
+      .from(vanBookingsTable)
+      .where(and(
+        inArray(vanBookingsTable.scheduleId, scheduleIds),
+        gte(vanBookingsTable.travelDate, startOfMonthDate),
+      ));
+    const monthCompleted = monthBookings.filter((b) => b.status === "boarded" || b.status === "completed");
+    const earningsThisMonth = monthCompleted.reduce((sum, b) => sum + parseFloat(b.fare ?? "0"), 0);
+    const tripsThisMonth = new Set(monthCompleted.map((b) => `${b.scheduleId}|${b.travelDate}`)).size;
+
+    const [{ c: cancellationsLast30d } = { c: 0 }] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(vanBookingsTable)
+      .where(and(
+        inArray(vanBookingsTable.scheduleId, scheduleIds),
+        eq(vanBookingsTable.status, "cancelled"),
+        gte(vanBookingsTable.cancelledAt, ago30),
+      ));
+
+    const [{ c: noShowsLast30d } = { c: 0 }] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(vanBookingsTable)
+      .where(and(
+        inArray(vanBookingsTable.scheduleId, scheduleIds),
+        eq(vanBookingsTable.status, "confirmed"),
+        gte(vanBookingsTable.createdAt, ago30),
+        sql`${vanBookingsTable.boardedAt} IS NULL`,
+      ));
+
+    void startOfDay;
+    sendSuccess(res, {
+      tripsToday,
+      earningsToday: Math.round(earningsToday),
+      onlineHoursToday,
+      passengersToday,
+      tripsThisMonth,
+      earningsThisMonth: Math.round(earningsThisMonth),
+      cancellationsLast30d: Number(cancellationsLast30d ?? 0),
+      noShowsLast30d: Number(noShowsLast30d ?? 0),
+    });
+  } catch (e) {
+    logger.error({ err: e }, "[van] driver metrics error");
+    sendError(res, "Could not load driver metrics.", 500);
+  }
+});
+
 /* ═══════════════════════════════════════════════════════════════
    ADMIN — van management endpoints
 ═══════════════════════════════════════════════════════════════ */

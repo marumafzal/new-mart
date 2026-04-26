@@ -1,8 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bus, Users, CheckCircle, MapPin, Clock, Calendar, ChevronRight, AlertCircle, Play, Square, Navigation } from "lucide-react";
+import { Bus, Users, CheckCircle, Clock, ChevronRight, AlertCircle, Play, Square, Navigation, TrendingUp, Wallet, Timer } from "lucide-react";
 import { apiFetch } from "../lib/api";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../lib/auth";
+
+interface DriverMetrics {
+  tripsToday: number;
+  earningsToday: number;
+  onlineHoursToday: number;
+  passengersToday: number;
+  tripsThisMonth: number;
+  earningsThisMonth: number;
+  cancellationsLast30d: number;
+  noShowsLast30d: number;
+}
 
 type SeatTier = "window" | "aisle" | "economy";
 
@@ -72,6 +83,11 @@ async function sendLocation(scheduleId: string, date: string, lat: number, lng: 
   });
 }
 
+async function fetchMetrics(): Promise<DriverMetrics> {
+  const data = await apiFetch("/van/driver/metrics");
+  return (data ?? {}) as DriverMetrics;
+}
+
 const STATUS_STYLE: Record<string, string> = {
   confirmed: "bg-blue-100 text-blue-700",
   boarded:   "bg-green-100 text-green-700",
@@ -91,6 +107,12 @@ export default function VanDriver() {
     queryKey: ["van-driver-today"],
     queryFn: fetchTodaySchedules,
     refetchInterval: 60_000,
+  });
+
+  const { data: metrics } = useQuery<DriverMetrics>({
+    queryKey: ["van-driver-metrics"],
+    queryFn: fetchMetrics,
+    refetchInterval: 30_000,
   });
 
   const { data: passengers = [], isLoading: loadingPassengers } = useQuery<Passenger[]>({
@@ -201,6 +223,38 @@ export default function VanDriver() {
             <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
             <span>{error}</span>
             <button className="ml-auto font-bold" onClick={() => setError("")}>×</button>
+          </div>
+        )}
+
+        {/* Driver daily metrics */}
+        {!selectedSchedule && (
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Trips Today", value: metrics?.tripsToday ?? 0, icon: TrendingUp, color: "text-indigo-600 bg-indigo-50" },
+              { label: "Earnings", value: `Rs ${(metrics?.earningsToday ?? 0).toLocaleString()}`, icon: Wallet, color: "text-emerald-600 bg-emerald-50" },
+              { label: "Online Hrs", value: (metrics?.onlineHoursToday ?? 0).toFixed(1), icon: Timer, color: "text-amber-600 bg-amber-50" },
+            ].map((m) => (
+              <div key={m.label} className={`rounded-xl p-3 ${m.color}`}>
+                <m.icon className="w-4 h-4 mb-1.5 opacity-70" />
+                <div className="text-lg font-bold leading-tight">{m.value}</div>
+                <div className="text-[11px] font-medium opacity-80 mt-0.5">{m.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!selectedSchedule && metrics && (metrics.tripsThisMonth > 0 || metrics.earningsThisMonth > 0) && (
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 grid grid-cols-2 gap-3 text-center">
+            <div>
+              <div className="text-xs text-gray-500 font-medium">This Month</div>
+              <div className="text-base font-bold text-gray-900">{metrics.tripsThisMonth} trips</div>
+              <div className="text-xs text-gray-600">Rs {metrics.earningsThisMonth.toLocaleString()} earned</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 font-medium">Last 30 Days</div>
+              <div className="text-base font-bold text-gray-900">{metrics.cancellationsLast30d} cancellations</div>
+              <div className="text-xs text-gray-600">{metrics.noShowsLast30d} no-shows</div>
+            </div>
           </div>
         )}
 

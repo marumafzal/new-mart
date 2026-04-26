@@ -1,7 +1,7 @@
 # AJKMart Platform — Admin Config & Live Status Tracker
 # AJKMart پلیٹ فارم — ایڈمن کنفگ اور لائیو اسٹیٹس ٹریکر
 
-> **Last updated:** 2026-04-26 (KYC review flow improvements + broadcast role-filter fix)  
+> **Last updated:** 2026-04-26 (Van Driver metrics + Condition Rules CRUD/eligibility fix)  
 > **Status legend:** ✅ Complete | 🔄 In Progress | ⚠️ Partial | ❌ Missing | ⏳ Pending (not started)  
 > **Scope:** Monorepo at `/home/runner/workspace` — pnpm workspaces
 
@@ -284,7 +284,7 @@ Port: **23744** | Path prefix: `/admin/`
 | KYC Review | `/admin/kyc` | ✅ Complete | Filter chips (incl. resubmit), search by name/phone/CNIC, zoom/rotate/fullscreen document preview, vehicle-papers section for riders (driving license + vehicle photo), predefined approve/reject reason chips with custom note, push + SMS to user on decision, audit log entry per decision |
 | Roles & Permissions | `/admin/roles-permissions` | ✅ Complete | RBAC with presets |
 | Account Conditions | `/admin/account-conditions` | ✅ Complete | |
-| Condition Rules | `/admin/condition-rules` | ⚠️ Partial | Van driver rules (fix task open) |
+| Condition Rules | `/admin/condition-rules` | ✅ Working | Full CRUD + 15 default rules incl. 3 van-driver rules |
 
 ### 4.3 Vendor Management / وینڈر انتظام
 
@@ -496,7 +496,7 @@ Framework: **React + Vite** | Port: varies (dev)
 | Profile | `Profile.tsx` | ✅ Complete | KYC, documents |
 | Security Settings | `SecuritySettings.tsx` | ✅ Complete | Change password, MPIN |
 | Wallet | `Wallet.tsx` | ✅ Complete | Balance, withdrawals |
-| Van Driver Mode | `VanDriver.tsx` | ⚠️ Partial | Metrics/conditions bug (Task open) |
+| Van Driver Mode | `VanDriver.tsx` | ✅ Working | Daily/monthly metrics card + trip dispatch flow |
 | Chat | `Chat.tsx` | ✅ Complete | Rider ↔ customer |
 | Not Found | `not-found.tsx` | ✅ Complete | |
 
@@ -610,7 +610,7 @@ Auth: Bearer JWT for all `/api/admin/*` routes
 | OTP | `/api/admin/otp/*` | ✅ Complete | |
 | Delivery Access | `/api/admin/delivery-access/*` | ✅ Complete | |
 | Experiments | `/api/admin/experiments/*` | ✅ Complete | |
-| Conditions | `/api/admin/conditions/*` | ⚠️ Partial | Van driver rules bug open |
+| Conditions | `/api/admin/conditions/*` | ✅ Complete | Conditions CRUD + bulk lift/delete, severity/role/status filters; condition-rules CRUD + seed-defaults (15) + evaluate engine with cooldown + van metric computation; condition-settings GET/PATCH |
 | Popups | `/api/admin/popups/*` | ✅ Complete | |
 | FAQs | `/api/admin/faq/*` | ✅ Complete | |
 | Weather Config | `/api/admin/weather-config` | ✅ Complete | |
@@ -678,17 +678,10 @@ Default values are set by AI-recommended configuration.
 
 | # | Issue | Component | Severity |
 |---|-------|-----------|----------|
-<<<<<<< HEAD
-| 1 | Admin broadcast role filtering not working correctly | Admin → Broadcast page | 🔴 High |
-| 2 | Van Driver metrics & condition rules have display/logic bugs | Rider App → VanDriver, Admin → Condition Rules | 🔴 High |
-=======
-| 1 | Van Driver metrics & condition rules have display/logic bugs | Rider App → VanDriver, Admin → Condition Rules | 🔴 High |
-| 2 | KYC review improvements needed (better UX, verification flow) | Admin → KYC | 🟡 Medium |
->>>>>>> f0acb48 (Fix admin broadcast role filtering + add live recipient preview)
-| 3 | Analytics charts in Vendor App need upgrade | Vendor App → Analytics | 🟡 Medium |
-| 4 | Integration test results not persisted (lost on page reload) | Admin → Settings → Integrations | 🟢 Low |
-| 5 | No live API latency shown in Integration Health panel | Admin → Settings → Integrations | 🟢 Low |
-| 6 | Payment gateway settings accessible only under Settings → Payment, not Settings → Integrations tab | Admin → Settings | 🟢 Low |
+| 1 | Analytics charts in Vendor App need upgrade | Vendor App → Analytics | 🟡 Medium |
+| 2 | Integration test results not persisted (lost on page reload) | Admin → Settings → Integrations | 🟢 Low |
+| 3 | No live API latency shown in Integration Health panel | Admin → Settings → Integrations | 🟢 Low |
+| 4 | Payment gateway settings accessible only under Settings → Payment, not Settings → Integrations tab | Admin → Settings | 🟢 Low |
 
 ---
 
@@ -702,7 +695,7 @@ Default values are set by AI-recommended configuration.
 | T3 | Create admin-config.md Live Status Tracker | ✅ Complete | — |
 | T4 | Fix Admin Broadcast Role Filtering | ✅ Complete | 🔴 High |
 | T5 | Analytics Charts & Visualizations Upgrade | ⏳ Pending | 🟡 Medium |
-| T6 | Fix Van Driver Metrics & Condition Rules | ⏳ Pending | 🔴 High |
+| T6 | Fix Van Driver Metrics & Condition Rules | ✅ Complete | — |
 | T7 | KYC Review & Verification Improvements | ✅ Complete | — |
 | T8 | Show Live API Latency in Integration Health Panel | ⏳ Pending | 🟢 Low |
 | T9 | Add Payment Gateway Section in Integrations Tab | ⏳ Pending | 🟢 Low |

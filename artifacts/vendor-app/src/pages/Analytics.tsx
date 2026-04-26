@@ -2,14 +2,13 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
-  LineChart, Line, AreaChart, Area,
+  Line, AreaChart, Area,
   BarChart, Bar,
   PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { api } from "../lib/api";
-import { useAuth } from "../lib/auth";
-import { usePlatformConfig, useCurrency } from "../lib/useConfig";
+import { useCurrency } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PageHeader } from "../components/PageHeader";
@@ -90,8 +89,6 @@ export default function Analytics() {
   const [customTo, setCustomTo]   = useState<string>("");
   const [granularity, setGranularity] = useState<Granularity>("daily");
 
-  const { user } = useAuth();
-  const { config } = usePlatformConfig();
   const { symbol: currencySymbol } = useCurrency();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);

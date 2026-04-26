@@ -612,13 +612,12 @@ router.get("/analytics", async (req, res) => {
     gte(ordersTable.createdAt, fromDate),
     sql`${ordersTable.createdAt} <= ${toDate}`,
   );
-  const baseLifetime = eq(ordersTable.vendorId, vendorId);
 
   const [
     revenueData,
     ordersByStatusRaw,
     inRangeOrders,
-    customerCountsAllTime,
+    customerCountsInRange,
   ] = await Promise.all([
     db.select({
       c: count(),
@@ -629,18 +628,19 @@ router.get("/analytics", async (req, res) => {
       .orderBy(sql`DATE(${ordersTable.createdAt})`),
     db.select({ status: ordersTable.status, c: count() }).from(ordersTable)
       .where(baseWhere).groupBy(ordersTable.status),
-    /* fetch items + createdAt for in-range orders to aggregate top products + peak hours in JS */
+    /* fetch items + createdAt + userId for in-range orders to aggregate top products + peak hours + return rate in JS */
     db.select({
       id: ordersTable.id,
+      userId: ordersTable.userId,
       items: ordersTable.items,
       total: ordersTable.total,
       createdAt: ordersTable.createdAt,
     }).from(ordersTable).where(baseWhere),
-    /* lifetime customer order counts → return rate = customers w/ ≥2 orders / total customers */
+    /* in-range per-customer order counts → return rate = customers w/ ≥2 orders in range / unique customers in range */
     db.select({
       userId: ordersTable.userId,
       orderCount: count(),
-    }).from(ordersTable).where(baseLifetime).groupBy(ordersTable.userId),
+    }).from(ordersTable).where(baseWhere).groupBy(ordersTable.userId),
   ]);
 
   /* daily series — fill gaps so charts show continuous x-axis */
@@ -718,9 +718,9 @@ router.get("/analytics", async (req, res) => {
     .sort((a, b) => b.orders - a.orders)
     .slice(0, 5);
 
-  /* return rate — based on lifetime orders per customer */
-  const totalCustomers = customerCountsAllTime.length;
-  const returningCustomers = customerCountsAllTime.filter((c: { orderCount: number | null }) => (c.orderCount ?? 0) >= 2).length;
+  /* return rate — customers with ≥2 orders within the selected range / unique customers in range */
+  const totalCustomers = customerCountsInRange.length;
+  const returningCustomers = customerCountsInRange.filter((c: { orderCount: number | null }) => (c.orderCount ?? 0) >= 2).length;
   const returnRate = totalCustomers > 0
     ? parseFloat(((returningCustomers / totalCustomers) * 100).toFixed(1))
     : 0;

@@ -3,9 +3,10 @@ import {
   AlertTriangle, Info, ExternalLink, CheckCircle2, XCircle, Wifi, Loader2,
   MessageSquare, Phone, Globe, MapPin, BarChart3, Shield, Bug, Link,
   KeyRound, Puzzle, ToggleRight, Car, Send, FlaskConical,
+  Flame, Mail, Activity, Siren, CreditCard, RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { fetcher } from "@/lib/api";
+import { fetcher, apiAbsoluteFetch } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,373 @@ const INT_TABS: { id: IntTab; label: string; emoji: string; color: string; activ
   { id: "sentry",    label: "Sentry",    emoji: "🐛", color: "text-red-700",    active: "bg-red-600",    desc: "Error monitoring & performance traces" },
   { id: "maps",      label: "Maps",      emoji: "🗺️", color: "text-sky-700",    active: "bg-sky-600",    desc: "Google Maps for routing & tracking" },
 ];
+
+/* ─── Integration Health Panel ────────────────────────────────────────────── */
+
+type HealthStatus = "configured" | "partial" | "missing" | "disabled" | "manual";
+
+interface IntegrationHealth {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  status: HealthStatus;
+  missingFields: string[];
+  hint?: string;
+  testType?: "email" | "sms" | "whatsapp" | "maps" | "jazzcash" | "easypaisa";
+  needsPhone?: boolean;
+  navigateTo?: IntTab;
+}
+
+function computeHealth(localValues: Record<string, string>): IntegrationHealth[] {
+  const v = (k: string) => (localValues[k] ?? "").trim();
+  const on = (k: string, def = "off") => (localValues[k] ?? def) === "on";
+
+  /* Firebase FCM */
+  const fcmEnabled = on("integration_push_notif");
+  const fcmKeys = { "FCM Server Key": v("fcm_server_key"), "Project ID": v("fcm_project_id") };
+  const fcmMissing = Object.entries(fcmKeys).filter(([, val]) => !val).map(([k]) => k);
+  const fcmStatus: HealthStatus = !fcmEnabled ? "disabled"
+    : fcmMissing.length === 0 ? "configured"
+    : fcmMissing.length < Object.keys(fcmKeys).length ? "partial"
+    : "missing";
+
+  /* SMS */
+  const smsEnabled = on("integration_sms");
+  const smsProvider = v("sms_provider") || "console";
+  const smsIsConsole = smsProvider === "console";
+  const smsKey = v("sms_api_key") || v("sms_msg91_key") || v("sms_account_sid");
+  const smsMissing = smsIsConsole ? [] : (!smsKey ? ["API Key"] : []);
+  const smsStatus: HealthStatus = !smsEnabled ? "disabled"
+    : smsIsConsole ? "partial"
+    : smsMissing.length === 0 ? "configured"
+    : "missing";
+
+  /* Email / SMTP */
+  const emailEnabled = on("integration_email");
+  const smtpFields = { "SMTP Host": v("smtp_host"), "Username": v("smtp_user"), "Password": v("smtp_password") };
+  const smtpMissing = Object.entries(smtpFields).filter(([, val]) => !val).map(([k]) => k);
+  const emailStatus: HealthStatus = !emailEnabled ? "disabled"
+    : smtpMissing.length === 0 ? "configured"
+    : smtpMissing.length < Object.keys(smtpFields).length ? "partial"
+    : "missing";
+
+  /* WhatsApp */
+  const waEnabled = on("integration_whatsapp");
+  const waFields = { "Phone Number ID": v("wa_phone_number_id"), "Access Token": v("wa_access_token") };
+  const waMissing = Object.entries(waFields).filter(([, val]) => !val).map(([k]) => k);
+  const waStatus: HealthStatus = !waEnabled ? "disabled"
+    : waMissing.length === 0 ? "configured"
+    : waMissing.length < Object.keys(waFields).length ? "partial"
+    : "missing";
+
+  /* Analytics */
+  const analyticsPlatform = v("analytics_platform") || "none";
+  const analyticsTrackingId = v("analytics_tracking_id");
+  const analyticsStatus: HealthStatus = analyticsPlatform === "none" ? "disabled"
+    : analyticsTrackingId ? "configured"
+    : "missing";
+  const analyticsMissing = analyticsTrackingId ? [] : ["Tracking ID / API Key"];
+
+  /* Sentry */
+  const sentryDsn = v("sentry_dsn");
+  const sentryEnabled = on("integration_sentry");
+  const sentryStatus: HealthStatus = !sentryEnabled ? "disabled"
+    : sentryDsn ? "configured"
+    : "missing";
+
+  /* Maps */
+  const mapsEnabled = on("integration_maps");
+  const mapsProvider = v("maps_provider") || "google";
+  const mapsKey = v("google_maps_api_key") || v("maps_api_key") || v("mapbox_api_key") || v("locationiq_api_key");
+  const mapsMissing = mapsKey ? [] : [`${mapsProvider === "mapbox" ? "Mapbox" : mapsProvider === "locationiq" ? "LocationIQ" : "Google Maps"} API Key`];
+  const mapsStatus: HealthStatus = !mapsEnabled ? "disabled"
+    : mapsKey ? "configured"
+    : "missing";
+
+  /* JazzCash */
+  const jcEnabled = on("jazzcash_enabled");
+  const jcType = v("jazzcash_type") || "manual";
+  const jcManualReady = !!(v("jazzcash_manual_name") && v("jazzcash_manual_number"));
+  const jcApiReady = !!(v("jazzcash_merchant_id") && v("jazzcash_password") && v("jazzcash_salt"));
+  const jcMissing = jcType === "manual"
+    ? [...(!v("jazzcash_manual_name") ? ["Account Name"] : []), ...(!v("jazzcash_manual_number") ? ["JazzCash Number"] : [])]
+    : [...(!v("jazzcash_merchant_id") ? ["Merchant ID"] : []), ...(!v("jazzcash_password") ? ["Password"] : []), ...(!v("jazzcash_salt") ? ["Integrity Salt"] : [])];
+  const jcStatus: HealthStatus = !jcEnabled ? "disabled"
+    : jcType === "manual" ? (jcManualReady ? "manual" : "missing")
+    : jcApiReady ? "configured"
+    : jcMissing.length < 3 ? "partial"
+    : "missing";
+
+  /* EasyPaisa */
+  const epEnabled = on("easypaisa_enabled");
+  const epType = v("easypaisa_type") || "manual";
+  const epManualReady = !!(v("easypaisa_manual_name") && v("easypaisa_manual_number"));
+  const epApiReady = !!(v("easypaisa_store_id") && v("easypaisa_hash_key"));
+  const epMissing = epType === "manual"
+    ? [...(!v("easypaisa_manual_name") ? ["Account Name"] : []), ...(!v("easypaisa_manual_number") ? ["EasyPaisa Number"] : [])]
+    : [...(!v("easypaisa_store_id") ? ["Store ID"] : []), ...(!v("easypaisa_hash_key") ? ["Hash Key"] : [])];
+  const epStatus: HealthStatus = !epEnabled ? "disabled"
+    : epType === "manual" ? (epManualReady ? "manual" : "missing")
+    : epApiReady ? "configured"
+    : epMissing.length < 2 ? "partial"
+    : "missing";
+
+  return [
+    {
+      id: "firebase", label: "Firebase FCM", icon: <Flame className="w-4 h-4 text-orange-500" />,
+      status: fcmStatus, missingFields: fcmMissing,
+      hint: fcmStatus === "partial" ? "Server Key or Project ID missing" : undefined,
+      navigateTo: "firebase",
+    },
+    {
+      id: "sms", label: "SMS Gateway", icon: <Phone className="w-4 h-4 text-blue-500" />,
+      status: smsStatus, missingFields: smsMissing,
+      hint: smsIsConsole && smsEnabled ? "Console (Dev) mode — OTP logs to terminal only" : undefined,
+      testType: smsStatus === "configured" ? "sms" : undefined,
+      needsPhone: true, navigateTo: "sms",
+    },
+    {
+      id: "email", label: "Email / SMTP", icon: <Mail className="w-4 h-4 text-teal-500" />,
+      status: emailStatus, missingFields: smtpMissing,
+      testType: emailStatus === "configured" ? "email" : undefined,
+      navigateTo: "email",
+    },
+    {
+      id: "whatsapp", label: "WhatsApp Business", icon: <MessageSquare className="w-4 h-4 text-green-500" />,
+      status: waStatus, missingFields: waMissing,
+      testType: waStatus === "configured" ? "whatsapp" : undefined,
+      needsPhone: true, navigateTo: "whatsapp",
+    },
+    {
+      id: "maps", label: "Maps API", icon: <MapPin className="w-4 h-4 text-sky-500" />,
+      status: mapsStatus, missingFields: mapsMissing,
+      testType: mapsStatus === "configured" ? "maps" : undefined,
+      navigateTo: "maps",
+    },
+    {
+      id: "analytics", label: "Analytics", icon: <BarChart3 className="w-4 h-4 text-purple-500" />,
+      status: analyticsStatus, missingFields: analyticsMissing,
+      hint: analyticsPlatform !== "none" && !analyticsTrackingId ? `${analyticsPlatform} tracking ID required` : undefined,
+      navigateTo: "analytics",
+    },
+    {
+      id: "sentry", label: "Sentry", icon: <Bug className="w-4 h-4 text-red-500" />,
+      status: sentryStatus, missingFields: sentryDsn ? [] : ["Sentry DSN URL"],
+      navigateTo: "sentry",
+    },
+    {
+      id: "jazzcash", label: `JazzCash ${jcType === "manual" ? "(Manual)" : "(API)"}`,
+      icon: <CreditCard className="w-4 h-4 text-red-600" />,
+      status: jcStatus, missingFields: jcMissing,
+      hint: jcType === "manual" && jcStatus === "manual" ? "Manual mode — always ready, no API needed" : undefined,
+      testType: jcEnabled ? "jazzcash" : undefined,
+    },
+    {
+      id: "easypaisa", label: `EasyPaisa ${epType === "manual" ? "(Manual)" : "(API)"}`,
+      icon: <CreditCard className="w-4 h-4 text-green-600" />,
+      status: epStatus, missingFields: epMissing,
+      hint: epType === "manual" && epStatus === "manual" ? "Manual mode — always ready, no API needed" : undefined,
+      testType: epEnabled ? "easypaisa" : undefined,
+    },
+  ];
+}
+
+const STATUS_CONFIG: Record<HealthStatus, { label: string; badge: string; dot: string }> = {
+  configured: { label: "Configured",   badge: "bg-green-100 text-green-700 border-green-200",  dot: "bg-green-500" },
+  partial:    { label: "Partial",       badge: "bg-amber-100 text-amber-700 border-amber-200",   dot: "bg-amber-400" },
+  missing:    { label: "Missing",       badge: "bg-red-100 text-red-700 border-red-200",          dot: "bg-red-400" },
+  disabled:   { label: "Disabled",      badge: "bg-gray-100 text-gray-500 border-gray-200",       dot: "bg-gray-300" },
+  manual:     { label: "Manual Ready",  badge: "bg-blue-100 text-blue-700 border-blue-200",       dot: "bg-blue-400" },
+};
+
+function IntegrationHealthPanel({
+  localValues, switchTab,
+}: {
+  localValues: Record<string, string>;
+  switchTab: (tab: IntTab) => void;
+}) {
+  const { toast } = useToast();
+  const [phoneInputs, setPhoneInputs] = useState<Record<string, string>>({});
+  const [testingMap, setTestingMap] = useState<Record<string, boolean>>({});
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; msg: string } | null>>({});
+
+  const rows = computeHealth(localValues);
+  const configuredCount = rows.filter(r => r.status === "configured" || r.status === "manual").length;
+  const missingCount = rows.filter(r => r.status === "missing").length;
+  const partialCount = rows.filter(r => r.status === "partial").length;
+
+  async function handleTest(row: IntegrationHealth) {
+    if (!row.testType) return;
+    const id = row.id;
+    setTestingMap(prev => ({ ...prev, [id]: true }));
+    setTestResults(prev => ({ ...prev, [id]: null }));
+    try {
+      let data: unknown;
+      if (row.testType === "jazzcash" || row.testType === "easypaisa") {
+        data = await apiAbsoluteFetch(`/api/payments/test-connection/${row.testType}`, { method: "GET" });
+      } else {
+        const body: Record<string, string> = {};
+        if (row.testType === "sms" || row.testType === "whatsapp") {
+          const phone = (phoneInputs[id] ?? "").trim();
+          if (!phone) {
+            setPhoneInputs(p => ({ ...p, [id + "_err"]: "1" }));
+            setTestingMap(prev => ({ ...prev, [id]: false }));
+            return;
+          }
+          body["phone"] = phone;
+        }
+        data = await fetcher(`/system/test-integration/${row.testType}`, { method: "POST", body: JSON.stringify(body) });
+      }
+      const ok = (data as any)?.ok !== false;
+      const msg = (data as any)?.message ?? `${row.label} test ${ok ? "passed" : "failed"}`;
+      setTestResults(prev => ({ ...prev, [id]: { ok, msg } }));
+      toast({ title: ok ? `${row.label} ✅` : `${row.label} ⚠️`, description: msg, ...(ok ? {} : { variant: "destructive" as const }) });
+    } catch (err: any) {
+      const msg = err?.message ?? `${row.label} test failed`;
+      setTestResults(prev => ({ ...prev, [id]: { ok: false, msg } }));
+      toast({ title: "Test Failed ❌", description: msg, variant: "destructive" });
+    } finally {
+      setTestingMap(prev => ({ ...prev, [id]: false }));
+    }
+  }
+
+  const isTesting = (id: string) => !!testingMap[id];
+  const result = (id: string) => testResults[id] ?? null;
+
+  return (
+    <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/60 to-white overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-indigo-200/70 bg-indigo-50/80">
+        <div className="flex items-center gap-2.5">
+          <Activity className="w-4 h-4 text-indigo-600" />
+          <h3 className="text-sm font-bold text-indigo-900">Integration Health</h3>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+            {configuredCount}/{rows.length} Ready
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] font-semibold">
+          {missingCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700">{missingCount} Missing</span>
+          )}
+          {partialCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{partialCount} Partial</span>
+          )}
+        </div>
+      </div>
+
+      {/* Grid of rows */}
+      <div className="divide-y divide-indigo-100/60">
+        {rows.map(row => {
+          const cfg = STATUS_CONFIG[row.status];
+          const testing = isTesting(row.id);
+          const res = result(row.id);
+          const needPhone = (row.testType === "sms" || row.testType === "whatsapp") && row.testType;
+          const phoneVal = phoneInputs[row.id] ?? "";
+          const phoneErr = phoneInputs[row.id + "_err"];
+          const canTest = !!row.testType && row.status !== "disabled";
+
+          return (
+            <div key={row.id} className="flex flex-col sm:flex-row sm:items-center gap-2 px-4 py-2.5 hover:bg-indigo-50/40 transition-colors group">
+              {/* Icon + Name + Status */}
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-white border border-indigo-100 flex items-center justify-center flex-shrink-0 shadow-sm">
+                  {row.icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-foreground">{row.label}</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${cfg.badge} inline-flex items-center gap-1`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                      {cfg.label}
+                    </span>
+                    {res && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${res.ok ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {res.ok ? "✓ OK" : "✗ Fail"}
+                      </span>
+                    )}
+                  </div>
+                  {row.hint && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{row.hint}</p>
+                  )}
+                  {row.missingFields.length > 0 && row.status !== "disabled" && (
+                    <p className="text-[10px] text-red-600 mt-0.5 truncate">
+                      Missing: {row.missingFields.join(", ")}
+                    </p>
+                  )}
+                  {res && (
+                    <p className={`text-[10px] mt-0.5 truncate ${res.ok ? "text-green-700" : "text-red-600"}`} title={res.msg}>
+                      {res.msg}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-1.5 flex-shrink-0 pl-9 sm:pl-0">
+                {needPhone && canTest && (
+                  <div className="relative">
+                    <Input
+                      value={phoneVal}
+                      onChange={e => {
+                        setPhoneInputs(p => ({ ...p, [row.id]: e.target.value, [row.id + "_err"]: "" }));
+                      }}
+                      placeholder="03xxxxxxxxx"
+                      className={`h-7 text-xs w-32 font-mono ${phoneErr ? "border-red-400" : ""}`}
+                    />
+                    {phoneErr && (
+                      <p className="text-[9px] text-red-500 absolute -bottom-3.5 left-0">Phone required</p>
+                    )}
+                  </div>
+                )}
+                {canTest && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (needPhone) {
+                        const phone = (phoneInputs[row.id] ?? "").trim();
+                        if (!phone) {
+                          setPhoneInputs(p => ({ ...p, [row.id + "_err"]: "1" }));
+                          return;
+                        }
+                      }
+                      handleTest(row);
+                    }}
+                    disabled={testing}
+                    title={`Test ${row.label}`}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-all focus-visible:ring-2 focus-visible:ring-indigo-500 focus:outline-none"
+                  >
+                    {testing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                    {testing ? "Testing…" : "Test"}
+                  </button>
+                )}
+                {row.navigateTo && (
+                  <button
+                    type="button"
+                    onClick={() => switchTab(row.navigateTo!)}
+                    title={`Open ${row.label} settings`}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold border border-indigo-200 text-indigo-700 bg-white hover:bg-indigo-50 transition-colors focus-visible:ring-2 focus-visible:ring-indigo-400 focus:outline-none"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Config
+                  </button>
+                )}
+                {row.status === "disabled" && !row.navigateTo && (
+                  <span className="text-[10px] text-muted-foreground">—</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer note */}
+      <div className="px-4 py-2 border-t border-indigo-100/70 bg-indigo-50/40 flex items-center gap-1.5">
+        <Info className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+        <p className="text-[10px] text-indigo-600">Status updates instantly when settings are changed. Use Config to open each integration's settings.</p>
+      </div>
+    </div>
+  );
+}
 
 function IntStatusBadge({ enabled, configured }: { enabled: boolean; configured: boolean }) {
   if (!enabled) return <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">DISABLED</span>;
@@ -218,6 +586,9 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
 
   return (
     <div className="space-y-4">
+      {/* ── Integration Health Panel ── */}
+      <IntegrationHealthPanel localValues={localValues} switchTab={switchTab} />
+
       {/* ── OTP Default Control Panel ── */}
       <div className={`rounded-2xl border-2 p-4 space-y-4 ${anyOtpProviderReady ? "border-green-200 bg-green-50" : "border-amber-300 bg-amber-50"}`}>
         {/* Header row */}

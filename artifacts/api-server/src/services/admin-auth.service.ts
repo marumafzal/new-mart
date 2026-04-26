@@ -59,10 +59,11 @@ export async function adminLogin(
 
   // Check if MFA is enabled for this admin
   if (admin.totpEnabled && admin.totpSecret) {
-    // Generate temporary 2FA challenge token
+    // Password verified — issue a temporary 2FA challenge token so the
+    // client can complete the second step at /api/admin/auth/2fa.
     const tempToken = sign2faChallengeToken(admin.id);
     return {
-      success: false,
+      success: true,
       requiresMfa: true,
       tempToken,
       admin,
@@ -95,7 +96,7 @@ export async function verify2fa(
     return { success: false, error: 'Admin not found or MFA not configured' };
   }
 
-  const totpValid = verifyTotpToken(admin.totpSecret, totp);
+  const totpValid = verifyTotpToken(totp, admin.totpSecret);
   if (!totpValid) {
     return { success: false, error: 'Invalid TOTP code' };
   }

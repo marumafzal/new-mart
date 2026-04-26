@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheck, Clock, XCircle, AlertCircle, CheckCircle,
   User, Phone, CreditCard, MapPin, Calendar, Eye,
-  Filter, RefreshCw, X, ChevronDown,
+  Filter, RefreshCw, X, ChevronDown, Search,
+  ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2,
 } from "lucide-react";
 
 import { apiAbsoluteFetchRaw } from "@/lib/api";
@@ -25,14 +26,81 @@ type KycRecord = {
   user?: { name: string; phone: string; email: string; avatar?: string };
 };
 
-function PhotoModal({ url, onClose }: { url: string; onClose: () => void }) {
+function PhotoModal({ url, label, onClose }: { url: string; label?: string; onClose: () => void }) {
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const zoomIn  = () => setZoom(z => Math.min(z + 0.25, 4));
+  const zoomOut = () => setZoom(z => Math.max(z - 0.25, 0.5));
+  const rotate  = () => setRotation(r => (r + 90) % 360);
+  const reset   = () => { setZoom(1); setRotation(0); };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "+" || e.key === "=") zoomIn();
+      else if (e.key === "-") zoomOut();
+      else if (e.key === "r" || e.key === "R") rotate();
+      else if (e.key === "f" || e.key === "F") setFullscreen(f => !f);
+      else if (e.key === "0") reset();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const containerSize = fullscreen ? "max-w-full w-full h-full" : "max-w-3xl w-full max-h-[90vh]";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
-      <div className="relative max-w-xl w-full" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute -top-10 right-0 text-white hover:text-gray-300">
-          <X size={24} />
-        </button>
-        <img src={url} alt="KYC Document" className="w-full rounded-2xl shadow-2xl max-h-[80vh] object-contain bg-white" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={onClose}>
+      <div className={`relative ${containerSize} flex flex-col`} onClick={e => e.stopPropagation()}>
+        {/* Toolbar */}
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-1 bg-black/60 rounded-xl p-1.5 backdrop-blur">
+            <button onClick={zoomOut} title="Zoom out (-)" className="w-9 h-9 flex items-center justify-center text-white hover:bg-white/10 rounded-lg disabled:opacity-30" disabled={zoom <= 0.5}>
+              <ZoomOut size={16} />
+            </button>
+            <span className="text-white text-xs font-mono w-12 text-center select-none">{Math.round(zoom * 100)}%</span>
+            <button onClick={zoomIn} title="Zoom in (+)" className="w-9 h-9 flex items-center justify-center text-white hover:bg-white/10 rounded-lg disabled:opacity-30" disabled={zoom >= 4}>
+              <ZoomIn size={16} />
+            </button>
+            <div className="w-px h-5 bg-white/20 mx-1" />
+            <button onClick={rotate} title="Rotate 90° (R)" className="w-9 h-9 flex items-center justify-center text-white hover:bg-white/10 rounded-lg">
+              <RotateCw size={16} />
+            </button>
+            <button onClick={() => setFullscreen(f => !f)} title="Toggle fullscreen (F)" className="w-9 h-9 flex items-center justify-center text-white hover:bg-white/10 rounded-lg">
+              {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+            <button onClick={reset} title="Reset (0)" className="px-2 h-9 flex items-center justify-center text-white text-xs hover:bg-white/10 rounded-lg">
+              Reset
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            {label && <span className="text-white text-sm font-medium bg-black/60 px-3 py-1.5 rounded-lg backdrop-blur">{label}</span>}
+            <button onClick={onClose} title="Close (Esc)" className="w-9 h-9 flex items-center justify-center text-white bg-black/60 hover:bg-white/10 rounded-lg backdrop-blur">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Image canvas */}
+        <div className="flex-1 overflow-auto bg-white/5 rounded-2xl flex items-center justify-center p-4">
+          <img
+            src={url}
+            alt={label ?? "KYC Document"}
+            draggable={false}
+            style={{
+              transform: `scale(${zoom}) rotate(${rotation}deg)`,
+              transition: "transform 0.15s ease",
+              maxHeight: fullscreen ? "85vh" : "75vh",
+            }}
+            className="max-w-full object-contain shadow-2xl select-none"
+          />
+        </div>
+
+        <p className="text-white/40 text-xs text-center mt-2 select-none">
+          Shortcuts: + / − zoom · R rotate · F fullscreen · 0 reset · Esc close
+        </p>
       </div>
     </div>
   );
@@ -80,7 +148,7 @@ function KycDetailPanel({ record, onClose, onApprove, onReject }: {
   record: KycRecord; onClose: () => void;
   onApprove: () => void; onReject: (reason: string) => void;
 }) {
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<{ url: string; label: string } | null>(null);
   const [showReject, setShowReject] = useState(false);
   const qc = useQueryClient();
 
@@ -120,7 +188,7 @@ function KycDetailPanel({ record, onClose, onApprove, onReject }: {
 
   return (
     <>
-      {photoUrl && <PhotoModal url={photoUrl} onClose={() => setPhotoUrl(null)} />}
+      {photo && <PhotoModal url={photo.url} label={photo.label} onClose={() => setPhoto(null)} />}
       {showReject && <RejectModal onConfirm={r => rejectMut.mutate(r)} onClose={() => setShowReject(false)} loading={rejectMut.isPending} />}
 
       <div className="fixed inset-0 z-40 flex items-start justify-end bg-black/40 p-4" onClick={onClose}>
@@ -194,7 +262,7 @@ function KycDetailPanel({ record, onClose, onApprove, onReject }: {
                   return (
                     <div key={key} className="text-center">
                       {url ? (
-                        <button onClick={() => setPhotoUrl(url)} className="w-full group relative">
+                        <button onClick={() => setPhoto({ url, label })} className="w-full group relative">
                           <img src={url} alt={label} className="w-full h-24 object-cover rounded-xl border border-gray-100" />
                           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 rounded-xl transition flex items-center justify-center">
                             <Eye size={18} className="text-white" />
@@ -250,12 +318,22 @@ function KycDetailPanel({ record, onClose, onApprove, onReject }: {
 export default function KycPage() {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<KycRecord | null>(null);
 
+  /* Debounce search input */
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["admin-kyc", statusFilter],
+    queryKey: ["admin-kyc", statusFilter, search],
     queryFn: async () => {
-      const j = await apiAbsoluteFetchRaw(`/api/kyc/admin/list?status=${statusFilter}&limit=50`);
+      const params = new URLSearchParams({ status: statusFilter, limit: "50" });
+      if (search) params.set("q", search);
+      const j = await apiAbsoluteFetchRaw(`/api/kyc/admin/list?${params.toString()}`);
       return (j?.data ?? j) as { records: KycRecord[] };
     },
     refetchInterval: 30000,
@@ -267,6 +345,7 @@ export default function KycPage() {
     pending: records.filter(r => r.status === "pending").length,
     approved: records.filter(r => r.status === "approved").length,
     rejected: records.filter(r => r.status === "rejected").length,
+    resubmit: records.filter(r => r.status === "resubmit").length,
   };
 
   const FILTERS = [
@@ -274,6 +353,7 @@ export default function KycPage() {
     { key: "pending",  label: "Pending",   count: counts.pending },
     { key: "approved", label: "Approved",  count: counts.approved },
     { key: "rejected", label: "Rejected",  count: counts.rejected },
+    { key: "resubmit", label: "Resubmit",  count: counts.resubmit },
   ];
 
   return (
@@ -288,14 +368,31 @@ export default function KycPage() {
       )}
 
       {/* Page header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">KYC Verification</h1>
           <p className="text-gray-500 text-sm mt-1">Review and manage user identity verification requests</p>
         </div>
-        <button onClick={() => refetch()} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition">
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 lg:w-72">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder="Search name, phone or CNIC…"
+              className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300"
+            />
+            {searchInput && (
+              <button onClick={() => setSearchInput("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <button onClick={() => refetch()} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition">
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stats row */}

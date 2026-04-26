@@ -1,7 +1,7 @@
 # AJKMart Platform — Admin Config & Live Status Tracker
 # AJKMart پلیٹ فارم — ایڈمن کنفگ اور لائیو اسٹیٹس ٹریکر
 
-> **Last updated:** 2026-04-26  
+> **Last updated:** 2026-04-26 (KYC review flow improvements)  
 > **Status legend:** ✅ Complete | 🔄 In Progress | ⚠️ Partial | ❌ Missing | ⏳ Pending (not started)  
 > **Scope:** Monorepo at `/home/runner/workspace` — pnpm workspaces
 
@@ -281,7 +281,7 @@ Port: **23744** | Path prefix: `/admin/`
 |------|-------|--------|-------|
 | Users List | `/admin/users` | ✅ Complete | Search, filter, ban/unban, KYC |
 | User Detail | `/admin/users/:id` | ✅ Complete | Full profile, orders, wallet |
-| KYC Review | `/admin/kyc` | ⚠️ Partial | View/approve/reject, improvements pending (Task open) |
+| KYC Review | `/admin/kyc` | ✅ Complete | Filter chips, search by name/phone/CNIC, zoom/rotate/fullscreen document preview, predefined reject reasons, push + SMS on rejection, audit log entry per decision |
 | Roles & Permissions | `/admin/roles-permissions` | ✅ Complete | RBAC with presets |
 | Account Conditions | `/admin/account-conditions` | ✅ Complete | |
 | Condition Rules | `/admin/condition-rules` | ⚠️ Partial | Van driver rules (fix task open) |
@@ -598,7 +598,7 @@ Auth: Bearer JWT for all `/api/admin/*` routes
 | Categories | `/api/admin/categories/*` | ✅ Complete | |
 | Finance | `/api/admin/finance/*` | ✅ Complete | GST, payouts, settlements |
 | Fleet | `/api/admin/fleet/*` | ✅ Complete | Rider management |
-| KYC | `/api/admin/kyc/*` | ⚠️ Partial | Improvements task open |
+| KYC | `/api/admin/kyc/*` | ✅ Complete | List with status + search filters, approve/reject endpoints with audit log + push + SMS notifications |
 | Promotions | `/api/admin/promotions/*` | ✅ Complete | |
 | Banners | `/api/admin/banners/*` | ✅ Complete | |
 | Communication | `/api/admin/communication/*` | ✅ Complete | AI messaging |
@@ -680,11 +680,10 @@ Default values are set by AI-recommended configuration.
 |---|-------|-----------|----------|
 | 1 | Admin broadcast role filtering not working correctly | Admin → Broadcast page | 🔴 High |
 | 2 | Van Driver metrics & condition rules have display/logic bugs | Rider App → VanDriver, Admin → Condition Rules | 🔴 High |
-| 3 | KYC review improvements needed (better UX, verification flow) | Admin → KYC | 🟡 Medium |
-| 4 | Analytics charts in Vendor App need upgrade | Vendor App → Analytics | 🟡 Medium |
-| 5 | Integration test results not persisted (lost on page reload) | Admin → Settings → Integrations | 🟢 Low |
-| 6 | No live API latency shown in Integration Health panel | Admin → Settings → Integrations | 🟢 Low |
-| 7 | Payment gateway settings accessible only under Settings → Payment, not Settings → Integrations tab | Admin → Settings | 🟢 Low |
+| 3 | Analytics charts in Vendor App need upgrade | Vendor App → Analytics | 🟡 Medium |
+| 4 | Integration test results not persisted (lost on page reload) | Admin → Settings → Integrations | 🟢 Low |
+| 5 | No live API latency shown in Integration Health panel | Admin → Settings → Integrations | 🟢 Low |
+| 6 | Payment gateway settings accessible only under Settings → Payment, not Settings → Integrations tab | Admin → Settings | 🟢 Low |
 
 ---
 
@@ -699,7 +698,7 @@ Default values are set by AI-recommended configuration.
 | T4 | Fix Admin Broadcast Role Filtering | ⏳ Pending | 🔴 High |
 | T5 | Analytics Charts & Visualizations Upgrade | ⏳ Pending | 🟡 Medium |
 | T6 | Fix Van Driver Metrics & Condition Rules | ⏳ Pending | 🔴 High |
-| T7 | KYC Review & Verification Improvements | ⏳ Pending | 🟡 Medium |
+| T7 | KYC Review & Verification Improvements | ✅ Complete | — |
 | T8 | Show Live API Latency in Integration Health Panel | ⏳ Pending | 🟢 Low |
 | T9 | Add Payment Gateway Section in Integrations Tab | ⏳ Pending | 🟢 Low |
 | T10 | Persist Integration Test History | ⏳ Pending | 🟢 Low |

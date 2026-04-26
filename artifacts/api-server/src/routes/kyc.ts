@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { kycVerificationsTable, usersTable, notificationsTable } from "@workspace/db/schema";
-import { eq, desc, and, ne } from "drizzle-orm";
+import { eq, desc, and, ne, or, ilike } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { customerAuth } from "../middleware/security.js";
 import { adminAuth } from "./admin.js";
@@ -11,6 +11,9 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { logger } from "../lib/logger.js";
 import { sendSuccess, sendCreated, sendError, sendNotFound, sendForbidden, sendValidationError } from "../lib/response.js";
+import { logAdminAudit, getClientIp } from "../middlewares/admin-audit.js";
+import { sendPushToUser } from "../lib/webpush.js";
+import { sendSms } from "../services/sms.js";
 
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
 
@@ -469,7 +472,7 @@ router.post("/submit-base64", customerAuth, async (req, res) => {
 
 /* ─── Admin: GET /api/kyc/admin/list ─── */
 router.get("/admin/list", adminAuth, async (req, res) => {
-  const { status, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { status, q, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -478,6 +481,22 @@ router.get("/admin/list", adminAuth, async (req, res) => {
   if (status && status !== "all") {
     conditions.push(eq(kycVerificationsTable.status, status));
   }
+  if (q?.trim()) {
+    const term = `%${q.trim()}%`;
+    conditions.push(
+      or(
+        ilike(usersTable.name, term),
+        ilike(usersTable.phone, term),
+        ilike(kycVerificationsTable.fullName, term),
+        ilike(kycVerificationsTable.cnic, term),
+      )!,
+    );
+  }
+
+  const whereClause =
+    conditions.length === 0 ? undefined :
+    conditions.length === 1 ? conditions[0] :
+    and(...conditions);
 
   const records = await db
     .select({
@@ -498,7 +517,7 @@ router.get("/admin/list", adminAuth, async (req, res) => {
     })
     .from(kycVerificationsTable)
     .leftJoin(usersTable, eq(kycVerificationsTable.userId, usersTable.id))
-    .where(conditions.length > 0 ? conditions[0] : undefined)
+    .where(whereClause)
     .orderBy(desc(kycVerificationsTable.submittedAt))
     .limit(limitNum)
     .offset(offset);
@@ -550,7 +569,7 @@ router.post("/admin/:id/approve", adminAuth, async (req, res) => {
   if (record.status === "approved") { res.status(400).json({ error: "Already approved" }); return; }
 
   const [currentUser] = await db
-    .select({ name: usersTable.name })
+    .select({ name: usersTable.name, phone: usersTable.phone })
     .from(usersTable)
     .where(eq(usersTable.id, record.userId))
     .limit(1);
@@ -577,7 +596,7 @@ router.post("/admin/:id/approve", adminAuth, async (req, res) => {
     })
     .where(eq(usersTable.id, record.userId));
 
-  /* ── Notify the user that KYC was approved ── */
+  /* ── Notify the user that KYC was approved (in-app + push) ── */
   await db.insert(notificationsTable).values({
     id: randomUUID(),
     userId: record.userId,
@@ -587,6 +606,22 @@ router.post("/admin/:id/approve", adminAuth, async (req, res) => {
     icon: "shield-checkmark-outline",
     link: "/profile",
   }).catch((e: Error) => logger.warn({ userId: record.userId, err: e.message }, "[kyc/approve] notification insert failed"));
+
+  sendPushToUser(record.userId, {
+    title: "KYC Verified ✅",
+    body: "Your KYC verification has been approved. You now have full access.",
+    tag: `kyc-approved-${record.id}`,
+    data: { kycId: record.id, status: "approved" },
+  }).catch((e: Error) => logger.warn({ userId: record.userId, err: e.message }, "[kyc/approve] push failed"));
+
+  /* ── Audit log entry ── */
+  logAdminAudit("kyc_approve", {
+    adminId,
+    ip: getClientIp(req),
+    userAgent: req.headers["user-agent"],
+    result: "success",
+    metadata: { kycId: record.id, userId: record.userId, cnic: record.cnic },
+  }).catch(() => {});
 
   res.json({ success: true, message: "KYC approved and account activated" });
 });
@@ -601,6 +636,7 @@ router.post("/admin/:id/reject", adminAuth, async (req, res) => {
 
   const { reason } = req.body;
   if (!reason?.trim()) { res.status(400).json({ error: "Rejection reason is required" }); return; }
+  const trimmedReason = reason.trim();
 
   const [record] = await db
     .select()
@@ -610,10 +646,16 @@ router.post("/admin/:id/reject", adminAuth, async (req, res) => {
 
   if (!record) { res.status(404).json({ error: "KYC record not found" }); return; }
 
+  const [targetUser] = await db
+    .select({ phone: usersTable.phone })
+    .from(usersTable)
+    .where(eq(usersTable.id, record.userId))
+    .limit(1);
+
   const now = new Date();
   await db
     .update(kycVerificationsTable)
-    .set({ status: "rejected", rejectionReason: reason.trim(), reviewedBy: adminId, reviewedAt: now, updatedAt: now })
+    .set({ status: "rejected", rejectionReason: trimmedReason, reviewedBy: adminId, reviewedAt: now, updatedAt: now })
     .where(eq(kycVerificationsTable.id, record.id));
 
   await db
@@ -621,16 +663,40 @@ router.post("/admin/:id/reject", adminAuth, async (req, res) => {
     .set({ kycStatus: "rejected", updatedAt: now })
     .where(eq(usersTable.id, record.userId));
 
-  /* ── Notify the user that KYC was rejected with the reason ── */
+  /* ── Notify the user that KYC was rejected (in-app + push + SMS) ── */
   await db.insert(notificationsTable).values({
     id: randomUUID(),
     userId: record.userId,
     title: "KYC Rejected ❌",
-    body: `Your KYC verification was rejected. Reason: ${reason.trim()}. Please re-submit with corrected information.`,
+    body: `Your KYC verification was rejected. Reason: ${trimmedReason}. Please re-submit with corrected information.`,
     type: "kyc",
     icon: "alert-circle-outline",
     link: "/profile",
   }).catch((e: Error) => logger.warn({ userId: record.userId, err: e.message }, "[kyc/reject] notification insert failed"));
+
+  sendPushToUser(record.userId, {
+    title: "KYC Rejected ❌",
+    body: `Reason: ${trimmedReason}. Please re-submit with corrected information.`,
+    tag: `kyc-rejected-${record.id}`,
+    data: { kycId: record.id, status: "rejected", reason: trimmedReason },
+  }).catch((e: Error) => logger.warn({ userId: record.userId, err: e.message }, "[kyc/reject] push failed"));
+
+  if (targetUser?.phone) {
+    sendSms({
+      to: targetUser.phone,
+      message: `AJKMart: Your KYC was rejected. Reason: ${trimmedReason}. Please re-submit corrected documents in the app.`,
+    }).catch((e: Error) => logger.warn({ userId: record.userId, err: e.message }, "[kyc/reject] SMS failed"));
+  }
+
+  /* ── Audit log entry ── */
+  logAdminAudit("kyc_reject", {
+    adminId,
+    ip: getClientIp(req),
+    userAgent: req.headers["user-agent"],
+    result: "success",
+    reason: trimmedReason,
+    metadata: { kycId: record.id, userId: record.userId, cnic: record.cnic },
+  }).catch(() => {});
 
   res.json({ success: true, message: "KYC rejected" });
 });

@@ -1,6 +1,3 @@
-// Stub for conditions.ts - adjust as needed
-export const reconcileUserFlags = async (userId: string) => {
-  // Placeholder implementation
-  console.log(`reconcileUserFlags called for user ${userId}`);
-  return { success: true };
-};
+// All conditions logic now lives in `artifacts/api-server/src/routes/admin/conditions.ts`.
+// This file re-exports the canonical implementations to avoid stale stubs.
+export { reconcileUserFlags, evaluateRulesForUser } from "../conditions.js";

@@ -383,6 +383,7 @@ export default function AccountConditions() {
               <SelectItem value="all">All Roles</SelectItem>
               <SelectItem value="customer">Customer</SelectItem>
               <SelectItem value="rider">Rider</SelectItem>
+              <SelectItem value="van_driver">Van Driver</SelectItem>
               <SelectItem value="vendor">Vendor</SelectItem>
             </SelectContent>
           </Select>

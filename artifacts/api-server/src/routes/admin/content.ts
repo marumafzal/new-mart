@@ -251,7 +251,11 @@ router.post("/broadcast", async (req, res) => {
   if (!body && !bodyKey) { sendValidationError(res, "body or bodyKey required"); return; }
 
   const validRoles = ["customer", "rider", "vendor", "admin"];
-  const roleFilter = targetRole && validRoles.includes(targetRole) ? targetRole : null;
+  if (targetRole !== undefined && !validRoles.includes(targetRole)) {
+    sendValidationError(res, `Invalid targetRole. Must be one of: ${validRoles.join(", ")}`);
+    return;
+  }
+  const roleFilter: string | null = targetRole ?? null;
 
   const conditions = [eq(usersTable.isActive, true)];
   if (roleFilter) {

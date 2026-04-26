@@ -14,6 +14,7 @@ import {
   locationHistoryTable,
   supportMessagesTable,
   locationLogsTable,
+  integrationTestHistoryTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, lt, type SQL } from "drizzle-orm";
 import {
@@ -286,10 +287,38 @@ router.patch("/platform-settings/:key", validateBody(patchSettingSchema), async 
  * POST /api/admin/system/test-integration/whatsapp
  * POST /api/admin/system/test-integration/fcm
  * POST /api/admin/system/test-integration/maps
+ * GET  /api/admin/system/integration-history          → latest result + recent runs per type
+ * GET  /api/admin/system/integration-history/:type    → last 10 runs for one integration
  *
  * Each returns { sent, message } after attempting to send with current settings.
+ * Every attempt (pass or fail) is persisted in `integration_test_history`
+ * so the Integration Health panel survives page reloads.
  */
-router.post("/test-integration/email", async (_req, res) => {
+async function recordIntegrationTest(opts: {
+  req: AdminRequest;
+  type: "email" | "sms" | "whatsapp" | "fcm" | "maps" | "jazzcash" | "easypaisa";
+  ok: boolean;
+  latencyMs: number;
+  message: string;
+  errorDetail?: string;
+}): Promise<void> {
+  try {
+    await db.insert(integrationTestHistoryTable).values({
+      id:          generateId(),
+      type:        opts.type,
+      ok:          opts.ok,
+      latencyMs:   Math.max(0, Math.round(opts.latencyMs)),
+      message:     (opts.message ?? "").slice(0, 1000),
+      errorDetail: opts.errorDetail ? opts.errorDetail.slice(0, 2000) : null,
+      adminId:     opts.req?.adminId ?? null,
+    });
+  } catch (e) {
+    logger.warn("[integration-history] failed to record run", { type: opts.type, err: (e as Error)?.message });
+  }
+}
+
+router.post("/test-integration/email", async (req, res) => {
+  const start = Date.now();
   try {
     const settings = await getCachedSettings();
     const result = await sendAdminAlert(
@@ -302,34 +331,52 @@ router.post("/test-integration/email", async (_req, res) => {
       `,
       { ...settings, email_alert_new_vendor: "on" },
     );
+    const latencyMs = Date.now() - start;
     if (result.sent) {
-      sendSuccess(res, { sent: true, message: `Test email sent to ${settings["smtp_admin_alert_email"]}` });
+      const msg = `Test email sent to ${settings["smtp_admin_alert_email"]}`;
+      await recordIntegrationTest({ req: req as AdminRequest, type: "email", ok: true, latencyMs, message: msg });
+      sendSuccess(res, { sent: true, message: msg, latencyMs });
     } else {
-      sendError(res, result.reason ?? result.error ?? "Email test failed", 400);
+      const msg = result.reason ?? result.error ?? "Email test failed";
+      await recordIntegrationTest({ req: req as AdminRequest, type: "email", ok: false, latencyMs, message: msg });
+      sendError(res, msg, 400);
     }
   } catch (err: any) {
-    sendError(res, err.message ?? "Email test failed unexpectedly", 502);
+    const latencyMs = Date.now() - start;
+    const msg = err.message ?? "Email test failed unexpectedly";
+    await recordIntegrationTest({ req: req as AdminRequest, type: "email", ok: false, latencyMs, message: msg, errorDetail: String(err?.stack ?? err) });
+    sendError(res, msg, 502);
   }
 });
 
 router.post("/test-integration/sms", async (req, res) => {
+  const start = Date.now();
   try {
     const settings = await getCachedSettings();
     const { phone } = req.body as { phone?: string };
     if (!phone) { sendValidationError(res, "phone number required"); return; }
     const testOtp = "123456";
     const result = await sendOtpSMS(phone, testOtp, { ...settings, integration_sms: "on" });
+    const latencyMs = Date.now() - start;
     if (result.sent) {
-      sendSuccess(res, { sent: true, message: `Test SMS sent to ${phone} via ${result.provider}` });
+      const msg = `Test SMS sent to ${phone} via ${result.provider}`;
+      await recordIntegrationTest({ req: req as AdminRequest, type: "sms", ok: true, latencyMs, message: msg });
+      sendSuccess(res, { sent: true, message: msg, latencyMs });
     } else {
-      sendError(res, result.error ?? "SMS test failed", 400);
+      const msg = result.error ?? "SMS test failed";
+      await recordIntegrationTest({ req: req as AdminRequest, type: "sms", ok: false, latencyMs, message: msg });
+      sendError(res, msg, 400);
     }
   } catch (err: any) {
-    sendError(res, err.message ?? "SMS test failed unexpectedly", 502);
+    const latencyMs = Date.now() - start;
+    const msg = err.message ?? "SMS test failed unexpectedly";
+    await recordIntegrationTest({ req: req as AdminRequest, type: "sms", ok: false, latencyMs, message: msg, errorDetail: String(err?.stack ?? err) });
+    sendError(res, msg, 502);
   }
 });
 
 router.post("/test-integration/whatsapp", async (req, res) => {
+  const start = Date.now();
   try {
     const settings = await getCachedSettings();
     const { phone } = req.body as { phone?: string };
@@ -340,17 +387,31 @@ router.post("/test-integration/whatsapp", async (req, res) => {
       integration_whatsapp: "on",
       wa_send_otp: "on",
     });
+    const latencyMs = Date.now() - start;
     if (result.sent) {
-      sendSuccess(res, { sent: true, message: `Test WhatsApp message sent to ${phone}`, messageId: result.messageId });
+      const msg = `Test WhatsApp message sent to ${phone}`;
+      await recordIntegrationTest({ req: req as AdminRequest, type: "whatsapp", ok: true, latencyMs, message: msg });
+      sendSuccess(res, { sent: true, message: msg, messageId: result.messageId, latencyMs });
     } else {
-      sendError(res, result.error ?? "WhatsApp test failed", 400);
+      const msg = result.error ?? "WhatsApp test failed";
+      await recordIntegrationTest({ req: req as AdminRequest, type: "whatsapp", ok: false, latencyMs, message: msg });
+      sendError(res, msg, 400);
     }
   } catch (err: any) {
-    sendError(res, err.message ?? "WhatsApp test failed unexpectedly", 502);
+    const latencyMs = Date.now() - start;
+    const msg = err.message ?? "WhatsApp test failed unexpectedly";
+    await recordIntegrationTest({ req: req as AdminRequest, type: "whatsapp", ok: false, latencyMs, message: msg, errorDetail: String(err?.stack ?? err) });
+    sendError(res, msg, 502);
   }
 });
 
 router.post("/test-integration/fcm", async (req, res) => {
+  const start = Date.now();
+  const fail = async (msg: string, status = 400, errorDetail?: string) => {
+    const latencyMs = Date.now() - start;
+    await recordIntegrationTest({ req: req as AdminRequest, type: "fcm", ok: false, latencyMs, message: msg, errorDetail });
+    sendError(res, msg, status);
+  };
   try {
     const settings = await getCachedSettings();
     const { deviceToken } = req.body as { deviceToken?: string };
@@ -359,14 +420,8 @@ router.post("/test-integration/fcm", async (req, res) => {
     const serverKey = settings["fcm_server_key"]?.trim();
     const projectId = settings["fcm_project_id"]?.trim();
 
-    if (!serverKey) {
-      sendError(res, "FCM Server Key is not configured. Set fcm_server_key in Integrations → Firebase.", 400);
-      return;
-    }
-    if (!projectId) {
-      sendError(res, "Firebase Project ID is not configured. Set fcm_project_id in Integrations → Firebase.", 400);
-      return;
-    }
+    if (!serverKey) { await fail("FCM Server Key is not configured. Set fcm_server_key in Integrations → Firebase.", 400); return; }
+    if (!projectId) { await fail("Firebase Project ID is not configured. Set fcm_project_id in Integrations → Firebase.", 400); return; }
 
     const resp = await fetch("https://fcm.googleapis.com/fcm/send", {
       method: "POST",
@@ -386,23 +441,29 @@ router.post("/test-integration/fcm", async (req, res) => {
 
     const body = await resp.json() as any;
 
-    if (!resp.ok) {
-      sendError(res, body?.error ?? `FCM HTTP ${resp.status}`, 400);
-      return;
-    }
+    if (!resp.ok) { await fail(body?.error ?? `FCM HTTP ${resp.status}`, 400); return; }
     if (body?.failure > 0) {
       const errDetail = body?.results?.[0]?.error ?? "Unknown FCM error";
-      sendError(res, `FCM rejected the message: ${errDetail}`, 400);
+      await fail(`FCM rejected the message: ${errDetail}`, 400, JSON.stringify(body));
       return;
     }
 
-    sendSuccess(res, { sent: true, message: `Test push notification sent to device token successfully`, fcmMessageId: body?.results?.[0]?.message_id });
+    const latencyMs = Date.now() - start;
+    const msg = `Test push notification sent to device token successfully`;
+    await recordIntegrationTest({ req: req as AdminRequest, type: "fcm", ok: true, latencyMs, message: msg });
+    sendSuccess(res, { sent: true, message: msg, fcmMessageId: body?.results?.[0]?.message_id, latencyMs });
   } catch (err: any) {
-    sendError(res, err.message ?? "FCM test failed unexpectedly", 502);
+    await fail(err.message ?? "FCM test failed unexpectedly", 502, String(err?.stack ?? err));
   }
 });
 
 router.post("/test-integration/maps", async (req, res) => {
+  const start = Date.now();
+  const fail = async (msg: string, status = 400, errorDetail?: string) => {
+    const latencyMs = Date.now() - start;
+    await recordIntegrationTest({ req: req as AdminRequest, type: "maps", ok: false, latencyMs, message: msg, errorDetail });
+    sendError(res, msg, status);
+  };
   try {
     const settings = await getCachedSettings();
     const mapsProvider = settings["maps_provider"] ?? "google";
@@ -411,62 +472,84 @@ router.post("/test-integration/maps", async (req, res) => {
     const locationIqKey = settings["locationiq_api_key"]?.trim();
 
     const testQuery = "Muzaffarabad, Azad Kashmir";
-    const start = Date.now();
     let provider = mapsProvider;
     let result: unknown = null;
 
     if (mapsProvider === "google" || (!mapsProvider && googleKey)) {
-      if (!googleKey) {
-        sendError(res, "Google Maps API key is not configured. Set google_maps_api_key in Integrations → Maps.", 400);
-        return;
-      }
+      if (!googleKey) { await fail("Google Maps API key is not configured. Set google_maps_api_key in Integrations → Maps.", 400); return; }
       provider = "google";
       const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(testQuery)}&key=${googleKey}`;
       const resp = await fetch(url);
       const body = await resp.json() as any;
-      if (body?.status !== "OK") {
-        sendError(res, `Google Maps geocoding failed: ${body?.status} — ${body?.error_message ?? ""}`, 400);
-        return;
-      }
+      if (body?.status !== "OK") { await fail(`Google Maps geocoding failed: ${body?.status} — ${body?.error_message ?? ""}`, 400); return; }
       result = body?.results?.[0]?.geometry?.location;
     } else if (mapsProvider === "mapbox") {
-      if (!mapboxKey) {
-        sendError(res, "Mapbox API key is not configured. Set mapbox_api_key in Integrations → Maps.", 400);
-        return;
-      }
+      if (!mapboxKey) { await fail("Mapbox API key is not configured. Set mapbox_api_key in Integrations → Maps.", 400); return; }
       provider = "mapbox";
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(testQuery)}.json?access_token=${mapboxKey}`;
       const resp = await fetch(url);
       const body = await resp.json() as any;
-      if (!resp.ok || !body?.features?.length) {
-        sendError(res, `Mapbox geocoding failed: ${body?.message ?? `HTTP ${resp.status}`}`, 400);
-        return;
-      }
+      if (!resp.ok || !body?.features?.length) { await fail(`Mapbox geocoding failed: ${body?.message ?? `HTTP ${resp.status}`}`, 400); return; }
       result = body?.features?.[0]?.center;
     } else if (mapsProvider === "locationiq") {
-      if (!locationIqKey) {
-        sendError(res, "LocationIQ API key is not configured. Set locationiq_api_key in Integrations → Maps.", 400);
-        return;
-      }
+      if (!locationIqKey) { await fail("LocationIQ API key is not configured. Set locationiq_api_key in Integrations → Maps.", 400); return; }
       provider = "locationiq";
       const url = `https://us1.locationiq.com/v1/search.php?key=${locationIqKey}&q=${encodeURIComponent(testQuery)}&format=json&limit=1`;
       const resp = await fetch(url);
       const body = await resp.json() as any;
-      if (!resp.ok || (Array.isArray(body) && body.length === 0)) {
-        sendError(res, `LocationIQ geocoding failed: ${body?.error ?? `HTTP ${resp.status}`}`, 400);
-        return;
-      }
+      if (!resp.ok || (Array.isArray(body) && body.length === 0)) { await fail(`LocationIQ geocoding failed: ${body?.error ?? `HTTP ${resp.status}`}`, 400); return; }
       result = { lat: body?.[0]?.lat, lon: body?.[0]?.lon };
     } else {
-      sendError(res, "No maps provider is configured. Set up an API key in Integrations → Maps.", 400);
+      await fail("No maps provider is configured. Set up an API key in Integrations → Maps.", 400);
       return;
     }
 
     const latencyMs = Date.now() - start;
-    sendSuccess(res, { sent: true, provider, latencyMs, result, query: testQuery });
+    const msg = `${provider} geocoded "${testQuery}" successfully`;
+    await recordIntegrationTest({ req: req as AdminRequest, type: "maps", ok: true, latencyMs, message: msg });
+    sendSuccess(res, { sent: true, provider, latencyMs, result, query: testQuery, message: msg });
   } catch (err: any) {
-    sendError(res, err.message ?? "Maps test failed unexpectedly", 502);
+    await fail(err.message ?? "Maps test failed unexpectedly", 502, String(err?.stack ?? err));
   }
+});
+
+/* ── Integration Test History ──────────────────────────────────────────────
+ * GET /api/admin/system/integration-history
+ *   → { latest: { [type]: row|null }, recent: { [type]: row[] (last 10) } }
+ *   `?type=email` (optional) restricts to one integration.
+ */
+router.get("/integration-history", async (req, res) => {
+  const filterType = (req.query["type"] as string | undefined)?.trim();
+  const cap = 10;
+
+  // Pull a generous window then bucket in JS — avoids per-type SELECTs.
+  const limitRows = filterType ? cap : 200;
+  const baseQuery = db.select({
+    id:          integrationTestHistoryTable.id,
+    type:        integrationTestHistoryTable.type,
+    ok:          integrationTestHistoryTable.ok,
+    latencyMs:   integrationTestHistoryTable.latencyMs,
+    message:     integrationTestHistoryTable.message,
+    errorDetail: integrationTestHistoryTable.errorDetail,
+    createdAt:   integrationTestHistoryTable.createdAt,
+  }).from(integrationTestHistoryTable);
+
+  const rows = filterType
+    ? await baseQuery.where(eq(integrationTestHistoryTable.type, filterType))
+        .orderBy(desc(integrationTestHistoryTable.createdAt)).limit(limitRows)
+    : await baseQuery.orderBy(desc(integrationTestHistoryTable.createdAt)).limit(limitRows);
+
+  const recent: Record<string, Array<typeof rows[number] & { createdAt: string }>> = {};
+  const latest: Record<string, (typeof rows[number] & { createdAt: string }) | null> = {};
+
+  for (const r of rows) {
+    const serialised = { ...r, createdAt: r.createdAt.toISOString() };
+    const bucket = recent[r.type] ?? (recent[r.type] = []);
+    if (bucket.length < cap) bucket.push(serialised);
+    if (!latest[r.type]) latest[r.type] = serialised;
+  }
+
+  sendSuccess(res, { latest, recent });
 });
 
 /* ── Pharmacy Orders Enriched ── */

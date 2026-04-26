@@ -1,8 +1,8 @@
 # AJKMart Platform — Admin Config & Live Status Tracker
 # AJKMart پلیٹ فارم — ایڈمن کنفگ اور لائیو اسٹیٹس ٹریکر
 
-> **Last updated:** April 26, 2026  
-> **Status legend:** ✅ Complete | 🔄 In Progress | ⚠️ Partial | ❌ Missing  
+> **Last updated:** 2026-04-26  
+> **Status legend:** ✅ Complete | 🔄 In Progress | ⚠️ Partial | ❌ Missing | ⏳ Pending (not started)  
 > **Scope:** Monorepo at `/home/runner/workspace` — pnpm workspaces
 
 ---
@@ -733,9 +733,18 @@ ls artifacts/api-server/src/routes/admin/
 grep -rn "TODO\|FIXME" artifacts/admin/src/pages/ | wc -l
 ```
 
+### Periodic Verification (Monthly)
+
+Run this quick check at the start of each month to catch status drift:
+
+- [ ] Verify all ✅ Complete items in Sections 4–8 still have working code (no deleted files)
+- [ ] Re-run integration tests from Admin → Settings → Integrations health panel
+- [ ] Check Open Tasks (Section 11) against actual project task list and update statuses
+- [ ] Update "Last updated" date at top of file
+
 ### Naming Convention for Status Changes
 
-When editing this file, always update the **Last updated** date at the top.
+When editing this file, always update the **Last updated** date at the top using `YYYY-MM-DD` format.
 
 ```markdown
 > **Last updated:** YYYY-MM-DD

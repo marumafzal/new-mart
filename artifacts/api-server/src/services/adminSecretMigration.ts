@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { adminAccountsTable } from "@workspace/db/schema";
 import { hashAdminSecret } from "./password.js";
+import { recordAdminPasswordSnapshot } from "./admin-password-watch.service.js";
 import { logger } from "../lib/logger.js";
 
 const BCRYPT_PREFIX = "$2b$";
@@ -41,6 +42,13 @@ export async function migrateAdminSecrets(): Promise<void> {
       .update(adminAccountsTable)
       .set({ secret: hashed })
       .where(eq(adminAccountsTable.id, acc.id));
+    // Re-baseline the watchdog: this rewrite is a legitimate in-process
+    // hash upgrade, not an out-of-band tamper.
+    await recordAdminPasswordSnapshot({
+      adminId: acc.id,
+      secret: hashed,
+      passwordChangedAt: null,
+    });
     migrated++;
   }
 

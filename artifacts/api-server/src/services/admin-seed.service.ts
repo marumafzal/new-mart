@@ -26,6 +26,7 @@ import { randomBytes } from "crypto";
 import { hashAdminSecret } from "./password.js";
 import { generateId } from "../lib/id.js";
 import { logAdminAudit } from "../middlewares/admin-audit.js";
+import { recordAdminPasswordSnapshot } from "./admin-password-watch.service.js";
 
 const SUPER_ADMIN_SLUG = "super_admin";
 const DEFAULT_SEED_EMAIL = "admin@ajkmart.local";
@@ -94,6 +95,14 @@ export async function seedDefaultSuperAdmin(): Promise<SeedResult> {
     permissions: "",
     isActive: true,
     mustChangePassword: true,
+  });
+
+  // Baseline the out-of-band password watchdog so the seeded hash is
+  // not flagged as a direct DB write on the next boot.
+  await recordAdminPasswordSnapshot({
+    adminId: id,
+    secret,
+    passwordChangedAt: null,
   });
 
   // Grant the super_admin RBAC role so the new admin has full permissions

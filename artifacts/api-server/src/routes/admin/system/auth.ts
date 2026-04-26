@@ -58,6 +58,7 @@ import {
   ADMIN_MAX_ATTEMPTS,
 } from "../../admin-shared.js";
 import { hashAdminSecret } from "../../../services/password.js";
+import { recordAdminPasswordSnapshot } from "../../../services/admin-password-watch.service.js";
 import {
   generateTotpSecret,
   verifyTotpToken as verifyTotp,
@@ -336,6 +337,16 @@ router.patch("/admin-accounts/:id", async (req, res) => {
   if (!account) {
     res.status(404).json({ error: "Admin account not found" });
     return;
+  }
+  // If a password was set on this PATCH, refresh the watchdog snapshot so the
+  // legitimate super-admin edit is not later misclassified as an out-of-band
+  // direct DB write on the next startup scan.
+  if (updates.secret) {
+    await recordAdminPasswordSnapshot({
+      adminId: account.id,
+      secret: updates.secret,
+      passwordChangedAt: new Date(),
+    });
   }
   res.json({
     ...account,

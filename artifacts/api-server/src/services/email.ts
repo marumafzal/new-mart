@@ -506,6 +506,130 @@ export async function sendAdminPasswordResetLinkEmail(
   }
 }
 
+/**
+ * Notify an admin that their password was changed outside the normal
+ * in-app flow — i.e. somebody (typically an operator running a SQL
+ * UPDATE for account recovery) rewrote the `admin_accounts.secret`
+ * value directly. Surfaced by the startup watchdog
+ * (`detectAndNotifyOutOfBandPasswordResets`).
+ *
+ * The email is intentionally short, action-oriented, and does not echo
+ * the new password. We cannot know the originating IP of a direct DB
+ * write, so the alert states the source as "directly in the database"
+ * and gives the timestamp at which the change was detected by the
+ * application so the admin can correlate against operator activity.
+ *
+ * Falls back to console logging when SMTP is not configured.
+ */
+export async function sendAdminPasswordOutOfBandResetEmail(
+  to: string,
+  options: {
+    recipientName?: string | null;
+    detectedAt: Date;
+    previousChangedAt?: Date | null;
+    settings?: Record<string, string>;
+  },
+): Promise<{ sent: boolean; reason?: string }> {
+  const { recipientName, detectedAt, previousChangedAt, settings } = options;
+  const appName = settings?.["app_name"] ?? "AJKMart";
+  const subject = `[${appName}] Your admin password was changed from the database`;
+  const greeting = recipientName ? `Hi ${recipientName},` : "Hello,";
+  const detectedIso = detectedAt.toISOString();
+  const previousIso = previousChangedAt
+    ? previousChangedAt.toISOString()
+    : "unknown";
+
+  const tr = settings ? buildTransporterFromSettings(settings) : null;
+  const transport = tr || getEnvTransporter();
+
+  if (!transport) {
+    console.log("==================================================================");
+    console.log(`[EMAIL] (SMTP not configured) Out-of-band admin password reset alert for ${to}`);
+    console.log(`[EMAIL]   detectedAt:        ${detectedIso}`);
+    console.log(`[EMAIL]   previousChangedAt: ${previousIso}`);
+    console.log("==================================================================");
+    return { sent: false, reason: "SMTP not configured" };
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #111827;">
+      <h2 style="color:#b91c1c;">⚠ Security alert: your ${appName} admin password was changed</h2>
+      <p>${greeting}</p>
+      <p>
+        We detected that the password on your <strong>${appName}</strong> admin account was
+        changed <strong>directly in the database</strong> — not through the in-app
+        forgot-password link, not through the change-password screen, and not through any
+        super-admin "send reset link" action.
+      </p>
+      <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+        <tr>
+          <td style="padding:6px 0; color:#6b7280; width:200px;">Source</td>
+          <td style="padding:6px 0; font-weight:bold;">Direct database write (e.g. operator SQL update)</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0; color:#6b7280;">Detected at</td>
+          <td style="padding:6px 0; font-family:monospace;">${detectedIso}</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0; color:#6b7280;">Previous change on file</td>
+          <td style="padding:6px 0; font-family:monospace;">${previousIso}</td>
+        </tr>
+      </table>
+      <p>
+        <strong>If you (or another administrator) requested account recovery just now, no further action is needed</strong> —
+        sign in with the new password and change it from the admin panel.
+      </p>
+      <p>
+        <strong>If this was not you</strong>, treat your account as compromised:
+      </p>
+      <ol>
+        <li>Sign in with the new password and immediately change it from the admin panel.</li>
+        <li>Review recent activity in <em>Admin → Security → Audit log</em>.</li>
+        <li>Notify the platform owner so the database operator can be audited.</li>
+      </ol>
+      <p style="font-size:12px;color:#9ca3af;">
+        This is an automated security notification. It is sent once per detected
+        out-of-band password change.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    greeting,
+    "",
+    `We detected that the password on your ${appName} admin account was changed`,
+    "directly in the database, not through the in-app password flow.",
+    "",
+    `Source:                  Direct database write (operator SQL update)`,
+    `Detected at:             ${detectedIso}`,
+    `Previous change on file: ${previousIso}`,
+    "",
+    "If you requested account recovery, sign in with the new password and",
+    "change it from the admin panel.",
+    "",
+    "If this was not you, treat your account as compromised: sign in,",
+    "change the password immediately, review the admin audit log, and",
+    "notify the platform owner.",
+  ].join("\n");
+
+  try {
+    await transport.sendMail({
+      from: resolveFrom(settings),
+      to,
+      subject,
+      html,
+      text,
+    });
+    return { sent: true };
+  } catch (err: any) {
+    console.error(
+      `[EMAIL] Failed to send out-of-band reset alert to ${to}:`,
+      err?.message,
+    );
+    return { sent: false, reason: err?.message };
+  }
+}
+
 /* ── Generic dispatch wrapper for NotificationService ── */
 export async function sendEmail(
   input: { to: string; subject: string; html: string; templateId?: string }

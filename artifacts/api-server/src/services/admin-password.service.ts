@@ -26,6 +26,7 @@ import { randomBytes } from "crypto";
 import { hashAdminSecret, validatePasswordStrength } from "./password.js";
 import { hashToken } from "../utils/admin-hash.js";
 import { generateId } from "../lib/id.js";
+import { recordAdminPasswordSnapshot } from "./admin-password-watch.service.js";
 
 /** Default token lifetime (30 minutes) — overridable via env. */
 function getResetTokenTtlMs(): number {
@@ -191,6 +192,14 @@ export async function completeAdminPasswordReset(
     .where(eq(adminAccountsTable.id, verified.admin.id))
     .limit(1);
 
+  // Record the new hash so the out-of-band watchdog does not later flag
+  // this legitimate reset as a direct DB write.
+  await recordAdminPasswordSnapshot({
+    adminId: verified.admin.id,
+    secret: newHash,
+    passwordChangedAt: now,
+  });
+
   return { ok: true, admin: updated! };
 }
 
@@ -291,6 +300,14 @@ export async function changeAdminPassword(input: {
     .from(adminAccountsTable)
     .where(eq(adminAccountsTable.id, admin.id))
     .limit(1);
+
+  // Mirror the new hash into the watchdog snapshot so an in-app change
+  // is not misclassified as a direct DB write on the next startup scan.
+  await recordAdminPasswordSnapshot({
+    adminId: admin.id,
+    secret: newHash,
+    passwordChangedAt: now,
+  });
 
   return { ok: true, admin: updated! };
 }

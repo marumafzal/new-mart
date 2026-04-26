@@ -24,6 +24,7 @@ import {
 import { eq, and, sql, inArray, desc } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { hashPassword, validatePasswordStrength, verifyAdminSecret } from "./password.js";
+import { recordAdminPasswordSnapshot } from "./admin-password-watch.service.js";
 import { verifyTotpToken, generateTotpSecret, generateTotpQr } from "./totp.js";
 import { canonicalizePhone } from "@workspace/phone-utils";
 import { logger } from "../lib/logger.js";
@@ -333,6 +334,15 @@ export class UserService {
       totpSecret: null,
       secret: passwordHash,
       lastLoginAt: null,
+    });
+
+    // Baseline the out-of-band password watchdog at creation time so the
+    // very first secret value is not flagged as a direct DB write on the
+    // next startup scan.
+    await recordAdminPasswordSnapshot({
+      adminId,
+      secret: passwordHash,
+      passwordChangedAt: null,
     });
 
     logger.info({ adminId, name: input.name, role: input.role }, "[UserService] Admin account created");

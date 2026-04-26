@@ -16,6 +16,7 @@ export * from "./promo_codes";
 export * from "./admin_accounts";
 export * from "./admin_sessions";
 export * from "./admin_password_reset_tokens";
+export * from "./admin_password_hash_snapshots";
 export * from "./rbac";
 export * from "./reviews";
 export * from "./system_snapshots";

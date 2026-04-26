@@ -11,6 +11,7 @@ import {
 } from "./services/permissions.service.js";
 import { seedDefaultSuperAdmin } from "./services/admin-seed.service.js";
 import { purgeStaleAdminPasswordResetTokens } from "./services/admin-password.service.js";
+import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-password-watch.service.js";
 import router from "./routes/index.js";
 
 /**
@@ -47,6 +48,19 @@ export async function runStartupTasks(): Promise<void> {
     }
   } catch (err) {
     console.error("[startup] reset-token purge failed (continuing):", err);
+  }
+  // Out-of-band admin password reset detection. Compares the current
+  // `admin_accounts.secret` against per-admin snapshots maintained by
+  // the in-app password flows; mismatches mean somebody (typically an
+  // operator) rewrote the hash directly in the database. Best-effort —
+  // never blocks boot.
+  try {
+    await detectAndNotifyOutOfBandPasswordResets();
+  } catch (err) {
+    console.error(
+      "[startup] admin password watchdog failed (continuing):",
+      err,
+    );
   }
 }
 

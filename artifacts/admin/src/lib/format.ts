@@ -1,9 +1,28 @@
 import { format } from "date-fns";
 import { getCurrencySymbol } from "./platformConfig";
+import { escapeHtml } from "./escapeHtml";
 
 export const formatCurrency = (amount: number) => {
   return `${getCurrencySymbol()} ${amount.toLocaleString()}`;
 };
+
+/**
+ * HTML-safe wrappers around the formatters above. Use these any time a
+ * formatted value flows into `dangerouslySetInnerHTML` (chart tooltips,
+ * map marker labels, push-notification HTML previews, etc.). They run the
+ * formatted output through `escapeHtml` so a hostile currency symbol or
+ * locale string can never inject markup. Plain JSX usage should keep
+ * calling `formatCurrency` / `formatDateLocale` directly — React already
+ * escapes JSX text children.
+ */
+export const formatCurrencyHtml = (amount: number) =>
+  escapeHtml(formatCurrency(amount));
+
+export const formatDateLocaleHtml = (
+  dateString: string,
+  locale?: string,
+  options?: Intl.DateTimeFormatOptions,
+) => escapeHtml(formatDateLocale(dateString, locale, options));
 
 export const formatDate = (dateString: string) => {
   try {

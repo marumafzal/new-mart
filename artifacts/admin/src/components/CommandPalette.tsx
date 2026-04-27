@@ -14,6 +14,7 @@ import { SEARCH_INDEX, type SearchEntry, type SearchCategory } from "@/lib/searc
 import { matchesKeywords } from "@/lib/romanUrdu";
 import { safeLocalGet, safeLocalSet } from "@/lib/safeStorage";
 import { getAdminTiming } from "@/lib/adminTiming";
+import { escapeHtml } from "@/lib/escapeHtml";
 
 /* ── Live search result types — replace the previous `any[]` lists ───── */
 interface LiveUser {
@@ -93,17 +94,26 @@ const STATUS_ALIASES: Record<StatusFilter, string[]> = {
 };
 
 /* ─── Highlight matching text ─────────────────────────────────────────── */
+/**
+ * Renders `text` with the substring matching `query` wrapped in a `<mark>`.
+ *
+ * Defence-in-depth: even though React would auto-escape JSX text children,
+ * this implementation uses `dangerouslySetInnerHTML` so it can wrap the
+ * highlighted slice in a real `<mark>` tag. To stay safe, BOTH the source
+ * text and the query are run through `escapeHtml` before any string
+ * concatenation, and only the literal `<mark>` open/close tags we control
+ * are emitted as raw HTML — user-controlled bytes can therefore never
+ * reach the DOM as markup.
+ */
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query || query.length < 2) return <span>{text}</span>;
   const idx = text.toLowerCase().indexOf(query.toLowerCase());
   if (idx < 0) return <span>{text}</span>;
-  return (
-    <span>
-      {text.slice(0, idx)}
-      <mark className="bg-yellow-200 text-yellow-900 rounded px-0.5">{text.slice(idx, idx + query.length)}</mark>
-      {text.slice(idx + query.length)}
-    </span>
-  );
+  const before = escapeHtml(text.slice(0, idx));
+  const match = escapeHtml(text.slice(idx, idx + query.length));
+  const after = escapeHtml(text.slice(idx + query.length));
+  const html = `${before}<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">${match}</mark>${after}`;
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /* ─── AI result type ─────────────────────────────────────────────────── */

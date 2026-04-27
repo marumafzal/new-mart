@@ -62,7 +62,11 @@ interface TermsVersionRowDTO {
   isCurrent?: boolean;
 }
 
-const VALID_SOURCES = ["web", "android", "ios", "admin"] as const;
+/* `mobile` is the catch-all the React Native consumer app writes when
+   it can't distinguish iOS from Android cheaply (the platform-config
+   accept-terms route hardcodes it). Keep the more specific values too
+   for clients that DO send `source` explicitly via the body. */
+const VALID_SOURCES = ["web", "android", "ios", "mobile", "admin"] as const;
 
 /* ── GET /legal/terms-versions ───────────────────────────────────── */
 router.get("/terms-versions", async (_req, res) => {

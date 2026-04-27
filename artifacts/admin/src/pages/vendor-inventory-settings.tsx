@@ -65,7 +65,7 @@ export default function VendorInventorySettingsPage() {
   const q = useQuery<InventorySettings>({
     queryKey: ["admin", "inventory-settings"],
     queryFn: () =>
-      fetcher("/admin/inventory-settings") as Promise<InventorySettings>,
+      fetcher("/inventory-settings") as Promise<InventorySettings>,
     retry: false,
   });
 
@@ -76,7 +76,7 @@ export default function VendorInventorySettingsPage() {
   async function save() {
     setSaving(true);
     try {
-      await fetcher("/admin/inventory-settings", {
+      await fetcher("/inventory-settings", {
         method: "PUT",
         body: JSON.stringify(settings),
       });

@@ -27,5 +27,5 @@ export function GpsMiniMap({ cLat, cLng, dLat, dLng }: { cLat: number; cLng: num
       console.error("[GpsMiniMap] Failed to load Leaflet map:", err);
     });
   }, [cLat, cLng, dLat, dLng]);
-  return <div ref={ref} className="w-full rounded-lg border border-gray-200" style={{ height: 150 }} aria-label="GPS location map" />;
+  return <div ref={ref} className="w-full rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center" style={{ height: 150 }} aria-label="GPS location map" />;
 }

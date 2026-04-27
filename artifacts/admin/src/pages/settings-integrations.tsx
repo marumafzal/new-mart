@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Toggle, Field, SecretInput, SLabel } from "@/components/AdminShared";
 import { MapsMgmtSection } from "@/components/MapsMgmtSection";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 /* ─── Integrations Section ───────────────────────────────────────────────── */
 type IntTab = "firebase" | "sms" | "email" | "whatsapp" | "analytics" | "sentry" | "maps";
@@ -1201,12 +1202,14 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
           configured={mapsConfigured}
         >
           <div className="space-y-5">
-            <MapsMgmtSection
-              localValues={localValues}
-              dirtyKeys={dirtyKeys}
-              handleChange={handleChange}
-              handleToggle={handleToggle}
-            />
+            <ErrorBoundary fallback={<div className="py-4 text-center text-sm text-red-500 border border-red-200 rounded-xl bg-red-50">Maps configuration unavailable. Please refresh.</div>}>
+              <MapsMgmtSection
+                localValues={localValues}
+                dirtyKeys={dirtyKeys}
+                handleChange={handleChange}
+                handleToggle={handleToggle}
+              />
+            </ErrorBoundary>
             {mapsEnabled && mapsConfigured && (
               <div>
                 <SLabel icon={FlaskConical}>Test Geocoding</SLabel>

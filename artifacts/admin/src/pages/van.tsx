@@ -77,6 +77,7 @@ function RoutesTab() {
   const qc = useQueryClient();
   const [editRoute, setEditRoute] = useState<VanRoute | null>(null);
   const [newRouteOpen, setNewRouteOpen] = useState(false);
+  const [routeDeleteId, setRouteDeleteId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "", fromAddress: "", toAddress: "", farePerSeat: "",
     fareWindow: "", fareAisle: "", fareEconomy: "",
@@ -204,7 +205,7 @@ function RoutesTab() {
                 <TableCell><Badge variant={r.isActive ? "default" : "secondary"}>{r.isActive ? "Active" : "Inactive"}</Badge></TableCell>
                 <TableCell className="text-right space-x-1">
                   <Button size="icon" variant="ghost" onClick={() => openEdit(r)}><Pencil className="w-4 h-4" /></Button>
-                  <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => { if (confirm("Deactivate this route?")) deleteMut.mutate(r.id); }}><Trash2 className="w-4 h-4" /></Button>
+                  <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => setRouteDeleteId(r.id)}><Trash2 className="w-4 h-4" /></Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -213,6 +214,17 @@ function RoutesTab() {
       )}
       <RouteFormDialog open={newRouteOpen} onClose={() => setNewRouteOpen(false)} />
       {editRoute && <RouteFormDialog open={!!editRoute} onClose={() => setEditRoute(null)} id={editRoute.id} />}
+
+      <Dialog open={!!routeDeleteId} onOpenChange={v => { if (!v) setRouteDeleteId(null); }}>
+        <DialogContent className="max-w-sm rounded-2xl">
+          <DialogHeader><DialogTitle>Deactivate Route</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">Are you sure you want to deactivate this route?</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRouteDeleteId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => { if (routeDeleteId) deleteMut.mutate(routeDeleteId); setRouteDeleteId(null); }}>Deactivate</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

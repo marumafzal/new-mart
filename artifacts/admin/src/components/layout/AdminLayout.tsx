@@ -54,6 +54,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette } from "@/components/CommandPalette";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useLanguage } from "@/lib/useLanguage";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { tDual, type TranslationKey, LANGUAGE_OPTIONS } from "@workspace/i18n";
@@ -807,7 +808,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
+        <ErrorBoundary fallback={<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"><div className="bg-white rounded-2xl p-6 text-center shadow-xl"><p className="font-semibold text-red-600">Command palette unavailable</p></div></div>}>
+          <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} />
+        </ErrorBoundary>
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto pb-20 lg:pb-6" style={{ background: "#F1F5F9" }}>

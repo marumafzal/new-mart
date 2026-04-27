@@ -235,6 +235,7 @@ export default function LaunchControl() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["Core Services", "Wallet & Payments"]));
   const [togglingKey, setTogglingKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [planDeleteId, setPlanDeleteId] = useState<string | null>(null);
 
 
   /* ── Data fetching ── */
@@ -360,7 +361,6 @@ export default function LaunchControl() {
   };
 
   const deletePlan = async (id: string) => {
-    if (!confirm("Delete this plan?")) return;
     try {
       const { ok } = await apiCall(`/api/admin/launch/vendor-plans/${id}`, { method: "DELETE" });
       if (!ok) { toast({ title: "Delete failed", variant: "destructive" }); return; }
@@ -637,7 +637,7 @@ export default function LaunchControl() {
                   <Button size="sm" variant="outline" onClick={() => openEditPlan(plan)} className="h-8 text-xs rounded-lg gap-1">
                     <Edit2 className="w-3 h-3" /> Edit
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => deletePlan(plan.id)} className="h-8 text-xs rounded-lg gap-1 text-red-600 hover:bg-red-50 border-red-200">
+                  <Button size="sm" variant="outline" onClick={() => setPlanDeleteId(plan.id)} className="h-8 text-xs rounded-lg gap-1 text-red-600 hover:bg-red-50 border-red-200">
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
@@ -1094,6 +1094,18 @@ export default function LaunchControl() {
                 Create Role Preset
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete plan confirmation ── */}
+      <Dialog open={!!planDeleteId} onOpenChange={v => { if (!v) setPlanDeleteId(null); }}>
+        <DialogContent className="max-w-sm rounded-2xl">
+          <DialogHeader><DialogTitle>Delete Plan</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">Are you sure you want to delete this vendor plan? This action cannot be undone.</p>
+          <div className="flex gap-3 pt-1">
+            <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setPlanDeleteId(null)}>Cancel</Button>
+            <Button variant="destructive" className="flex-1 rounded-xl" onClick={() => { if (planDeleteId) { deletePlan(planDeleteId); setPlanDeleteId(null); } }}>Delete Plan</Button>
           </div>
         </DialogContent>
       </Dialog>

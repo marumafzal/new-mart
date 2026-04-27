@@ -333,8 +333,8 @@ function IntegrationsInit() {
     if (state.accessToken && !state.isLoading) {
       if (typeof Notification !== "undefined" && Notification.requestPermission) {
         Notification.requestPermission()
-          .then(perm => { if (perm === "granted") registerPush().catch(() => {}); })
-          .catch(() => {});
+          .then(perm => { if (perm === "granted") registerPush().catch((err: unknown) => { console.error("[App] Push registration failed:", err); }); })
+          .catch((err: unknown) => { console.error("[App] Notification permission request failed:", err); });
       }
       setSentryUser(state.user?.id || "admin");
       identifyUser(state.user?.id || "admin");

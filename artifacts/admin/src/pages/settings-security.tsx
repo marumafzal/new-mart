@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import {
   AlertTriangle, Info, CheckCircle2, XCircle, Shield,
   RefreshCw, Lock, Eye, EyeOff, Loader2,
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Toggle, Field, SecretInput, SLabel } from "@/components/AdminShared";
 import { ServiceZonesManager } from "@/components/ServiceZonesManager";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 /* ─── Security Section ────────────────────────────────────────────────────── */
 type SecTab = "auth" | "ratelimit" | "gps" | "passwords" | "uploads" | "fraud" | "admin";
@@ -54,6 +55,7 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
   const [secEvents,    setSecEvents]      = useState<any[]>([]);
   const [newBlockIP,   setNewBlockIP]     = useState("");
   const [liveLoading,  setLiveLoading]    = useState(false);
+  const liveDataAbortRef = useRef<AbortController | null>(null);
 
   /* ── MFA / TOTP State ── */
   const [mfaStatus,    setMfaStatus]    = useState<any>(null);
@@ -63,6 +65,10 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
   const [mfaLoading,   setMfaLoading]   = useState(false);
 
   const fetchLiveData = useCallback(async () => {
+    liveDataAbortRef.current?.abort();
+    const controller = new AbortController();
+    liveDataAbortRef.current = controller;
+    const { signal } = controller;
     setLiveLoading(true);
     try {
       const [dash, lockoutData, ipsData, auditData, eventsData] = await Promise.all([
@@ -72,21 +78,25 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
         apiAbsoluteFetchRaw(`/api/admin/audit-log?limit=50`).catch(() => ({})),
         apiAbsoluteFetchRaw(`/api/admin/security-events?limit=50`).catch(() => ({})),
       ]);
+      if (signal.aborted) return;
       setSecDash(dash);
       setLockouts(lockoutData.lockouts ?? []);
       setBlockedIPsList(ipsData.blocked ?? []);
       setAuditEntries(auditData.entries ?? []);
       setSecEvents(eventsData.events ?? []);
     } catch (err) {
-      console.error("[Security] Live dashboard data fetch failed:", err);
+      if (signal.aborted) return;
+      console.error("[Security] Failed to load security data:", err);
+      toast({ title: "Failed to load security data", description: "Check network and try again", variant: "destructive" });
     }
-    setLiveLoading(false);
+    if (!signal.aborted) setLiveLoading(false);
   }, []);
 
   useEffect(() => {
     if (secTab === "auth" || secTab === "fraud" || secTab === "admin") {
       fetchLiveData();
     }
+    return () => { liveDataAbortRef.current?.abort(); };
   }, [secTab, fetchLiveData]);
 
   const unlockPhone = async (phone: string) => {
@@ -318,7 +328,7 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
                 { label: "Vendor API",    key: "security_rate_vendor",  color: "bg-orange-500", def: "150" },
                 { label: "Admin Panel",   key: "security_rate_admin",   color: "bg-purple-500", def: "60"  },
               ].map(({ label, key, color, def }) => {
-                const v = parseInt(val(key, def)) || parseInt(def);
+                const rawV = parseInt(val(key, def)); const v = Number.isFinite(rawV) && rawV > 0 ? rawV : (parseInt(def) || 0);
                 const pct = Math.min(100, (v / 300) * 100);
                 return (
                   <div key={key} className="flex items-center gap-3">
@@ -370,9 +380,11 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
               <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <span>Define multi-city service zones. When <strong>Strict Geofence Mode</strong> is on, ride pickups/drops and deliveries outside all active zones are automatically rejected.</span>
             </div>
-            <Suspense fallback={<div className="py-6 text-center text-sm text-muted-foreground">Loading zones…</div>}>
-              <ServiceZonesManager />
-            </Suspense>
+            <ErrorBoundary fallback={<div className="py-4 text-center text-sm text-red-500 border border-red-200 rounded-xl bg-red-50">Service zones could not load. Please refresh.</div>}>
+              <Suspense fallback={<div className="py-6 text-center text-sm text-muted-foreground">Loading zones…</div>}>
+                <ServiceZonesManager />
+              </Suspense>
+            </ErrorBoundary>
           </SecPanel>
 
           <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-xs text-green-800 space-y-1">
@@ -404,7 +416,7 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
               <p className="text-xs font-semibold text-foreground mb-2">Current Password Rules Preview:</p>
               <div className="space-y-1">
                 {[
-                  { ok: parseInt(val("security_pwd_min_length","8")) >= 8, label: `At least ${val("security_pwd_min_length","8")} characters` },
+                  { ok: (v => Number.isFinite(v) ? v : 0)(parseInt(val("security_pwd_min_length","8"))) >= 8, label: `At least ${val("security_pwd_min_length","8")} characters` },
                   { ok: tog("security_pwd_strong","on"), label: "Uppercase letter required (A-Z)" },
                   { ok: tog("security_pwd_strong","on"), label: "Number required (0-9)" },
                   { ok: tog("security_pwd_strong","on"), label: "Special character required (!@#$...)" },

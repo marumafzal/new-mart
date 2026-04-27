@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { fetcher, fetcherWithMeta } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -203,7 +204,7 @@ function SettingsTab() {
         }
       }
       setLoaded(true);
-    }).catch(() => setLoaded(true));
+    }).catch((err) => { console.error("[Comm] Settings fetch failed:", err); setLoaded(true); });
   }, []);
 
   const save = async () => {
@@ -1303,7 +1304,7 @@ export default function Communication() {
           <TabsTrigger value="roles"><Users className="h-4 w-4 mr-1 hidden sm:block" />Roles</TabsTrigger>
           <TabsTrigger value="ajk-ids"><Crown className="h-4 w-4 mr-1 hidden sm:block" />AJK IDs</TabsTrigger>
         </TabsList>
-        <TabsContent value="dashboard"><DashboardTab /></TabsContent>
+        <TabsContent value="dashboard"><ErrorBoundary fallback={<div className="py-8 text-center text-sm text-red-500">Dashboard stats unavailable. Please refresh.</div>}><DashboardTab /></ErrorBoundary></TabsContent>
         <TabsContent value="settings"><SettingsTab /></TabsContent>
         <TabsContent value="conversations"><ConversationsTab /></TabsContent>
         <TabsContent value="calls"><CallHistoryTab /></TabsContent>

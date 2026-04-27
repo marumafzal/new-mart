@@ -211,9 +211,11 @@ function exportVendorsCSV(vendors: any[]) {
   );
   const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `vendors-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /* ══════════ Main Vendors Page ══════════ */

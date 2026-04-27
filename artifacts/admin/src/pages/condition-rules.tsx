@@ -121,7 +121,8 @@ function RuleFormModal({ rule, onClose }: { rule?: any; onClose: () => void }) {
       toast({ title: "Fill all required fields", variant: "destructive" });
       return;
     }
-    const data = { name, description, targetRole, metric, operator, threshold, conditionType, severity, cooldownHours: parseInt(cooldownHours) };
+    const parsedCooldown = parseInt(cooldownHours);
+    const data = { name, description, targetRole, metric, operator, threshold, conditionType, severity, cooldownHours: Number.isFinite(parsedCooldown) ? parsedCooldown : 0 };
     if (rule) {
       updateMut.mutate({ id: rule.id, ...data }, {
         onSuccess: () => { toast({ title: "Rule updated" }); onClose(); },

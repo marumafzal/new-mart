@@ -39,7 +39,9 @@ export async function fetchAdmin(
       token = await refreshToken();
     } catch (err) {
       // Refresh failed - need to redirect to login
+      console.error('Token refresh failed (no token):', err);
       const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
+      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
       window.location.href = loginUrl;
       throw err;
     }
@@ -87,6 +89,7 @@ export async function fetchAdmin(
         // Refresh or retry failed - redirect to login
         console.error('Token refresh failed:', err);
         const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
+        try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
         window.location.href = loginUrl;
         throw new Error('Session expired. Please log in again.');
       }
@@ -127,7 +130,9 @@ export async function fetchAdminAbsolute(
     try {
       token = await refreshToken();
     } catch (err) {
+      console.error('Token refresh failed (no token, absolute):', err);
       const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
+      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
       window.location.href = loginUrl;
       throw err;
     }
@@ -154,8 +159,9 @@ export async function fetchAdminAbsolute(
       response = await fetch(path, { ...options, headers, credentials: 'include' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     } catch (err) {
-      console.error('Token refresh failed:', err);
+      console.error('Token refresh failed (absolute):', err);
       const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
+      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
       window.location.href = loginUrl;
       throw new Error('Session expired. Please log in again.');
     }
@@ -191,6 +197,8 @@ export async function fetchAdminAbsoluteResponse(
   if (!token) {
     try { token = await refreshToken(); }
     catch (err) {
+      console.error('Token refresh failed (no token, response):', err);
+      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
       window.location.href = `${import.meta.env.BASE_URL || '/'}login`;
       throw err;
     }
@@ -211,7 +219,8 @@ export async function fetchAdminAbsoluteResponse(
       baseHeaders['Authorization'] = `Bearer ${newToken}`;
       response = await fetch(path, { ...options, headers: baseHeaders, credentials: 'include' });
     } catch (err) {
-      console.error('Token refresh failed:', err);
+      console.error('Token refresh failed (response):', err);
+      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
       window.location.href = `${import.meta.env.BASE_URL || '/'}login`;
       throw new Error('Session expired. Please log in again.');
     }

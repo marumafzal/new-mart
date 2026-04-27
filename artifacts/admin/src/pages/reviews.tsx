@@ -498,14 +498,16 @@ export default function ReviewsPage() {
     const qs = new URLSearchParams();
     if (statusFilter !== "all") qs.set("status", statusFilter);
     if (typeFilter !== "all") qs.set("type", typeFilter);
-    const url = `/api/admin/reviews/export?${qs.toString()}`;
-    const res = await fetchAdminAbsoluteResponse(url);
+    const exportUrl = `/api/admin/reviews/export?${qs.toString()}`;
+    const res = await fetchAdminAbsoluteResponse(exportUrl);
     if (!res.ok) { toast({ title: "Export failed", variant: "destructive" }); return; }
     const blob = await res.blob();
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    const blobUrl = URL.createObjectURL(blob);
+    a.href = blobUrl;
     a.download = `reviews-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
   };
 
   const runSuspension = () => {

@@ -227,7 +227,7 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
     try {
       const data = await mapsApiFetch("/maps/admin/usage");
       setUsageData(data);
-    } catch { /* non-critical */ }
+    } catch (err) { console.error("[Maps] Usage data load failed:", err); }
     setUsageLoading(false);
   }, []);
 
@@ -235,7 +235,7 @@ export function MapsMgmtSection({ localValues, dirtyKeys, handleChange, handleTo
     try {
       const data = await mapsApiFetch(`/maps/config`);
       setMapConfig(data?.data ?? data);
-    } catch { /* non-critical */ }
+    } catch (err) { console.error("[Maps] Config load failed:", err); }
   }, []);
 
   useEffect(() => {

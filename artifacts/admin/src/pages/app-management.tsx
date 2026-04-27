@@ -356,6 +356,7 @@ export default function AppManagement() {
       setRnDialog(false); setEditingRn(null); setRnForm({ version: "", releaseDate: new Date().toISOString().split("T")[0], notes: "", sortOrder: "0" });
       toast({ title: editingRn ? "Release note updated ✅" : "Release note created ✅" });
     },
+
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
@@ -385,7 +386,8 @@ export default function AppManagement() {
     if (!rnForm.version.trim()) { toast({ title: "Version required", variant: "destructive" }); return; }
     if (!rnForm.notes.trim())   { toast({ title: "Release notes required", variant: "destructive" }); return; }
     const notesArr = rnForm.notes.split("\n").map(s => s.trim()).filter(Boolean);
-    saveRn.mutate({ version: rnForm.version.trim(), releaseDate: rnForm.releaseDate, notes: notesArr, sortOrder: parseInt(rnForm.sortOrder) || 0 });
+    const parsedSortOrder = parseInt(rnForm.sortOrder);
+    saveRn.mutate({ version: rnForm.version.trim(), releaseDate: rnForm.releaseDate, notes: notesArr, sortOrder: Number.isFinite(parsedSortOrder) ? parsedSortOrder : 0 });
   };
 
   /* ── Compliance settings save ── */

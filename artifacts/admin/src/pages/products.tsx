@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Download, Filter, CheckCircle, XCircle, Clock, Upload, X, ImageIcon } from "lucide-react";
 import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, usePendingProducts, useApproveProduct, useRejectProduct, useCategories } from "@/hooks/use-admin";
 import { formatCurrency } from "@/lib/format";
@@ -85,6 +85,13 @@ export default function Products() {
   const [rejectTarget, setRejectTarget] = useState<any>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
   const [imageUploading, setImageUploading] = useState(false);
+  const imageBlobRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (imageBlobRef.current) URL.revokeObjectURL(imageBlobRef.current);
+    };
+  }, []);
   const [categorySearch, setCategorySearch] = useState("");
   const [categoryDropOpen, setCategoryDropOpen] = useState(false);
 
@@ -105,7 +112,10 @@ export default function Products() {
       toast({ title: "File too large", description: "Image must be under 10MB", variant: "destructive" });
       return;
     }
-    setImagePreview(URL.createObjectURL(file));
+    if (imageBlobRef.current) URL.revokeObjectURL(imageBlobRef.current);
+    const previewUrl = URL.createObjectURL(file);
+    imageBlobRef.current = previewUrl;
+    setImagePreview(previewUrl);
     setImageUploading(true);
     try {
       const url = await uploadAdminImage(file);
@@ -197,9 +207,11 @@ export default function Products() {
     );
     const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    const csvUrl = URL.createObjectURL(blob);
+    a.href = csvUrl;
     a.download = `products-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(csvUrl), 0);
   };
 
   const products = data?.products || [];

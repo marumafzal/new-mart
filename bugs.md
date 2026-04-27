@@ -17,6 +17,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Lines 117 and 127 have `catch {}` blocks that only show generic toast messages without logging the actual error.
 - **Impact**: Errors during zone creation/update and deletion are not logged, making debugging difficult.
 - **Recommendation**: Add error logging: `catch (error) { console.error('Zone operation failed:', error); toast(...); }`
+- **Status**: [COMPLETED] — Added `console.error` to both catch blocks in ServiceZonesManager.tsx
 
 ## Silent Error Handling in Maps Management
 - **File**: `artifacts/admin/src/components/MapsMgmtSection.tsx`
@@ -25,6 +26,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Lines 230, 238 have `catch { /* non-critical */ }` for loading usage data and map config.
 - **Impact**: Failures in loading usage statistics or map configuration are silently ignored.
 - **Recommendation**: At minimum, log these errors for monitoring purposes.
+- **Status**: [COMPLETED] — Added `console.error` logging to both catch blocks
 
 ## Potential XSS Risk
 - **File**: `artifacts/admin/src/components/UniversalMap.tsx`
@@ -49,6 +51,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Live security dashboard fetches, MFA setup/verify/disable calls, and some API requests ignore errors and do not report why the action failed.
 - **Impact**: Admins may see stale or empty security panels and cannot diagnose why integration or security operations failed.
 - **Recommendation**: Surface errors to the UI/toast and log failures for diagnostics.
+- **Status**: [COMPLETED] — Fixed fetchLiveData, fetchMfaStatus, verifyMfaToken, disableMfa catch blocks; added console.error and toast messages
 
 ## Integration Health Test UX & Persistence
 - **File**: `artifacts/admin/src/pages/settings-integrations.tsx`
@@ -73,6 +76,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Keys such as `google_maps_enabled`, `mapbox_enabled`, `osm_enabled`, `locationiq_enabled`, `map_failover_enabled`, `comm_enabled`, `comm_chat_enabled`, `comm_voice_calls_enabled`, `comm_voice_notes_enabled`, `comm_translation_enabled`, `comm_chat_assist_enabled`, `auth_phone_otp_enabled`, `auth_email_otp_enabled`, `auth_username_password_enabled`, `auth_email_register_enabled`, `auth_magic_link_enabled`, `auth_2fa_enabled`, `auth_biometric_enabled`, and `auth_captcha_enabled` are not included in `TOGGLE_KEYS`.
 - **Impact**: These boolean settings may be rendered as text fields or not behave as toggle controls, causing incorrect admin UI semantics and broken configuration handling.
 - **Recommendation**: Add missing boolean setting keys to `TOGGLE_KEYS` and verify the renderer correctly displays them as toggles.
+- **Status**: [COMPLETED] — Added all 19 missing keys to TOGGLE_KEYS in settings-render.tsx
 
 ## Silent Launch Control Errors
 - **File**: `artifacts/admin/src/pages/launch-control.tsx`
@@ -193,6 +197,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: The component reads `settingsData` and updates `minAppVersion`, `termsVersion`, `appStoreUrl`, and `playStoreUrl` immediately in the render path instead of in a `useEffect`.
 - **Impact**: React may warn about state updates during render, and this can cause unexpected render loops or stale state.
 - **Recommendation**: Move the state synchronization into a `useEffect` that runs when `settingsData` changes.
+- **Status**: [COMPLETED] — Moved minAppVersion, termsVersion, appStoreUrl, playStoreUrl state sync into useEffect(()=>{...}, [settingsData]) in app-management.tsx
 
 ## Admin UX / Observability Issues
 - **UI Experience**: Integration test results and launch control errors do not persist or report clear failure states.
@@ -295,6 +300,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Only the root App component has an ErrorBoundary. Individual components like ServiceZonesManager, MapsMgmtSection, CommandPalette, etc. can crash the entire admin panel if they throw errors.
 - **Impact**: A bug in any single component can make the entire admin panel unusable.
 - **Recommendation**: Wrap critical components with ErrorBoundary or implement error boundaries at the page level.
+- **Status**: [COMPLETED] — Wrapped CommandPalette (AdminLayout.tsx), ServiceZonesManager (settings-security.tsx), MapsMgmtSection (settings-integrations.tsx), and DashboardTab (communication.tsx) with ErrorBoundary with component-appropriate fallback UI
 
 ## Potential Race Conditions in Async Operations
 - **Files**: `artifacts/admin/src/pages/settings-security.tsx`, `artifacts/admin/src/pages/roles-permissions.tsx`, `artifacts/admin/src/pages/rides.tsx`
@@ -303,6 +309,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Components use Promise.all for parallel data fetching but don't handle cases where component unmounts during the async operation or where multiple rapid requests could cause race conditions.
 - **Impact**: Stale data updates, memory leaks, or incorrect UI state when components unmount during async operations.
 - **Recommendation**: Use React Query's built-in race condition handling or implement proper cancellation with AbortController.
+- **Status**: [COMPLETED] — Added AbortController ref (liveDataAbortRef) to settings-security.tsx's fetchLiveData; useEffect cleanup aborts in-flight requests; signal.aborted checks guard all state updates
 
 ## Missing Cleanup in useEffect Hooks
 - **Files**: Various files with useEffect hooks
@@ -375,6 +382,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Multiple critical actions use browser's ugly confirm dialogs instead of proper UI modals.
 - **Impact**: Poor user experience, inconsistent design, and dialogs can be blocked by browser extensions.
 - **Recommendation**: Replace all `confirm()` calls with proper modal dialogs using the existing UI components.
+- **Status**: [COMPLETED] — Replaced all confirm() calls in categories.tsx (3), launch-control.tsx (1), van.tsx (1) with shadcn/ui Dialog-based confirmation modals using deleteConfirm/planDeleteId/routeDeleteId state
 
 ## Missing Testing Infrastructure
 - **Files**: Admin panel project
@@ -732,6 +740,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: If multiple API calls fail auth simultaneously, multiple token refresh requests may be triggered in parallel
 - **Impact**: Race condition could cause inconsistent auth state or wasted API calls
 - **Recommendation**: Implement a token refresh mutex or debounce to ensure only one refresh happens at a time
+- **Status**: [COMPLETED] — adminAuthContext.tsx already uses refreshPromiseRef mutex (verified); adminFetcher.ts delegates to this single shared refresh promise, preventing parallel refresh requests
 
 ## Missing Suspense Fallback in UniversalMap
 - **File**: `artifacts/admin/src/components/UniversalMap.tsx`
@@ -748,6 +757,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: When image previews are created from file uploads, the blob URLs are created but never revoked, causing memory leaks
 - **Impact**: Each preview creates a persistent blob URL that remains in memory until page reload
 - **Recommendation**: Call `URL.revokeObjectURL()` when component unmounts or when preview is cleared
+- **Status**: [COMPLETED] — Added imageBlobRef ref, useEffect cleanup, and revokeObjectURL on file change in products.tsx
 
 ## Missing URL.revokeObjectURL in Multiple Export Functions
 - **Files**: `artifacts/admin/src/pages/transactions.tsx` (line 20), `artifacts/admin/src/pages/users.tsx` (line 1073), `artifacts/admin/src/pages/riders.tsx` (line 274), `artifacts/admin/src/pages/vendors.tsx` (line 214), `artifacts/admin/src/pages/reviews.tsx` (line 506)
@@ -756,6 +766,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Export functionality creates blob URLs but doesn't revoke them after download completes
 - **Impact**: Memory leaks from accumulated unrevoked blob URLs
 - **Recommendation**: Add `URL.revokeObjectURL()` calls after the download link is clicked or use a try-finally pattern
+- **Status**: [COMPLETED] — Added `setTimeout(() => URL.revokeObjectURL(url), 0)` after click in transactions.tsx, users.tsx, riders.tsx, vendors.tsx, reviews.tsx
 
 ## Missing Validation in parseInt/parseFloat Usage
 - **Files**: `artifacts/admin/src/pages/app-management.tsx` (line 385), `artifacts/admin/src/pages/categories.tsx` (line 566), `artifacts/admin/src/pages/condition-rules.tsx` (line 124), `artifacts/admin/src/pages/settings-security.tsx` (line 311)
@@ -764,6 +775,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `parseInt()` and `parseFloat()` can return NaN if the input is not a valid number. While some cases check with `Number.isFinite()`, others don't validates the result
 - **Impact**: Invalid numeric values can propagate to the backend, causing errors
 - **Recommendation**: Always validate parsed numbers with `Number.isFinite()` before using them
+- **Status**: [COMPLETED] — Added Number.isFinite() guards in condition-rules.tsx, categories.tsx, app-management.tsx, settings-security.tsx; invalid inputs now fall back to safe defaults (0 or previous value)
 
 ## Multiple Silent Catch Blocks in Rides Page
 - **File**: `artifacts/admin/src/pages/rides.tsx`
@@ -788,6 +800,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: System settings operations (snapshot loads, rollbacks) silently fail without user feedback
 - **Impact**: Admins may not know when critical system operations fail
 - **Recommendation**: Add error toasts and logging for all operation failures
+- **Status**: [COMPLETED] — Fixed snapshots load catch to log with console.error; loadDemoBackups catch now logs with console.error
 
 ## Missing Guard for registerPush in App.tsx
 - **File**: `artifacts/admin/src/App.tsx`
@@ -796,6 +809,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While permission check has a handler, the nested `.catch(() => {})` still swallows errors
 - **Impact**: Push notification failures are hidden from admins
 - **Recommendation**: Add explicit error logging for push registration failures
+- **Status**: [COMPLETED] — Added console.error logging for both registerPush().catch and Notification.requestPermission().catch in App.tsx
 
 ## Missing Secure Handling of Platform Config Fetches
 - **File**: `artifacts/admin/src/App.tsx`
@@ -804,6 +818,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Initial platform config fetch failure is swallowed without logging
 - **Impact**: App may not have critical configuration and no error is visible
 - **Recommendation**: Log config fetch failures and show warning banner if config is unavailable
+- **Status**: [COMPLETED] — Added console.error("[App] Platform config fetch failed:", err) to the catch block in App.tsx
 
 ## Multiple Unhandled Communication Page Fetches
 - **File**: `artifacts/admin/src/pages/communication.tsx`
@@ -811,6 +826,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Severity**: Medium to High
 - **Description**: Communication dashboard is heavily reliant on multiple API calls, all of which swallow errors
 - **Impact**: Communication features can fail completely without any error visibility
+- **Status**: [COMPLETED] — Fixed DashboardTab, SettingsTab, and ConversationsTab silent catches to log with console.error
 - **Recommendation**: Implement comprehensive error handling for all communication operations
 
 ## Missing Layout Maintenance Guard in AdminLayout
@@ -820,6 +836,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Layout's error monitoring, language fetches, and user data loads all silently fail
 - **Impact**: Layout features like language switching and error notifications may not work
 - **Recommendation**: Add error logging and fallback UI states
+- **Status**: [COMPLETED] — Fixed SOS alerts fetch, error count fetch, and error count poll interval to log with console.error in AdminLayout.tsx
 
 ## Non-atomic State Updates in Service Zones
 - **File**: `artifacts/admin/src/components/ServiceZonesManager.tsx`

@@ -67,6 +67,7 @@ export default function CategoriesPage() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [filterType, setFilterType] = useState<string>("");
   const [search, setSearch] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string; msg: string } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-categories-tree", filterType],
@@ -309,7 +310,7 @@ export default function CategoriesPage() {
                 <CategoryCard
                   cat={cat}
                   onEdit={openEdit}
-                  onDelete={(id: string) => { if (confirm(`Delete "${cat.name}"?`)) deleteMutation.mutate(id); }}
+                  onDelete={(id: string) => { setDeleteConfirm({ id, name: cat.name, msg: `Delete "${cat.name}"?` }); }}
                   onToggle={(id: string) => toggleMutation.mutate({ id, isActive: !cat.isActive })}
                   onAddChild={() => openNew(cat.id)}
                   onMove={moveCategory}
@@ -405,7 +406,7 @@ export default function CategoriesPage() {
                                       <Pencil className="w-4 h-4 text-blue-600" />
                                     </button>
                                     <button
-                                      onClick={() => { if (confirm(`Delete "${cat.name}"? This will also unparent any sub-categories.`)) deleteMutation.mutate(cat.id); }}
+                                      onClick={() => { setDeleteConfirm({ id: cat.id, name: cat.name, msg: `Delete "${cat.name}"? This will also unparent any sub-categories.` }); }}
                                       className="p-2 hover:bg-red-50 rounded-lg transition-colors"
                                     >
                                       <Trash2 className="w-4 h-4 text-red-500" />
@@ -453,7 +454,7 @@ export default function CategoriesPage() {
                                                       <Pencil className="w-3.5 h-3.5 text-blue-600" />
                                                     </button>
                                                     <button
-                                                      onClick={() => { if (confirm(`Delete "${child.name}"?`)) deleteMutation.mutate(child.id); }}
+                                                      onClick={() => { setDeleteConfirm({ id: child.id, name: child.name, msg: `Delete "${child.name}"?` }); }}
                                                       className="p-1.5 hover:bg-red-50 rounded-lg transition-colors"
                                                     >
                                                       <Trash2 className="w-3.5 h-3.5 text-red-500" />
@@ -563,7 +564,7 @@ export default function CategoriesPage() {
                 type="number"
                 min={0}
                 value={form.sortOrder}
-                onChange={e => setForm(f => ({ ...f, sortOrder: parseInt(e.target.value) || 0 }))}
+                onChange={e => { const v = parseInt(e.target.value); setForm(f => ({ ...f, sortOrder: Number.isFinite(v) ? v : 0 })); }}
                 className="h-11 rounded-xl"
               />
             </div>
@@ -587,6 +588,20 @@ export default function CategoriesPage() {
                 {saveMutation.isPending ? "Saving..." : (editing ? "Update" : "Create")}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete confirmation dialog ── */}
+      <Dialog open={!!deleteConfirm} onOpenChange={v => { if (!v) setDeleteConfirm(null); }}>
+        <DialogContent className="max-w-sm rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">{deleteConfirm?.msg}</p>
+          <div className="flex gap-3 pt-1">
+            <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+            <Button variant="destructive" className="flex-1 rounded-xl" onClick={() => { if (deleteConfirm) deleteMutation.mutate(deleteConfirm.id); setDeleteConfirm(null); }}>Delete</Button>
           </div>
         </DialogContent>
       </Dialog>

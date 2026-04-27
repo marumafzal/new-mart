@@ -44,6 +44,8 @@ import errorReportsRouter from "./error-reports.js";
 import communicationRouter from "./communication.js";
 import weatherConfigRouter from "./weather-config.js";
 import deepLinksPublicRouter from "./deep-links-public.js";
+import legalRouter from "./legal.js";
+import { adminAuth } from "./admin-shared.js";
 
 const router: IRouter = Router();
 
@@ -112,5 +114,16 @@ router.use("/admin/error-reports", errorReportsRouter);
 router.use("/communication", communicationRouter);
 router.use("/weather-config", weatherConfigRouter);
 router.use("/dl", deepLinksPublicRouter);
+
+/**
+ * Legal / consent surface used by the admin "Consent & Terms Versions"
+ * page. Mounted under both `/api/legal` (the contract documented in the
+ * page header) and `/api/admin/legal` (the path the admin fetcher
+ * actually targets, since `fetchAdmin` always prepends `/api/admin`).
+ * Both mounts require admin auth — consent records are GDPR-sensitive
+ * and the POST publishes new policy versions.
+ */
+router.use("/legal", adminAuth, legalRouter);
+router.use("/admin/legal", adminAuth, legalRouter);
 
 export default router;

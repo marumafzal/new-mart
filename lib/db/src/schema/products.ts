@@ -25,6 +25,11 @@ export const productsTable = pgTable("products", {
   deliveryTime: text("delivery_time"),
   dealExpiresAt: timestamp("deal_expires_at"),
   approvalStatus: text("approval_status").notNull().default("approved"),
+  /* Per-product overrides for the global vendor inventory settings.
+     NULL means "use the platform default from `inventory_*` settings". */
+  lowStockThreshold:    integer("low_stock_threshold"),
+  maxQuantityPerOrder:  integer("max_quantity_per_order"),
+  backInStockNotify:    boolean("back_in_stock_notify").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

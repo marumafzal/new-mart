@@ -74,6 +74,7 @@ export * from "./webhook_registrations";
 export * from "./deep_links";
 export * from "./stock_subscriptions";
 export * from "./consent_log";
+export * from "./terms_versions";
 export * from "./release_notes";
 export * from "./vendor_plans";
 export * from "./admin_role_presets";

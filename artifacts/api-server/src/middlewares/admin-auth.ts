@@ -2,16 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken, AccessTokenPayload } from '../utils/admin-jwt.js';
 import { verifyCsrfToken } from '../utils/admin-csrf.js';
 
-/**
- * The forced "must change password" gate has been removed. New tokens
- * are no longer issued with the `mpc` claim, and admins are never
- * blocked from the panel because of it. The SPA now surfaces an
- * OPTIONAL post-login popup driven by the `defaultCredentials` flag on
- * the admin row, which is sent back with every auth response.
- *
- * This middleware is kept as a no-op shim so any legacy import sites
- * keep compiling. It is safe to delete once all references are gone.
- */
+/** No-op shim: forced password-change gate removed. */
 export function enforceMustChangePassword(
   _req: Request,
   _res: Response,
@@ -54,9 +45,6 @@ export function authenticateAdmin(req: Request, res: Response, next: NextFunctio
   try {
     const payload = verifyAccessToken(token);
     req.admin = payload;
-    // The forced `mpc` (must-change-password) gate has been removed. The
-    // SPA now drives the OPTIONAL credentials popup via the
-    // `defaultCredentials` flag returned with every auth response.
     next();
   } catch (err) {
     res.status(401).json({

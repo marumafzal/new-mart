@@ -161,35 +161,13 @@ export async function seedDefaultSuperAdmin(): Promise<SeedResult> {
 }
 
 /**
- * Boot-time reconciliation for the seeded super-admin.
- *
- * Why this exists: the previous build shipped a forced "must change
- * password" gate, which left existing installs with a row that has
- * `must_change_password = true` and an unknown bootstrap password. The
- * new flow drops that gate and ships a documented default password
- * (`Toqeerkhan@123.com`, overridable via `ADMIN_SEED_PASSWORD`).
- *
- * Safety guards (BOTH must hold for the reset to fire):
- *   1. `must_change_password = true` — the row is in the legacy
- *      "credentials are stale" state.
- *   2. `default_credentials = true` — the row was originally
- *      bootstrapped by the seed path (the only place that flag is
- *      ever set to true). This prevents this reconciliation from
- *      ever overwriting passwords created by the operational
- *      reset-link flow (`/api/admin/system/auth/...`), which sets
- *      `must_change_password = true` on real super-admin rows but
- *      never touches `default_credentials` (which has long been
- *      cleared once the admin first chose their own password).
- *
- * Together these two flags act as a one-shot legacy migration stamp:
- * once the seeded admin either rotates their credentials (clearing
- * `default_credentials`) or completes the reconciliation (clearing
- * `must_change_password`), this function never fires for that row
- * again. Operational reset-link flows on already-rotated admins are
- * therefore completely insulated from this code path.
- *
- * Touches AT MOST a single row matched by username. Other admin
- * accounts (sub-admins, additional super-admins) are never modified.
+ * One-shot reconciliation: re-hash the seeded super-admin to the
+ * documented default password. Runs only when the row is both flagged
+ * stale (`mustChangePassword=true`) AND originally bootstrapped by the
+ * seed path (`defaultCredentials=true`). The two-flag guard prevents
+ * this from overwriting passwords set by the operational reset-link
+ * flow, which arms `mustChangePassword` but never touches
+ * `defaultCredentials`. Idempotent.
  */
 export async function reconcileSeededSuperAdmin(): Promise<{ reset: boolean }> {
   const username = (process.env.ADMIN_SEED_USERNAME ?? DEFAULT_SEED_USERNAME).trim();
@@ -200,16 +178,8 @@ export async function reconcileSeededSuperAdmin(): Promise<{ reset: boolean }> {
     .where(eq(adminAccountsTable.username, username))
     .limit(1);
 
-  // Nothing to do if the seeded row is missing (fresh install — the seed
-  // path above will create it) or if the operator has already changed it.
   if (!seeded) return { reset: false };
   if (!seeded.mustChangePassword) return { reset: false };
-  // CRITICAL safety guard: never reset to the documented default unless
-  // the row is BOTH flagged stale (mustChangePassword) AND was actually
-  // bootstrapped by us (defaultCredentials). The reset-link operational
-  // flow re-arms mustChangePassword on real admins but does NOT touch
-  // defaultCredentials, so this guard prevents us from silently
-  // overwriting a legitimate password reset with the public default.
   if (!seeded.defaultCredentials) return { reset: false };
 
   const plainPassword = resolveSeedPassword();

@@ -1,31 +1,10 @@
 /**
- * FirstLoginCredentialsDialog
- *
- * Optional post-login popup surfaced to the seeded super-admin while
- * they are still using the bootstrap default credentials
- * (`admin` / `Toqeerkhan@123.com`). The user may:
- *   - Pick a new username and/or password, or
- *   - Click "Skip for now" to keep the defaults working for this session.
- *
- * Nothing in the app is gated on this dialog — both branches return the
- * user to whatever route they were on. The popup never re-opens after
- * the admin has either submitted a change or dismissed it (until the
- * next fresh login).
- *
- * Wire-up: rendered globally inside <AdminLayout> from App.tsx so it is
- * available on every authenticated route.
- *
- * Visibility model
- * ----------------
- * Visibility is driven by a local `open` state instead of being derived
- * directly from `state.usingDefaultCredentials`. The reason: the
- * password rotation API clears `usingDefaultCredentials` server-side
- * the moment it succeeds, so a derived `open` would auto-close the
- * dialog the instant the password call resolves — even if the user
- * also asked us to update their username and that PATCH is still in
- * flight or has failed. Owning `open` locally lets the dialog stay
- * up across the multi-step submit so partial-failure errors remain
- * visible and retryable in-context.
+ * Optional post-login popup for the seeded super-admin while they are
+ * still on the default credentials. Lets them update username and/or
+ * password, or skip. Owns its `open` state locally because a derived
+ * `open` would auto-close mid-submit when the password API clears
+ * `usingDefaultCredentials` — that would hide partial-failure errors
+ * for a subsequent username PATCH.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
@@ -58,9 +37,6 @@ export function FirstLoginCredentialsDialog() {
     useAdminAuth();
   const { toast } = useToast();
 
-  // Upstream signal that the popup *should* be shown for this session.
-  // Computed from auth state but only used to *open* the dialog — never
-  // to close it (see file header for rationale).
   const wantsToShow = useMemo(
     () =>
       !!state.accessToken &&
@@ -69,17 +45,12 @@ export function FirstLoginCredentialsDialog() {
     [state.accessToken, state.usingDefaultCredentials, state.defaultCredentialsDismissed],
   );
 
-  // Locally-owned visibility. Seeded from `wantsToShow`, then only
-  // mutated by user actions ("Skip", successful submit) or logout.
   const [open, setOpen] = useState(wantsToShow);
 
-  // Re-open whenever upstream conditions newly become true (e.g. fresh
-  // login after a previous logout).
   useEffect(() => {
     if (wantsToShow) setOpen(true);
   }, [wantsToShow]);
 
-  // Hard-close the dialog on logout so it never lingers across sessions.
   useEffect(() => {
     if (!state.accessToken) setOpen(false);
   }, [state.accessToken]);
@@ -91,12 +62,8 @@ export function FirstLoginCredentialsDialog() {
   const [showPasswords, setShowPasswords] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  // Tracks whether the password half of a multi-step submit already
-  // succeeded. If a subsequent username PATCH fails the user shouldn't
-  // be asked to re-enter (and re-submit) the password they just rotated.
   const [passwordSavedThisSession, setPasswordSavedThisSession] = useState(false);
 
-  // Reset the form whenever the popup re-opens for a new session.
   useEffect(() => {
     if (open) {
       setUsername(state.user?.username ?? "");
@@ -156,15 +123,10 @@ export function FirstLoginCredentialsDialog() {
 
     setSubmitting(true);
     try {
-      // Step 1 — rotate the password (if requested). The API issues a
-      // fresh access token which `changePassword` mirrors into auth
-      // state, so any subsequent PATCH below picks it up automatically.
       if (wantsPasswordChange) {
         try {
           await changePassword(currentPassword, newPassword);
           setPasswordSavedThisSession(true);
-          // Clear password inputs — the values entered are now stale
-          // (currentPassword no longer matches what's on the server).
           setCurrentPassword("");
           setNewPassword("");
           setConfirmPassword("");
@@ -172,14 +134,10 @@ export function FirstLoginCredentialsDialog() {
           setFormError(
             err instanceof Error ? err.message : "Failed to update your password.",
           );
-          return; // keep dialog open, password section still active
+          return;
         }
       }
 
-      // Step 2 — update the username (if requested). On failure here
-      // the dialog stays open with a clear message so the user can
-      // correct and retry the username independently. The password —
-      // if it was rotated above — is already persisted server-side.
       if (wantsUsernameChange) {
         try {
           await updateOwnProfile({ username: trimmedUsername });

@@ -1,3 +1,5 @@
+import { getAdminTiming } from "./adminTiming";
+
 const SOURCE_APP = "admin";
 let _initialized = false;
 let _queue: Array<Record<string, unknown>> = [];
@@ -5,7 +7,6 @@ let _flushing = false;
 
 /** Deduplicate window.error and unhandledrejection events (not just console.error) */
 const _recentEventErrors = new Map<string, number>();
-const DEDUP_WINDOW_MS = 30_000;
 
 function getApiBase(): string {
   return `${window.location.origin}/api`;
@@ -26,11 +27,12 @@ function computeErrorHash(errorMessage: string, errorType: string): string {
 }
 
 function isDuplicate(hash: string): boolean {
+  const t = getAdminTiming();
   const now = Date.now();
   const last = _recentEventErrors.get(hash);
-  if (last !== undefined && now - last < DEDUP_WINDOW_MS) return true;
+  if (last !== undefined && now - last < t.errorReporterDedupWindowMs) return true;
   _recentEventErrors.set(hash, now);
-  if (_recentEventErrors.size > 200) {
+  if (_recentEventErrors.size > t.errorReporterMessageKeyMax) {
     const oldest = _recentEventErrors.keys().next().value;
     if (oldest) _recentEventErrors.delete(oldest);
   }
@@ -57,13 +59,14 @@ async function flushQueue(): Promise<void> {
     await sendReport(report);
   }
   _flushing = false;
-  if (_queue.length > 0) setTimeout(flushQueue, 1000);
+  if (_queue.length > 0) setTimeout(flushQueue, getAdminTiming().errorReporterFlushDelayMs);
 }
 
 function enqueue(report: Record<string, unknown>): void {
+  const t = getAdminTiming();
   _queue.push(report);
-  if (_queue.length > 50) _queue.shift();
-  setTimeout(flushQueue, 100);
+  if (_queue.length > t.errorReporterQueueMax) _queue.shift();
+  setTimeout(flushQueue, t.errorReporterEnqueueDelayMs);
 }
 
 export function reportError(opts: {
@@ -76,14 +79,15 @@ export function reportError(opts: {
   metadata?: Record<string, unknown>;
   statusCode?: number;
 }): void {
-  const message = (opts.errorMessage || "Unknown error").slice(0, 5000);
+  const t = getAdminTiming();
+  const message = (opts.errorMessage || "Unknown error").slice(0, t.errorReporterMessageMax);
   const hash = computeErrorHash(message, opts.errorType);
 
   enqueue({
     sourceApp: SOURCE_APP,
     ...opts,
     errorMessage: message,
-    stackTrace: opts.stackTrace?.slice(0, 50000),
+    stackTrace: opts.stackTrace?.slice(0, t.errorReporterStackMax),
     errorHash: hash,
   });
 }
@@ -130,19 +134,20 @@ export function initErrorReporter(): void {
 
     if (msg.includes("[ErrorReporter]") || msg.includes("error-reports")) return;
 
-    const key = msg.slice(0, 200);
+    const t = getAdminTiming();
+    const key = msg.slice(0, t.errorReporterMessageKeyMax);
     const now = Date.now();
     const lastSeen = _recentConsoleErrors.get(key);
-    if (lastSeen && now - lastSeen < 30000) return;
+    if (lastSeen && now - lastSeen < t.errorReporterDedupWindowMs) return;
     _recentConsoleErrors.set(key, now);
-    if (_recentConsoleErrors.size > 100) {
+    if (_recentConsoleErrors.size > t.errorReporterRecentMax) {
       const oldest = _recentConsoleErrors.keys().next().value;
       if (oldest) _recentConsoleErrors.delete(oldest);
     }
 
     reportError({
       errorType: "ui_error",
-      errorMessage: msg.slice(0, 5000),
+      errorMessage: msg.slice(0, t.errorReporterMessageMax),
       functionName: "console.error",
       stackTrace: args.find((a): a is Error => a instanceof Error)?.stack,
     });

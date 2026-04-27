@@ -13,9 +13,12 @@ export async function registerPush(): Promise<void> {
     const { publicKey } = (vj?.success === true && "data" in vj ? vj.data : vj) as { publicKey: string };
     if (!publicKey) return;
 
+    const decoded = urlBase64ToUint8Array(publicKey);
+    if (!decoded) return;
+
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
+      applicationServerKey: decoded,
     });
 
     const { apiAbsoluteFetchRaw } = await import("./api");
@@ -28,10 +31,28 @@ export async function registerPush(): Promise<void> {
   }
 }
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+/**
+ * Decode a URL-safe base64 VAPID key into a Uint8Array. Validates the
+ * input character set and decoder output before returning, so a malformed
+ * key (wrong characters, atob failure) returns null instead of throwing
+ * deep inside `pushManager.subscribe`.
+ */
+const URL_SAFE_B64 = /^[A-Za-z0-9_\-]+=*$/;
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> | null {
+  if (typeof base64String !== "string" || base64String.length === 0) return null;
+  if (!URL_SAFE_B64.test(base64String)) {
+    if (import.meta.env.DEV) console.warn("[push] vapid key has invalid characters");
+    return null;
+  }
   const padding = "=".repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
+  let rawData: string;
+  try {
+    rawData = window.atob(base64);
+  } catch (err) {
+    if (import.meta.env.DEV) console.warn("[push] vapid key atob failed:", err);
+    return null;
+  }
   const output = new Uint8Array(rawData.length);
   for (let i = 0; i < rawData.length; i++) {
     output[i] = rawData.charCodeAt(i);

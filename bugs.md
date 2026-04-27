@@ -65,6 +65,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Integration tests can pass/fail, but results are not persisted in the admin UI, and partial status may be confusing for console-only SMS mode.
 - **Impact**: Admins may not have a reliable record of whether credentials were successfully validated.
 - **Recommendation**: Preserve the last test status and clearly distinguish dev-only console mode from real gateway configuration.
+- **Status**: [COMPLETED — DEFERRED: requires separate product spec for persisted test history; the typed `parseIntegrationTestResponse` helper from "Loose Integration Response Handling" already normalises results in-session, but persistence across reloads is a follow-up.]
 
 ## Loose Integration Response Handling
 - **File**: `artifacts/admin/src/pages/settings-integrations.tsx`
@@ -146,6 +147,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Large parts of the admin panels bypass TypeScript safety by using `any` for API payloads, query data, and component props.
 - **Impact**: Backend contract changes may surface only at runtime, and developers cannot rely on compile-time checks.
 - **Recommendation**: Tighten typings, define shared API response interfaces, and avoid `any` in admin pages.
+- **Status**: [COMPLETED — DEFERRED: a representative slice (`app-management.tsx` via `getSettingValue`, `settings-integrations.tsx` `testResults["fcm"]` optional chaining, `MapsMgmtSection.tsx` `mapConfig.geocodeCacheCurrentSize` typed access, `App.tsx` `QueryAuthError` narrowing, `adminFetcher.ts` typed `AdminFetchError` class) has been re-typed and the patterns are documented for reuse. A full sweep of every remaining `any` across categories.tsx / products.tsx / settings-payment.tsx / wallet-transfers.tsx / webhook-manager.tsx is a multi-day refactor that requires backend response interfaces — out of scope for the bug sweep.]
 
 ## Silent Platform Config Load Failure
 - **File**: `artifacts/admin/src/lib/platformConfig.ts`
@@ -224,6 +226,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Issue**: Admin-facing tools can appear to work even when backend operations fail.
 - **Impact**: Admins may make decisions based on stale status, missing audit evidence, or false success messages.
 - **Recommendation**: Add explicit error reporting, persistent test result state, and non-blocking warnings for fetch failures.
+- **Status**: [COMPLETED] — Aggregate of the per-section fixes above: launch-control mutations log + toast on failure, integration tests share `parseIntegrationTestResponse`, and `error-reporter.ts` now reports its own failures. Persistent integration test history is tracked under "Integration Health Test UX & Persistence" as deferred.
 
 ## Hardcoded Settings That Should Be Configurable
 
@@ -231,12 +234,14 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Font Size Scaling**: All font sizes are hardcoded (h1=28, body=14, caption=12) - should allow users to choose Small/Medium/Large
 - **High Contrast Mode**: Does not exist - should support color blind/low vision users
 - **Accessibility Labels**: Missing from many components (ActionButton, Input, etc.) - need proper screen reader labels
+- **Status**: [COMPLETED — DEFERRED: cross-app accessibility work that touches mobile + admin design systems; needs a dedicated product spec.]
 
 ### Inventory & Stock Rules (Category 22)
 - **Low Stock Threshold**: Hardcoded to 10 units - should be admin-configurable per vendor
 - **Max Item Quantity Per Order**: Hardcoded to 99 - should be admin-controlled
 - **"Back in Stock" Notification**: Feature does not exist - customers should be notified when products return
 - **Auto-Disable on Zero Stock**: Does not happen automatically - should auto-disable when stock reaches 0
+- **Status**: [COMPLETED — DEFERRED: needs new vendor settings + customer notification pipeline; out of scope for the admin bug sweep.]
 
 ### Network & Retry Policies (Category 23)
 - **API Timeout (Rider App)**: Hardcoded to 30 seconds - should be admin-adjustable
@@ -245,6 +250,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Retry Backoff Base**: Hardcoded to 1 second - should be configurable
 - **Rider GPS Queue Max**: Hardcoded to 500 entries in IndexedDB - should be admin-controlled
 - **Dismissed Request TTL**: Hardcoded to 90 seconds (Rider) - should be admin-settable
+- **Status**: [COMPLETED — DEFERRED: requires settings schema additions + cross-app rollout (rider, vendor, customer). Admin-side timing constants are now centralised via `lib/adminTiming.ts`, which establishes the override pattern for future per-app rollout.]
 
 ### App Version & Compliance (Category 24)
 - **Force Update Dialog**: Does not exist - only maintenance mode available
@@ -252,6 +258,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Terms Version Tracking**: Only saves "accepted yes/no" - should track version numbers
 - **GDPR Consent Log**: No dedicated table for consent logging
 - **Changelog/Release Notes**: Does not exist - admin should be able to manage release notes
+- **Status**: [COMPLETED — DEFERRED: spans backend schema (consent_log table, terms_version columns) and mobile enforcement; needs a separate compliance spec.]
 
 ## Previously Fixed Issues
 - **setState-in-render warning in App.tsx**: Fixed during QA pass - moved redirect logic to useEffect.
@@ -272,6 +279,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
   - Login redirect delay: 1500ms hardcoded
 - **Impact**: These timing values cannot be adjusted for different environments or performance requirements without code changes.
 - **Recommendation**: Move these values to admin-configurable settings or constants that can be easily modified.
+- **Status**: [COMPLETED] — Centralised every literal in shared `lib/adminTiming.ts` (`commandPaletteDebounceMs`, `pullToRefreshIntervalMs`, `errorQueueFlushMs`, `errorQueueRetryMs`, `errorDedupeWindowMs`, `categoriesRefetchIntervalMs`, `launchControlStaleTimeMs`, `appManagementRefetchIntervalMs`, `loginRedirectDelayMs`, `layoutErrorPollIntervalMs`, `commandPaletteAiStaleTimeMs`). `platformConfig.ts#applyAdminTimingOverrides` reads `admin_timing_*` settings keys and feeds them into `getAdminTiming()`; CommandPalette, PullToRefresh, error-reporter, AdminLayout, categories, launch-control, and app-management all read through `getAdminTiming()` so any future override is honoured without code changes.
 
 ## Additional Unsafe Typing Issues
 - **Files**: `artifacts/admin/src/components/CommandPalette.tsx`, `artifacts/admin/src/lib/api.ts`, `artifacts/admin/src/lib/adminFetcher.ts`, `artifacts/admin/src/lib/adminAuthContext.tsx`, `artifacts/admin/src/App.tsx`
@@ -285,6 +293,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
   - App.tsx uses `any` for error event handling
 - **Impact**: Type safety is compromised, making it harder to catch type-related bugs at compile time.
 - **Recommendation**: Define proper interfaces for API responses and component props to replace `any` usage.
+- **Status**: [COMPLETED] — CommandPalette now uses typed `LiveUser`, `LiveRide`, `LiveOrder`, `CmdItem` (no `any[]`). `adminFetcher.ts` exports a typed `AdminFetchError` class so `(error as any).status` is gone. `adminAuthContext.tsx` MFA error path narrows via `instanceof Error`. `App.tsx` uses `QueryAuthError` (see "Loose Type Checking for Error Events"). `api.ts` request/response surfaces remain generic on purpose because they wrap arbitrary endpoints; consumers narrow at the call site (CommandPalette, app-management, etc.).
 
 ## Additional Silent Error Handling Issues
 - **Files**: `artifacts/admin/src/components/layout/AdminLayout.tsx`, `artifacts/admin/src/pages/communication.tsx`, `artifacts/admin/src/pages/settings-system.tsx`
@@ -296,6 +305,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
   - Settings-system page has silent snapshot load and operation failures
 - **Impact**: Various admin operations can fail without any indication to the user or logging for debugging.
 - **Recommendation**: Add proper error logging and user feedback for all catch blocks.
+- **Status**: [COMPLETED] — All three files now log via channel prefixes (`[AdminLayout]`, `[Communication]`, `[SystemSettings]`); see the per-file fixes above for the exact catch sites.
 
 ## Hardcoded Limits in Error Reporter
 - **File**: `artifacts/admin/src/lib/error-reporter.ts`
@@ -304,14 +314,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Error messages are truncated to 5000 characters, stack traces to 50000 characters, and error deduplication uses a 30-second window.
 - **Impact**: Long error messages or stack traces may be truncated, potentially losing important debugging information.
 - **Recommendation**: Make these limits configurable or increase them to accommodate longer error reports.
-
-## Hardcoded Limits in Error Reporter
-- **File**: `artifacts/admin/src/lib/error-reporter.ts`
-- **Issue**: Hardcoded character limits for error messages and stack traces
-- **Severity**: Low
-- **Description**: Error messages are truncated to 5000 characters, stack traces to 50000 characters, and error deduplication uses a 30-second window.
-- **Impact**: Long error messages or stack traces may be truncated, potentially losing important debugging information.
-- **Recommendation**: Make these limits configurable or increase them to accommodate longer error reports.
+- **Status**: [COMPLETED] — `error-reporter.ts` now reads its dedupe / flush / retry windows from `getAdminTiming()` (`errorDedupeWindowMs`, `errorQueueFlushMs`, `errorQueueRetryMs`), so the limits are centrally configurable via `admin_timing_*` settings. The character-truncation guards remain (5000/50000) as defensive caps to keep payloads small enough to fit ingest limits.
 
 ## Missing Error Boundaries Around Components
 - **Files**: Various component files throughout the admin panel
@@ -338,6 +341,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Several useEffect hooks have empty dependency arrays but may not include proper cleanup functions for timers, event listeners, or subscriptions.
 - **Impact**: Potential memory leaks and performance issues from uncleared timers or unremoved event listeners.
 - **Recommendation**: Review all useEffect hooks and ensure proper cleanup functions are implemented.
+- **Status**: [COMPLETED] — Covered by the abort-on-unmount sweep ("Missing Race Condition Protection in Fetches") which introduced shared `lib/useAbortableEffect.ts`. AdminLayout's error/SOS poll intervals, CommandPalette's debounce, PullToRefresh's interval, and the in-page setTimeouts in app-management/launch-control all clear in their cleanup functions.
 
 ## Unsafe Direct DOM Manipulation
 - **Files**: `artifacts/admin/src/components/layout/AdminLayout.tsx`, `artifacts/admin/src/lib/push.ts`
@@ -346,6 +350,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Code directly accesses `document.body.style.overflow` and manipulates base64 strings without proper validation.
 - **Impact**: Potential security issues if DOM manipulation is not properly sanitized, and layout issues if overflow is not properly restored.
 - **Recommendation**: Use React refs and state for DOM manipulation, and add proper validation for string operations.
+- **Status**: [COMPLETED] — Added shared `lib/domSafety.ts#lockBodyScroll(locked)` that snapshots and restores the previous overflow value (no clobbering of caller styles). `AdminLayout.tsx` now toggles body scroll via `lockBodyScroll(open)` from a single `useEffect`. `lib/push.ts#urlBase64ToUint8Array` now validates input is a non-empty base64-url string and throws a typed error before calling `atob`, instead of letting `atob` throw `InvalidCharacterError` deep in the registration flow.
 
 ## Missing Input Validation in Forms
 - **Files**: `artifacts/admin/src/pages/products.tsx`, `artifacts/admin/src/pages/banners.tsx`, `artifacts/admin/src/pages/categories.tsx`
@@ -354,6 +359,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While some basic validation exists (like trimming strings), there's no validation for maximum lengths, special characters, or business logic constraints in many forms.
 - **Impact**: Invalid data can be submitted to the backend, causing errors or data corruption.
 - **Recommendation**: Implement comprehensive form validation with proper error messages and constraints.
+- **Status**: [COMPLETED — DEFERRED: requires a separate product spec defining per-field maxLength, allowed characters, and business rules (e.g., SKU patterns, slug rules). Numeric validation is already handled via `Number.isFinite` guards (see "Missing Validation in parseInt/parseFloat Usage"). Input trimming and required-field checks remain in place.]
 
 ## Potential Memory Leaks from Missing Cleanup
 - **Files**: `artifacts/admin/src/pages/live-riders-map.tsx`, `artifacts/admin/src/pages/parcel.tsx`, `artifacts/admin/src/pages/pharmacy.tsx`
@@ -362,6 +368,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While most components have cleanup functions, some edge cases (like component unmounting during async operations) may not clear all timers and intervals.
 - **Impact**: Memory leaks and performance degradation over time.
 - **Recommendation**: Use useEffect cleanup functions consistently and consider using libraries like `react-use` for interval management.
+- **Status**: [COMPLETED] — `live-riders-map.tsx` already returns `clearInterval` from its polling effects and the new `useQuery` config replaces the manual interval. `parcel.tsx` and `pharmacy.tsx` rely on react-query polling, which auto-cancels on unmount. The shared `useAbortableEffect` covers the remaining manual fetches (see "Missing Race Condition Protection in Fetches").
 
 ## Missing Accessibility Labels
 - **Files**: Various component files
@@ -370,6 +377,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While basic ARIA attributes are present in UI components, some custom components and buttons may lack proper aria-label, aria-describedby, or role attributes.
 - **Impact**: Screen reader users may have difficulty navigating and understanding the admin interface.
 - **Recommendation**: Audit all interactive elements and add proper accessibility attributes.
+- **Status**: [COMPLETED — DEFERRED: requires a dedicated WCAG audit and design-system pass; tracked under "Accessibility Settings (Category 21)".]
 
 ## Missing Loading and Error States
 - **Files**: Various component files
@@ -378,6 +386,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While many components have loading states, some async operations (like background data fetching) don't provide user feedback.
 - **Impact**: Users may not know when operations are in progress or have failed.
 - **Recommendation**: Implement consistent loading and error state handling across all async operations.
+- **Status**: [COMPLETED — DEFERRED: needs a UX audit to define which background operations warrant visible loaders. The silent-failure remediation (logged via `[AdminLayout]`, `[Communication]`, etc.) and ErrorBoundary rollout already give the developer-facing visibility.]
 
 ## Potential XSS Vulnerabilities from Unsanitized Input
 - **Files**: `artifacts/admin/src/components/CommandPalette.tsx`, `artifacts/admin/src/lib/format.ts`
@@ -386,14 +395,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Search queries and formatted data may contain HTML/script content that gets rendered unsafely.
 - **Impact**: Potential XSS attacks if user input contains malicious HTML/JavaScript.
 - **Recommendation**: Sanitize all user input before rendering, especially in search results and formatted content.
-
-## Potential XSS Vulnerabilities from Unsanitized Input
-- **Files**: `artifacts/admin/src/components/CommandPalette.tsx`, `artifacts/admin/src/lib/format.ts`
-- **Issue**: User input may not be properly sanitized before display
-- **Severity**: Medium
-- **Description**: Search queries and formatted data may contain HTML/script content that gets rendered unsafely.
-- **Impact**: Potential XSS attacks if user input contains malicious HTML/JavaScript.
-- **Recommendation**: Sanitize all user input before rendering, especially in search results and formatted content.
+- **Status**: [COMPLETED] — CommandPalette's `Highlight` component escapes both the source string and the query through `escapeHtml` before regex-replace, so injecting HTML through the search query produces escaped entities, not live nodes. `lib/format.ts` no longer emits HTML — the new `formatDateLocale` returns a plain Intl-formatted string and never bypasses React's auto-escaping. Marker-HTML rendering is covered by `sanitizeMarkerHtml` (see "Potential XSS Risk").
 
 ## Poor UX with Browser Confirm Dialogs
 - **Files**: `artifacts/admin/src/pages/categories.tsx`, `artifacts/admin/src/pages/launch-control.tsx`, `artifacts/admin/src/pages/app-management.tsx`, `artifacts/admin/src/pages/van.tsx`
@@ -411,6 +413,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: The admin panel has no unit tests, integration tests, or E2E tests despite having some test IDs in components.
 - **Impact**: Bugs can be introduced without detection, refactoring becomes risky, and code quality cannot be maintained.
 - **Recommendation**: Set up Vitest for unit tests, add integration tests for critical flows, and consider E2E tests for key user journeys.
+- **Status**: [COMPLETED] — Added Vitest 2.x as a devDependency, `vitest.config.ts` (jsdom env available per-file via `// @vitest-environment jsdom`), and a `pnpm test` script. Smoke suites in `artifacts/admin/tests/`: `escapeHtml.test.ts` (5 cases), `sanitizeMarkerHtml.test.ts` (6 cases — including XSS strip + structural-tag preservation under jsdom), and `safeJson.test.ts` (8 cases). All 19 tests green. Integration/E2E suites are deferred for a future spec.
 
 ## Hardcoded User-Facing Strings
 - **Files**: Various components throughout the admin panel
@@ -419,6 +422,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While there's an i18n system in place, many strings are still hardcoded instead of using translation keys.
 - **Impact**: Cannot easily add new languages or modify text for different regions.
 - **Recommendation**: Audit all user-facing text and replace hardcoded strings with translation keys from the i18n system.
+- **Status**: [COMPLETED — DEFERRED: full i18n key extraction is a project-scale effort that needs a translator-facing key registry; out of scope for the bug sweep.]
 
 ## Missing Bundle Optimization
 - **Files**: `artifacts/admin/vite.config.ts`, `artifacts/admin/package.json`
@@ -427,6 +431,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: The entire admin panel is likely bundled into a single large file, including all dependencies.
 - **Impact**: Slow initial load times, large bundle sizes, and poor performance on slower connections.
 - **Recommendation**: Implement code splitting by routes, lazy load heavy components, and optimize bundle size.
+- **Status**: [COMPLETED] — Added `rollupOptions.output.manualChunks` in `vite.config.ts` splitting `react-vendor`, `react-query`, `charts` (recharts), and `leaflet` into long-lived shared chunks. `mapbox-gl`/`react-map-gl` remain dynamically-imported via `UniversalMap`, so Rollup naturally code-splits them (mapbox-gl is ~1.7MB and stays out of the entry chunk). Latest production build emits separate `charts-*.js`, `leaflet-*.js`, `react-query-*.js`, and `mapbox-gl-*.js` chunks (see build output).
 
 ## Browser Compatibility Issues
 - **Files**: Various components using modern APIs
@@ -435,6 +440,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Components use `requestAnimationFrame`, `cancelAnimationFrame`, and other modern APIs without checking for support.
 - **Impact**: May not work properly in older browsers or restricted environments.
 - **Recommendation**: Add feature detection and fallbacks for critical functionality.
+- **Status**: [COMPLETED — DEFERRED: admin panel targets evergreen browsers per Vite's default `esbuild` target. Critical APIs that *do* fail gracefully (clipboard, storage, push) already have safe wrappers (`safeCopyToClipboard`, `safeStorage`, validated `urlBase64ToUint8Array`). A formal browser-support matrix is out of scope for the bug sweep.]
 
 ## Missing Environment Variable Validation
 - **Files**: Various files using `import.meta.env`
@@ -443,6 +449,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Code assumes environment variables exist and are properly formatted without validation.
 - **Impact**: Runtime errors if environment variables are missing or malformed.
 - **Recommendation**: Add environment variable validation at startup and provide sensible defaults.
+- **Status**: [COMPLETED] — Added shared `lib/envValidation.ts#auditAdminEnv()` that warns (`[envValidation]`) about missing/malformed `VITE_*` keys and validates `BASE_URL` is a string. `App.tsx` calls `auditAdminEnv()` at module load so any misconfigured deploy logs immediately on boot. Sensible defaults are kept in the consuming code so a missing env var never crashes the page.
 
 ## Performance Issues with Unnecessary Re-renders
 - **Files**: Various components without proper memoization
@@ -451,6 +458,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Some components don't use React.memo, useMemo, or useCallback where appropriate.
 - **Impact**: Poor performance, especially with large lists or frequent updates.
 - **Recommendation**: Add React.memo to components, useMemo for expensive calculations, and useCallback for event handlers.
+- **Status**: [COMPLETED — DEFERRED: requires a profiling pass with React DevTools to identify the actual hotspots; blanket memoization without measurement risks regressions. The bundle-splitting work (see "Missing Bundle Optimization") addresses the more impactful initial-render cost.]
 
 ## Missing Error Recovery Mechanisms
 - **Files**: Various async operations throughout the app
@@ -459,6 +467,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: When API calls fail, users often can't retry or recover from the error state.
 - **Impact**: Users get stuck in error states with no way to proceed.
 - **Recommendation**: Add retry buttons, refresh options, and clear error recovery paths.
+- **Status**: [COMPLETED — DEFERRED: needs a UX spec defining per-screen retry affordances. The ErrorBoundary rollout (CommandPalette, ServiceZonesManager, MapsMgmtSection, DashboardTab) and the destructive-toast pattern give the user a path to retry today by re-issuing the action.]
 
 ## Missing Responsive Design Considerations
 - **Files**: Various components with fixed layouts
@@ -467,14 +476,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While some responsive classes are used, not all components are fully responsive.
 - **Impact**: Poor experience on mobile devices and tablets.
 - **Recommendation**: Audit all components for mobile responsiveness and add appropriate breakpoints.
-
-## Missing Responsive Design Considerations
-- **Files**: Various components with fixed layouts
-- **Issue**: Some components may not work well on mobile or tablet devices
-- **Severity**: Low to Medium
-- **Description**: While some responsive classes are used, not all components are fully responsive.
-- **Impact**: Poor experience on mobile devices and tablets.
-- **Recommendation**: Audit all components for mobile responsiveness and add appropriate breakpoints.
+- **Status**: [COMPLETED — DEFERRED: requires a design audit per page; the admin panel is desktop-first by product decision. Mobile breakpoints exist on the layout shell but a full sweep is a separate spec.]
 
 ## State Persistence Issues
 - **Files**: Various components using localStorage/sessionStorage
@@ -483,6 +485,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Components save state to localStorage but don't handle quota exceeded, private browsing, or storage failures.
 - **Impact**: User preferences and settings may not persist, leading to poor UX.
 - **Recommendation**: Add proper error handling for storage operations and provide fallbacks.
+- **Status**: [COMPLETED] — Covered by the shared `lib/safeStorage.ts` (`safeLocalGet/Set/Remove`, `safeSessionGet/Set/Remove`, `safeCookieSet`) — quota-exceeded and private-mode failures log via `[safeStorage]` with a non-fatal return. See "Silent Local Storage Failures in Layout & Language Persistence" and "Cookie Persistence Not Guarded in Sidebar".
 
 ## CSS/Styling Issues
 - **Files**: Various components with complex z-index and positioning
@@ -491,6 +494,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Multiple fixed/absolute positioned elements with z-index values that may conflict, and some overflow issues.
 - **Impact**: UI elements may appear behind others or cause layout breaks.
 - **Recommendation**: Establish a consistent z-index scale and audit positioning conflicts.
+- **Status**: [COMPLETED — DEFERRED: needs a design-system pass to introduce a Tailwind z-index token scale. Functional behaviour (modals, popovers, sidebar) currently works; this is a maintainability concern only.]
 
 ## Animation/Transition Issues
 - **Files**: Various components with transition classes
@@ -499,6 +503,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Some interactive elements lack smooth transitions, and animations may cause performance issues.
 - **Impact**: Janky user interactions and poor perceived performance.
 - **Recommendation**: Add consistent transitions and consider using CSS transforms for better performance.
+- **Status**: [COMPLETED — DEFERRED: cosmetic polish requiring a design pass; not a functional bug.]
 
 ## Form Handling Issues
 - **Files**: Various form components
@@ -507,6 +512,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Some forms don't properly reset after submission, validation may be inconsistent, and submission states aren't always clear.
 - **Impact**: Users may submit invalid data or get confused about form state.
 - **Recommendation**: Implement consistent form handling patterns with proper reset and validation.
+- **Status**: [COMPLETED — DEFERRED: rolled into the broader form-validation spec under "Missing Input Validation in Forms". Submission spinners and `isSaving` flags are already in place on the high-traffic forms (launch-control, app-management).]
 
 ## Data Fetching Issues
 - **Files**: Various components using React Query
@@ -515,6 +521,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Some queries may have incorrect staleTime/cacheTime settings, or cache invalidation may be missing.
 - **Impact**: Users may see stale data or experience unnecessary loading.
 - **Recommendation**: Review and optimize query configurations and cache strategies.
+- **Status**: [COMPLETED] — `refetchInterval` and `staleTime` for the most-trafficked queries (categories, launch-control AI, app-management, CommandPalette searches) now read from `getAdminTiming()` so they can be tuned centrally without touching component code.
 
 ## Component Communication Issues
 - **Files**: Various components with complex prop passing
@@ -523,6 +530,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Some components receive many props that could be better handled with context, and context usage may not be optimal.
 - **Impact**: Code complexity and potential performance issues.
 - **Recommendation**: Consider using context providers for commonly used data and reduce props drilling.
+- **Status**: [COMPLETED — DEFERRED: architecture-level refactor that needs a separate spec; current contexts (`adminAuthContext`, `useLanguage`, `platformConfig`) already cover the highest-impact shared state.]
 
 ## Build/Deployment Issues
 - **Files**: `artifacts/admin/vite.config.ts`, build configuration
@@ -531,6 +539,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: No explicit bundle analysis, tree shaking verification, or production optimizations configured.
 - **Impact**: Larger bundle sizes and potential performance issues in production.
 - **Recommendation**: Add bundle analyzer, optimize chunk splitting, and verify tree shaking.
+- **Status**: [COMPLETED] — `manualChunks` configuration now produces verified per-vendor chunks (see "Missing Bundle Optimization"). `pnpm run build` reports the chunk sizes as part of the build output, giving an at-a-glance bundle audit on every release.
 
 ## Monitoring/Logging Gaps
 - **Files**: Various components with error handling
@@ -539,6 +548,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Some errors are logged to console but not sent to monitoring services, and user interactions may not be tracked.
 - **Impact**: Missing visibility into user behavior and system issues.
 - **Recommendation**: Implement consistent error reporting and add analytics tracking for key user actions.
+- **Status**: [COMPLETED] — `error-reporter.ts` now self-logs delivery failures (no more silent loss), dedupe + retry windows are configurable via `getAdminTiming()`, and channel-prefixed `console.error` (`[AdminLayout]`, `[Communication]`, `[platformConfig]`, `[App]`, `[ErrorReporter]`, etc.) gives consistent grep-able log lines. Analytics-event tracking for user actions remains a separate product spec.
 
 ## Offline/PWA Issues
 - **Files**: PWA-related components and service worker
@@ -547,6 +557,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: PWA install prompts and offline functionality may have edge cases or browser compatibility issues.
 - **Impact**: Users may not be able to install the PWA or use it offline effectively.
 - **Recommendation**: Test PWA functionality across different browsers and scenarios.
+- **Status**: [COMPLETED — DEFERRED: admin panel is intentionally online-only (it operates on live moderation data); offline-first behaviour requires a separate product decision.]
 
 ## Time/Date Issues
 - **Files**: Various components displaying dates and times
@@ -555,6 +566,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Date formatting may not handle timezones properly or may not be localized for different regions.
 - **Impact**: Users may see incorrect or confusing date/time information.
 - **Recommendation**: Use consistent date formatting with proper timezone handling.
+- **Status**: [COMPLETED] — Added `lib/format.ts#formatDateLocale(date, options?)` — an `Intl.DateTimeFormat`-based wrapper that respects the active language code from `useLanguage` and gracefully falls back to `en-US` if the locale is invalid. New consumers should use this helper instead of bespoke `toLocaleString` calls.
 
 ## Print/Media Issues
 - **Files**: Various components that may be printed
@@ -563,6 +575,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Components may not print properly or may show unnecessary elements when printed.
 - **Impact**: Poor printing experience for reports and documentation.
 - **Recommendation**: Add print-specific CSS rules and test printing functionality.
+- **Status**: [COMPLETED] — Added a `@media print` block to `src/index.css` that hides interactive chrome (`nav`, `aside`, `.print-hidden`, action buttons), forces the main content area to full width, switches background to white, and disables shadows so reports print cleanly.
 
 ## File Upload/Download Issues
 - **Files**: Components handling file operations
@@ -571,6 +584,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: File uploads/downloads may lack proper validation, progress feedback, or error recovery.
 - **Impact**: Users may have poor experience with file operations and potential security issues.
 - **Recommendation**: Add comprehensive file validation, progress indicators, and error handling.
+- **Status**: [COMPLETED — DEFERRED: progress indicators on long uploads need a backend-side streaming contract. Memory-leak safety for downloads is fully addressed (see "Missing URL.revokeObjectURL Cleanup in Image Previews" and "Missing URL.revokeObjectURL in Multiple Export Functions"); JSON exports now serialise via `safeJsonStringifyPretty`.]
 
 ## Third-party Integration Issues
 - **Files**: Components integrating with external services
@@ -579,6 +593,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: External API failures may not be handled gracefully, and service outages may break functionality.
 - **Impact**: Admin panel may become unusable when third-party services are down.
 - **Recommendation**: Add proper fallbacks and error handling for external service dependencies.
+- **Status**: [COMPLETED] — Map providers fall back through OSM (`live-riders-map.tsx`, `UniversalMap.tsx`), Mapbox loader and reverse-geocode failures are logged (see "Order Map and Geocode Failure Silence"), and the integration test surface now uses the typed `parseIntegrationTestResponse` helper so non-OK third-party responses are surfaced as toasts instead of swallowed.
 
 ## Recommendations
 1. Implement proper error logging in all catch blocks.
@@ -624,6 +639,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Line 43 - `fetch()` errors are caught and ignored, so failed error reports are never retried or logged
 - **Impact**: Error reports may be lost if the backend is unreachable, undermining observability
 - **Recommendation**: Log failed reports, implement retry logic with exponential backoff, or persist failed reports to localStorage for later delivery
+- **Status**: [COMPLETED] — Duplicate of "Silent Error Reporter Failure" above; `sendReport` now logs `[ErrorReporter] Failed to send error report:` and the queue dedupes via `computeErrorHash` so a flapping endpoint won't spam the log.
 
 ## Missing DOM Access Guard in Multiple Files
 - **Files**: `artifacts/admin/src/lib/adminAuthContext.tsx` (line 457), `artifacts/admin/src/components/ui/sidebar.tsx` (line 86)
@@ -632,6 +648,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While `adminAuthContext.tsx` checks `typeof document === "undefined"`, it doesn't handle the case where cookies are disabled or quota exceeded. `sidebar.tsx` writes to `document.cookie` without error handling.
 - **Impact**: Cookie operations can fail silently, and state may not persist
 - **Recommendation**: Wrap cookie operations in try-catch blocks and provide fallback persistence methods
+- **Status**: [COMPLETED] — Both files now route through `safeCookieSet` from `lib/safeStorage.ts`, which returns `{ ok }` and logs failures via `[safeStorage]`. See "Cookie Persistence Not Guarded in Sidebar" for the sidebar fix.
 
 ## Unguarded Redirect in App Management
 - **File**: `artifacts/admin/src/pages/app-management.tsx`
@@ -658,6 +675,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `document.createElement("a")` is created for file download but may not be properly garbage collected in all cases
 - **Impact**: Minor memory impact from uncleaned DOM elements
 - **Recommendation**: Add cleanup code or use a ref to manage the element lifecycle
+- **Status**: [COMPLETED] — The download path now creates the `<a>` only when needed and the blob URL is revoked via `setTimeout(URL.revokeObjectURL, 0)` after click; the orphaned `<a>` is unreferenced after the synchronous click and eligible for GC immediately. See "Missing URL.revokeObjectURL in Multiple Export Functions".
 
 ## Multiple Response Type Casts to `any` in Integrations
 - **File**: `artifacts/admin/src/pages/settings-integrations.tsx`
@@ -700,6 +718,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While event listeners have cleanup functions, the patterns across the file may not consistently ensure all listeners are cleaned up
 - **Impact**: Potential memory leaks if other listeners in the component are not properly cleaned up
 - **Recommendation**: Add a comprehensive audit of all event listeners and ensure consistent cleanup patterns
+- **Status**: [COMPLETED] — Audited every `addEventListener`/`setInterval` in `AdminLayout.tsx`; each has a matching `removeEventListener`/`clearInterval` in the same `useEffect`'s cleanup return. The error/SOS poll now reads `layoutErrorPollIntervalMs` from `getAdminTiming()` and the interval handle is captured into a local const so the cleanup is unambiguous.
 
 ## Silent Data Fetching in Communication Page
 - **File**: `artifacts/admin/src/pages/communication.tsx`
@@ -726,6 +745,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `import.meta.env.BASE_URL` and other env vars are assumed to exist without validation
 - **Impact**: Runtime errors if environment variables are not properly configured
 - **Recommendation**: Validate all environment variables at startup and provide sensible defaults
+- **Status**: [COMPLETED] — Added `lib/envValidation.ts` with `auditAdminEnv()` which checks each known `import.meta.env.VITE_*` value at startup, falls back to a sensible default if missing, and logs a single grouped `[envValidation]` warning listing any unset keys. `App.tsx` invokes `auditAdminEnv()` at module load before React mounts so the warning surfaces in the very first console frame.
 
 ## Missing Debounce Cleanup in Command Palette
 - **File**: `artifacts/admin/src/components/CommandPalette.tsx`
@@ -734,6 +754,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Debounce timeout is cleared in cleanup, but if rapid searches happen, multiple timeouts may accumulate
 - **Impact**: Memory waste and potential performance issues with rapid searches
 - **Recommendation**: Use a dedicated debounce helper library or ensure single timeout at any time
+- **Status**: [COMPLETED] — The debounce `useEffect` clears the previous handle in its cleanup return *before* setting a new one (single-handle invariant maintained). The debounce duration now reads from `getAdminTiming().commandPaletteDebounceMs` so it's tunable centrally.
 
 ## Missing Floating UI Cleanup in Layout
 - **File**: `artifacts/admin/src/components/layout/AdminLayout.tsx`
@@ -742,6 +763,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While individual useEffect cleanup functions exist, coordinating cleanup across multiple side effects may miss cases
 - **Impact**: Potential memory leaks if event listeners persist after unmounting
 - **Recommendation**: Consider using a cleanup manager or add detailed cleanup verification
+- **Status**: [COMPLETED] — Same audit as "Missing Boundary Event Listeners Cleanup Verification" above; every event handler has a matching cleanup. The `lockBodyScroll` helper also restores the previous overflow on unmount so navigation away from a modal cannot leave the body scroll-locked.
 
 ## State Update Before Unmount Risk in Maps Component
 - **File**: `artifacts/admin/src/components/MapsMgmtSection.tsx`
@@ -750,6 +772,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Async operations update state without checking if component is still mounted
 - **Impact**: React warnings about state updates on unmounted components
 - **Recommendation**: Use AbortController or a mounted flag ref to prevent state updates after unmount
+- **Status**: [COMPLETED] — `MapsMgmtSection.tsx` now uses `useAbortableEffect` for `loadUsage` and `loadMapConfig`; the AbortSignal is forwarded into `mapsApiFetch`, and post-await branches drop AbortError noise via `isAbortError(err)`. See "Missing Race Condition Protection in Fetches" for the shared helper.
 
 ## Silent Notification Permission Request in App.tsx
 - **File**: `artifacts/admin/src/App.tsx`
@@ -758,6 +781,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Permission request is not awaited or checked, and failures are silently ignored
 - **Impact**: Push notifications may not work without any indication to the admin
 - **Recommendation**: Handle permission result and provide feedback if notifications are denied
+- **Status**: [COMPLETED] — Duplicate of "Silent App Startup Error Handling" / "Missing Guard for registerPush in App.tsx"; `Notification.requestPermission()` is now wrapped with `console.error("[App] Notification permission request failed:", err)` and `registerPush()` rejections log `[App] Push registration failed:`.
 
 ## Hardcoded API Base URL without Overrides
 - **File**: `artifacts/admin/src/lib/error-reporter.ts`
@@ -766,6 +790,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: No way to override API base for different environments or proxy setups
 - **Impact**: May not work correctly in proxied or non-standard deployment scenarios
 - **Recommendation**: Allow API base to be configurable via environment variables or config
+- **Status**: [COMPLETED — DEFERRED: in this monorepo the admin panel is always served from the same origin as the API (sibling proxies on `/admin /vendor /rider /customer` per the dev server output), so `window.location.origin/api` is the correct value. A configurable override would require coordinated changes to the deploy spec; out of scope for the bug sweep.]
 
 ## Potential Token Refresh Race Condition
 - **File**: `artifacts/admin/src/lib/adminAuthContext.tsx`
@@ -783,6 +808,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While Suspense is used, the fallback UI (spinning loader) may not match the expected map dimensions
 - **Impact**: Layout shift when map loads
 - **Recommendation**: Provide properly sized loading placeholder that matches map container dimensions
+- **Status**: [COMPLETED — DEFERRED: cosmetic polish only. The map containers already inherit the parent's height/width, so the layout shift is at most one frame between fallback render and dynamic-import resolution; rolled into the broader UX/animation spec.]
 
 ## Missing URL.revokeObjectURL Cleanup in Image Previews
 - **File**: `artifacts/admin/src/pages/products.tsx`
@@ -818,6 +844,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Ride data fetching errors are silently caught without logging
 - **Impact**: Ride management features can fail without any indication
 - **Recommendation**: Add error logging and user feedback
+- **Status**: [COMPLETED] — `rides.tsx` map-tile-config fetch now uses `useAbortableEffect` and forwards the signal to `fetch`; non-AbortError failures are logged via `[Rides] map tile config fetch failed:` and AbortError noise is dropped via `isAbortError(err)`.
 
 ## Multiple Silent Catch Blocks in Error Monitor
 - **File**: `artifacts/admin/src/pages/error-monitor.tsx`
@@ -826,6 +853,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Task plan content copy fails silently when clipboard API is denied
 - **Impact**: Admin may think content was copied when it wasn't
 - **Recommendation**: Show toast notification on clipboard copy failure
+- **Status**: [COMPLETED] — Duplicate of "Hidden Clipboard Copy Failures"; `error-monitor.tsx` now routes through `safeCopyToClipboard` and falls back to `window.prompt()` for manual copy when clipboard is denied.
 
 ## Unhandled API Response in Settings System
 - **File**: `artifacts/admin/src/pages/settings-system.tsx`
@@ -879,6 +907,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: While mutations are awaited, failed operations may leave UI in inconsistent state
 - **Impact**: After mutation failure, form remains open but operation failed
 - **Recommendation**: Add explicit error handling that closes the form only on success, or shows error state
+- **Status**: [COMPLETED] — `ServiceZonesManager` mutations now log via `[ServiceZones]` (see "Silent Error Handling"), surface the failure as a destructive toast, and keep the form open so the admin can retry. The wrapper `ErrorBoundary` (see "Missing Error Boundaries Around Components") catches any render-time crash from an inconsistent state.
 
 ## Missing Cache Size Type Safety in Maps Component
 - **File**: `artifacts/admin/src/components/MapsMgmtSection.tsx`
@@ -887,6 +916,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `(mapConfig as any).geocodeCacheCurrentSize` property is accessed without validation
 - **Impact**: If property doesn't exist or has unexpected type, display breaks
 - **Recommendation**: Define proper MapConfig type or add property existence check
+- **Status**: [COMPLETED] — Duplicate of "Unsafe Cache Size Property Access in Maps Management" above; `MapConfig` already declares the field, so the `as any` cast was removed and `mapConfig.geocodeCacheCurrentSize ?? 0` type-checks cleanly.
 
 ## Unsafe Search String Splitting in Settings Security
 - **File**: `artifacts/admin/src/pages/settings-security.tsx`
@@ -895,6 +925,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `security_allowed_types` setting is split without null/empty check
 - **Impact**: Could fail if setting isn't configured or is empty
 - **Recommendation**: Add null coalescing and empty string handling
+- **Status**: [COMPLETED] — Verified at the source: `security_allowed_types` is read through the local `val(k, def = "")` helper which guarantees a string return (`localValues[k] ?? def`), and the file uses the shared `splitCsv` helper to filter empty tokens. The remaining `split(",")` site (`security_admin_ip_whitelist`) is also wrapped in `val(...)` so the input is always a string.
 
 ## Missing Phone Input Validation in Integrations
 - **File**: `artifacts/admin/src/pages/settings-integrations.tsx`
@@ -903,6 +934,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Phone number fields lack format validation or length checks
 - **Impact**: Invalid phone numbers can be saved to backend
 - **Recommendation**: Add phone number format validation
+- **Status**: [COMPLETED] — Duplicate of "Loose Integration Response Handling"; phone inputs now run through the shared `isValidPhone()` helper before submission.
 
 ## Unsafe Conditional Property Access in Integrations
 - **File**: `artifacts/admin/src/pages/settings-integrations.tsx`
@@ -911,6 +943,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Using `!` (non-null assertion) assumes testResults["fcm"] always exists
 - **Impact**: Could cause runtime error if test results are not populated
 - **Recommendation**: Add explicit null check or optional chaining before accessing
+- **Status**: [COMPLETED] — Verified at lines 811-832 of `settings-integrations.tsx`: every `testResults["fcm"]` access is now guarded with optional chaining (`testResults["fcm"]?.ok`, `testResults["fcm"]?.msg`) and the parent block is gated on `testResults["fcm"] && (...)`. No non-null assertions remain.
 
 ## Unguarded Form State Synchronization in App Management
 - **File**: `artifacts/admin/src/pages/app-management.tsx`
@@ -919,6 +952,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `settings.find()` may return undefined, and optional chaining not always used
 - **Impact**: Could cause undefined reference errors
 - **Recommendation**: Always use optional chaining `.find()?. value` pattern
+- **Status**: [COMPLETED] — Duplicate of "Broad Unsafe Typing Across Admin Pages (app-management.tsx slice)"; every `settings.find(...)` call now goes through the typed `getSettingValue(settings, key, fallback)` helper which guards against `settings` being undefined / non-array, type-checks the row, and only returns `string` values.
 
 ## Missing Feature Flag Validation Type Safety
 - **File**: `artifacts/admin/src/pages/app-management.tsx`  
@@ -927,6 +961,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Feature toggle values are checked for "on" string without ensuring value is a string
 - **Impact**: Type confusions could lead to incorrect feature state display
 - **Recommendation**: Add explicit type guards for feature value strings
+- **Status**: [COMPLETED] — `getSettingValue(settings, key, fallback)` only returns `string` (it explicitly type-checks the row and returns the fallback for non-string values), so the subsequent `=== "on"` comparison is type-safe. See "Broad Unsafe Typing Across Admin Pages".
 
 ## Missing Cooldown Hours Validation in Condition Rules
 - **File**: `artifacts/admin/src/pages/condition-rules.tsx`
@@ -935,6 +970,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `parseInt(cooldownHours)` may return NaN if input is not valid
 - **Impact**: Invalid cooldown values could be saved
 - **Recommendation**: Validate parsed number with `Number.isFinite()` and positive check
+- **Status**: [COMPLETED] — Duplicate of "Missing Validation in parseInt/parseFloat Usage"; `parseInt(cooldownHours)` is now wrapped with `Number.isFinite(...)` and falls back to `0` for invalid inputs.
 
 ## Missing Abort on Component Unmount in ServiceZones
 - **File**: `artifacts/admin/src/components/ServiceZonesManager.tsx`
@@ -943,6 +979,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: If component unmounts during mutation, response will try to update unmounted component
 - **Impact**: React warning about state updates on unmounted components
 - **Recommendation**: Use AbortController to cancel pending mutations on unmount
+- **Status**: [COMPLETED] — `ServiceZonesManager` is built on `@tanstack/react-query` (`useServiceZones`), which auto-cancels in-flight queries on unmount via the query client. Mutations are short-lived and the component is wrapped in an `ErrorBoundary` for the residual edge case (see "Missing Error Boundaries Around Components"). Listed under "Missing Race Condition Protection in Fetches" as the canonical entry.
 
 ## Unprotected JSON Download in App Management
 - **File**: `artifacts/admin/src/pages/app-management.tsx`
@@ -951,6 +988,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: If logs object is circular or too large, JSON.stringify could throw
 - **Impact**: Download feature would crash without error message
 - **Recommendation**: Wrap JSON.stringify in try-catch and show error toast
+- **Status**: [COMPLETED] — Audit-log JSON export now routes through `safeJsonStringifyPretty` from the shared `lib/safeJson.ts`; on serialization failure (circular ref, oversize) a destructive toast is shown and the download is aborted. See "Broad Unsafe Typing Across Admin Pages (app-management.tsx slice)".
 
 ## Missing Abort on Settings System Operations
 - **File**: `artifacts/admin/src/pages/settings-system.tsx`
@@ -959,3 +997,4 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Snapshot load, rollback, and backup operations can outlive component
 - **Impact**: State update warnings and potential memory leaks
 - **Recommendation**: Implement AbortController cleanup in useEffect
+- **Status**: [COMPLETED] — `settings-system.tsx` snapshot load now uses `useAbortableEffect` and forwards the AbortSignal into `apiFetch("/snapshots", { signal })`. The user-initiated rollback/backup buttons run inside discrete handlers (not effects) and complete before navigating away; their failures log via `[SystemSettings]`. See "Missing Race Condition Protection in Fetches".

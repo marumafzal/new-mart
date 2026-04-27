@@ -11,6 +11,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
+import { getAdminTiming } from "@/lib/adminTiming";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { Mail } from "lucide-react";
 import { useAuditLog } from "@/hooks/use-admin";
@@ -141,7 +142,7 @@ function SessionsTab() {
       // assignment value (no-return-assign).
       setTimeout(() => {
         window.location.href = `${import.meta.env.BASE_URL || '/'}login`;
-      }, 1500);
+      }, getAdminTiming().loginRedirectDelayMs);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to revoke sessions";
       toast({ title: "Error revoking sessions", description: message, variant: "destructive" });
@@ -362,7 +363,7 @@ export default function AppManagement() {
   const { data: overview, isLoading: overviewLoading, refetch: refetchOverview } = useQuery<AppOverview>({
     queryKey: ["admin-app-overview"],
     queryFn: () => fetcher("/app-overview"),
-    refetchInterval: 30000,
+    refetchInterval: getAdminTiming().refetchIntervalAppManagementMs,
   });
 
   const { data: adminsData, isLoading: adminsLoading, refetch: refetchAdmins } = useQuery({

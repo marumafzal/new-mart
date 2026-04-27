@@ -1,6 +1,20 @@
 import { readCsrfFromCookie } from './adminAuthContext.js';
 import { safeSessionSet } from './safeStorage';
 
+/**
+ * Typed Error for non-2xx admin fetcher responses. Replaces the previous
+ * `(error as any).status = …` pattern so callers can `instanceof`
+ * narrow and read the HTTP status without `any`.
+ */
+export class AdminFetchError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'AdminFetchError';
+    this.status = status;
+  }
+}
+
 // Global handlers set by the app
 let getAccessToken: (() => string | null) | null = null;
 let refreshToken: (() => Promise<string>) | null = null;
@@ -98,9 +112,7 @@ export async function fetchAdmin(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const error = new Error(errorData.error || `HTTP ${response.status}`);
-      (error as any).status = response.status;
-      throw error;
+      throw new AdminFetchError(errorData.error || `HTTP ${response.status}`, response.status);
     }
 
     return response;
@@ -170,9 +182,7 @@ export async function fetchAdminAbsolute(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    const error = new Error(errorData.error || `HTTP ${response.status}`);
-    (error as any).status = response.status;
-    throw error;
+    throw new AdminFetchError(errorData.error || `HTTP ${response.status}`, response.status);
   }
 
   return response.json();

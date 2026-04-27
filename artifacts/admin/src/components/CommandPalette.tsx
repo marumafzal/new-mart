@@ -13,6 +13,45 @@ import {
 import { SEARCH_INDEX, type SearchEntry, type SearchCategory } from "@/lib/searchIndex";
 import { matchesKeywords } from "@/lib/romanUrdu";
 import { safeLocalGet, safeLocalSet } from "@/lib/safeStorage";
+import { getAdminTiming } from "@/lib/adminTiming";
+
+/* ── Live search result types — replace the previous `any[]` lists ───── */
+interface LiveUser {
+  id?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+}
+
+interface LiveRide {
+  id?: string;
+  status?: string;
+  pickupAddress?: string;
+  dropAddress?: string;
+  fare?: string | number;
+  offeredFare?: number;
+}
+
+interface LiveOrder {
+  id?: string;
+  status?: string;
+  deliveryAddress?: string;
+  total?: string | number;
+}
+
+interface LiveSearchResponse {
+  users?: LiveUser[];
+  rides?: LiveRide[];
+  orders?: LiveOrder[];
+  pharmacy?: LiveOrder[];
+}
+
+type CmdItem =
+  | (SearchEntry & { _aiResult?: boolean; _aiReason?: string; _type?: undefined })
+  | (LiveUser & { _type: "user" })
+  | (LiveRide & { _type: "ride" })
+  | (LiveOrder & { _type: "order"; _pharm?: boolean });
 
 /* ─── Keywords that signal a command intent (not a search) ─────────────── */
 const CMD_KEYWORDS = [
@@ -155,7 +194,10 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   /* ── Debounced query for backend calls ── */
   const [debouncedQ, setDebouncedQ] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(query), 300);
+    const t = setTimeout(
+      () => setDebouncedQ(query),
+      getAdminTiming().commandPaletteDebounceMs,
+    );
     return () => clearTimeout(t);
   }, [query]);
 
@@ -187,7 +229,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       });
     },
     enabled: aiEnabled && debouncedQ.length >= 5,
-    staleTime: 30_000,
+    staleTime: getAdminTiming().errorReporterDedupWindowMs,
     retry: false,
   });
 
@@ -232,10 +274,11 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   });
 
   /* ── Live DB results ── */
-  const liveUsers:    any[] = liveData?.users    ?? [];
-  const liveRides:    any[] = liveData?.rides    ?? [];
-  const liveOrders:   any[] = liveData?.orders   ?? [];
-  const livePharmacy: any[] = liveData?.pharmacy ?? [];
+  const live: LiveSearchResponse = (liveData ?? {}) as LiveSearchResponse;
+  const liveUsers:    LiveUser[]  = live.users    ?? [];
+  const liveRides:    LiveRide[]  = live.rides    ?? [];
+  const liveOrders:   LiveOrder[] = live.orders   ?? [];
+  const livePharmacy: LiveOrder[] = live.pharmacy ?? [];
 
   /* Apply per-category filtering */
   const showUsers  = activeFilter === "All" || activeFilter === "Users";
@@ -250,14 +293,19 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   };
 
   /* Build full item list: AI → static → live */
-  const allItems: any[] = [
-    ...aiEnrichedItems.map(e => ({ ...e, _aiResult: true })),
+  const allItems: CmdItem[] = [
+    ...aiEnrichedItems.map(e => ({ ...e, _aiResult: true } as CmdItem)),
     ...filteredStaticItems
       .filter(e => !aiEnrichedItems.find(a => a.id === e.id))
-      .map(e => ({ ...e })),
-    ...(showUsers ? liveUsers.map((u: any) => ({ _type: "user", ...u })) : []),
-    ...(showRides ? filterByStatus(liveRides).map((r: any) => ({ _type: "ride", ...r })) : []),
-    ...(showOrders ? filterByStatus([...liveOrders.map((o: any) => ({ ...o, _pharm: false })), ...livePharmacy.map((p: any) => ({ ...p, _pharm: true }))]).map((o: any) => ({ _type: "order", ...o })) : []),
+      .map(e => ({ ...e } as CmdItem)),
+    ...(showUsers ? liveUsers.map((u): CmdItem => ({ _type: "user", ...u })) : []),
+    ...(showRides ? filterByStatus(liveRides).map((r): CmdItem => ({ _type: "ride", ...r })) : []),
+    ...(showOrders
+      ? filterByStatus([
+          ...liveOrders.map(o => ({ ...o, _pharm: false })),
+          ...livePharmacy.map(p => ({ ...p, _pharm: true })),
+        ]).map((o): CmdItem => ({ _type: "order", ...o }))
+      : []),
   ];
 
   /* ── Reset selection on list/query change; clear stale cmd result ── */
@@ -279,8 +327,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   }, [open]);
 
   /* ── Navigate to item (with query params intact for filtered views) ── */
-  const navigate = useCallback((item: any) => {
-    const path = item.path ?? item.href;
+  const navigate = useCallback((item: CmdItem) => {
+    const path = (item as SearchEntry).path ?? (item as { href?: string }).href;
     if (path) {
       /* Path may already contain query params (e.g. /orders?status=pending) */
       setLocation(path);
@@ -522,7 +570,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className={`text-sm font-semibold truncate ${isSelected ? "text-primary" : ""}`}>
-                            <Highlight text={item.title ?? item.label} query={query} />
+                            <Highlight text={item.title} query={query} />
                           </p>
                           {item._aiResult && (
                             <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-600 text-[9px] font-bold">
@@ -577,14 +625,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-xs font-mono text-muted-foreground">#{item.id?.slice(-8).toUpperCase()}</p>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md capitalize ${STATUS_COLORS[item.status] ?? "bg-muted text-muted-foreground"}`}>{item.status}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md capitalize ${(item.status && STATUS_COLORS[item.status]) || "bg-muted text-muted-foreground"}`}>{item.status}</span>
                         {item.offeredFare && <span className="text-[10px] text-orange-600 font-bold">💬 Rs.{Math.round(item.offeredFare)}</span>}
                       </div>
                       <p className="text-sm font-medium truncate"><Highlight text={item.pickupAddress || "—"} query={query} /></p>
                       <p className="text-xs text-muted-foreground truncate">→ {item.dropAddress}</p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs font-bold">Rs. {Math.round(parseFloat(item.fare || "0"))}</p>
+                      <p className="text-xs font-bold">Rs. {Math.round(parseFloat(String(item.fare ?? "0")))}</p>
                     </div>
                   </button>
                 )}
@@ -605,13 +653,13 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="text-xs font-mono text-muted-foreground">#{item.id?.slice(-8).toUpperCase()}</p>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md capitalize ${STATUS_COLORS[item.status] ?? "bg-muted text-muted-foreground"}`}>{item.status}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md capitalize ${(item.status && STATUS_COLORS[item.status]) || "bg-muted text-muted-foreground"}`}>{item.status}</span>
                         {item._pharm && <span className="text-[10px] text-purple-600 font-bold">Pharmacy</span>}
                       </div>
                       <p className="text-sm font-medium truncate"><Highlight text={item.deliveryAddress || "—"} query={query} /></p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs font-bold">Rs. {Math.round(parseFloat(item.total || "0"))}</p>
+                      <p className="text-xs font-bold">Rs. {Math.round(parseFloat(String(item.total ?? "0")))}</p>
                     </div>
                   </button>
                 )}

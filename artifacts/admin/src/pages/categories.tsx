@@ -8,6 +8,7 @@ import {
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
+import { getAdminTiming } from "@/lib/adminTiming";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,7 +73,7 @@ export default function CategoriesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["admin-categories-tree", filterType],
     queryFn: () => fetcher(`/categories/tree${filterType ? `?type=${filterType}` : ""}`),
-    refetchInterval: 30000,
+    refetchInterval: getAdminTiming().refetchIntervalCategoriesMs,
   });
 
   const categories: Category[] = data?.categories || [];

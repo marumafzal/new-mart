@@ -13,6 +13,11 @@ import { initErrorReporter, reportError } from "@/lib/error-reporter";
 import { AdminAuthProvider, useAdminAuth } from "@/lib/adminAuthContext";
 import { setupAdminFetcherHandlers } from "@/lib/adminFetcher";
 import { setTokenHandlers } from "@/lib/api";
+import { auditAdminEnv } from "@/lib/envValidation";
+
+// Run env audit once at module load so warnings appear before any
+// component depends on `import.meta.env.BASE_URL` etc.
+auditAdminEnv();
 
 // Layout & Pages
 import { AdminLayout } from "@/components/layout/AdminLayout";

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
+import { getAdminTiming } from "@/lib/adminTiming";
 
 interface PullToRefreshProps {
   onRefresh: () => Promise<void>;
@@ -35,7 +36,10 @@ export function PullToRefresh({ onRefresh, children, accentColor = "#1A56DB", cl
   const threshold = 80;
 
   useEffect(() => {
-    const id = setInterval(() => setAgoText(formatAgo(lastUpdated)), 15000);
+    const id = setInterval(
+      () => setAgoText(formatAgo(lastUpdated)),
+      getAdminTiming().pullToRefreshIntervalMs,
+    );
     return () => clearInterval(id);
   }, [lastUpdated]);
 

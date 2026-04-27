@@ -177,3 +177,70 @@ table thead th {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Print stylesheet — when admins print invoices, audit logs, dashboard
+ * snapshots etc. the on-screen sidebar/header chrome and command palette
+ * should disappear. Tables collapse to plain black-on-white so toner
+ * isn't wasted on background colours.
+ * ────────────────────────────────────────────────────────────────────── */
+@media print {
+  /* Strip background chrome */
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Hide non-content UI: sidebar, header chrome, fixed nav, toasts */
+  aside,
+  nav,
+  header,
+  .sidebar,
+  .admin-sidebar,
+  [data-no-print="true"],
+  [role="dialog"][data-state="open"],
+  [data-radix-toast-viewport],
+  .pwa-install-banner {
+    display: none !important;
+  }
+
+  main, .print-area {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Tables print full width with simple borders */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+  table tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  table td, table th {
+    border: 1px solid #000 !important;
+    padding: 4px 8px !important;
+    color: #000 !important;
+  }
+  table tbody tr:hover {
+    background-color: transparent !important;
+  }
+
+  /* Hide interactive controls */
+  button, .button, [role="button"] {
+    display: none !important;
+  }
+
+  /* Avoid breaking key blocks across pages */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+
+  a[href]::after {
+    content: "" !important;
+  }
+}

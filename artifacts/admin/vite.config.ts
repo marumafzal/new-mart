@@ -55,6 +55,29 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    /**
+     * Heavy third-party deps split into their own chunks. Without this
+     * the entry chunk balloons (recharts + leaflet + mapbox-gl alone are
+     * ~1MB minified) and a single deploy invalidates every cache.
+     * Splitting lets browsers cache the libraries across releases.
+     */
+    rollupOptions: {
+      output: {
+        /**
+         * Only bare-import packages are listed here. `react-map-gl` and
+         * `mapbox-gl` are pulled in via dynamic imports inside
+         * UniversalMap, so Rollup naturally chunks them — listing them
+         * statically breaks the build because `react-map-gl` only
+         * publishes subpath exports.
+         */
+        manualChunks: {
+          "react-vendor": ["react", "react-dom"],
+          "react-query": ["@tanstack/react-query"],
+          "charts": ["recharts"],
+          "leaflet": ["leaflet", "react-leaflet"],
+        },
+      },
+    },
   },
   server: {
     port,

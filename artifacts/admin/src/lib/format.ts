@@ -13,6 +13,32 @@ export const formatDate = (dateString: string) => {
   }
 };
 
+/**
+ * Locale-aware date formatter. Uses Intl.DateTimeFormat (timezone-aware)
+ * and silently falls back to the raw string on parse failure. Defaults to
+ * the user agent's locale so admins in different regions see dates in
+ * their own format.
+ */
+export const formatDateLocale = (
+  dateString: string,
+  locale: string | undefined = undefined,
+  options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  },
+) => {
+  try {
+    const d = new Date(dateString);
+    if (Number.isNaN(d.getTime())) return dateString;
+    return new Intl.DateTimeFormat(locale, options).format(d);
+  } catch {
+    return dateString;
+  }
+};
+
 export const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
     case 'pending':

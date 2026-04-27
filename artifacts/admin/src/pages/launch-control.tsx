@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher, apiAbsoluteFetchRaw } from "@/lib/api";
+import { getAdminTiming } from "@/lib/adminTiming";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -242,7 +243,7 @@ export default function LaunchControl() {
   const { data: launchData, isLoading, refetch } = useQuery<LaunchData>({
     queryKey: ["launch-settings"],
     queryFn: () => fetcher("/launch/settings") as Promise<LaunchData>,
-    staleTime: 30000,
+    staleTime: getAdminTiming().refetchIntervalLaunchControlMs,
   });
 
   const { data: plansData } = useQuery<PlansData>({

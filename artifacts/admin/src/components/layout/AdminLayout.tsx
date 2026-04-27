@@ -61,6 +61,8 @@ import { safeLocalGet, safeLocalSet } from "@/lib/safeStorage";
 import { tDual, type TranslationKey, LANGUAGE_OPTIONS } from "@workspace/i18n";
 import { io, type Socket } from "socket.io-client";
 import { fetcher } from "@/lib/api";
+import { getAdminTiming } from "@/lib/adminTiming";
+import { lockBodyScroll } from "@/lib/domSafety";
 
 type NavGroup = {
   labelKey: TranslationKey;
@@ -239,7 +241,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       fetcher("/error-reports/new-count")
         .then((data: { count?: number }) => { if (typeof data.count === "number") setErrorCount(data.count); })
         .catch((err) => { console.error("[AdminLayout] Error count interval fetch failed:", err); });
-    }, 60000);
+    }, getAdminTiming().layoutErrorPollIntervalMs);
     const cleanupErrorInterval = () => clearInterval(errorInterval);
 
     // Socket uses in-memory access token from adminAuthContext
@@ -290,12 +292,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (isMobileMenuOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => { document.body.style.overflow = ""; };
+    if (!isMobileMenuOpen) return;
+    const release = lockBodyScroll();
+    return release;
   }, [isMobileMenuOpen]);
 
   const handleLogout = async () => {

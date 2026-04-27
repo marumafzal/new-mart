@@ -97,8 +97,18 @@ export default function CategoriesPage() {
   const flatCategories = categories.flatMap(c => [c, ...(c.children || [])]);
 
   /* ── Mutations ── */
+  type SaveCategoryBody = {
+    name: string;
+    icon: string;
+    type: string;
+    parentId: string | null;
+    sortOrder: number;
+    isActive: boolean;
+  };
+  const errMsg = (e: unknown): string =>
+    e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown error";
   const saveMutation = useMutation({
-    mutationFn: async (body: any) => {
+    mutationFn: async (body: SaveCategoryBody) => {
       if (editing) return fetcher(`/categories/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
       return fetcher("/categories", { method: "POST", body: JSON.stringify(body) });
     },
@@ -109,7 +119,7 @@ export default function CategoriesPage() {
       setForm({ ...EMPTY_FORM });
       toast({ title: editing ? "Category updated" : "Category created" });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: unknown) => toast({ title: "Error", description: errMsg(e), variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -623,10 +633,25 @@ export default function CategoriesPage() {
 }
 
 /* ── Inline card for search-result view ── */
+interface CategoryCardProps {
+  cat: Category;
+  onEdit: (c: Category) => void;
+  onDelete: (id: string) => void;
+  onToggle: (id: string) => void;
+  onAddChild: (parentId: string) => void;
+  expanded: boolean;
+  onToggleExpand: (id: string) => void;
+  categories?: Category[];
+  toggleMutation?: unknown;
+  deleteMutation?: unknown;
+  openEdit?: (c: Category) => void;
+  moveCategory?: (id: string, dir: "up" | "down") => void;
+  isDragging?: boolean;
+  isSearching?: boolean;
+}
 function CategoryCard({
   cat, onEdit, onDelete, onToggle, onAddChild, expanded, onToggleExpand,
-  categories, toggleMutation, deleteMutation, openEdit, moveCategory, isDragging, isSearching,
-}: any) {
+}: CategoryCardProps) {
   const hasChildren = (cat.children?.length ?? 0) > 0;
   return (
     <Card className={`rounded-2xl border-border/50 shadow-sm hover:shadow-md transition-shadow ${!cat.isActive ? "opacity-60" : ""}`}>
@@ -666,7 +691,7 @@ function CategoryCard({
       </CardContent>
       {hasChildren && expanded && (
         <div className="ml-10 pb-3 px-3 space-y-1">
-          {cat.children.map((child: any, ci: number) => (
+          {cat.children!.map((child: Category, ci: number) => (
             <Card key={child.id} className={`rounded-xl border-border/40 shadow-sm ${!child.isActive ? "opacity-60" : ""}`}>
               <CardContent className="p-3">
                 <div className="flex items-center gap-3">

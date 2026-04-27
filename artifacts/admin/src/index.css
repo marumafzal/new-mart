@@ -302,14 +302,46 @@ table thead th {
     outline-offset: 2px;
     border-radius: 6px;
   }
+  /* ─────────────────────────────────────────────────────────────────
+   * Shared motion utilities
+   * Used by OnlineStatusBanner, UploadProgress, UniversalMap fallback,
+   * and any future surface that wants the canonical admin motion language.
+   * ───────────────────────────────────────────────────────────────── */
+  .admin-fade-in {
+    animation: admin-fade-in-kf 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .admin-slide-up {
+    animation: admin-slide-up-kf 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .admin-pulse-soft {
+    animation: admin-pulse-soft-kf 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes admin-fade-in-kf {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes admin-slide-up-kf {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes admin-pulse-soft-kf {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.6; }
 }
 
 /* Respect reduced-motion preferences for the shared utilities above. */
 @media (prefers-reduced-motion: reduce) {
   .admin-transition,
   .admin-transition-slow,
-  .admin-press {
+  .admin-press,
+  .admin-fade-in,
+  .admin-slide-up,
+  .admin-pulse-soft {
     transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 

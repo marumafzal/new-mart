@@ -520,7 +520,7 @@ All previously deferred items in this document have been resolved with real admi
 - **Description**: Multiple fixed/absolute positioned elements with z-index values that may conflict, and some overflow issues.
 - **Impact**: UI elements may appear behind others or cause layout breaks.
 - **Recommendation**: Establish a consistent z-index scale and audit positioning conflicts.
-- **Status**: [COMPLETED] — Centralised z-index scale shipped in `index.css` as CSS custom properties on `:root` (`--z-base: 0`, `--z-dropdown: 1000`, `--z-sticky: 1020`, `--z-banner: 1030`, `--z-overlay: 1040`, `--z-modal: 1050`, `--z-popover: 1060`, `--z-toast: 1070`, `--z-tooltip: 1080`, `--z-max: 2147483647`). Every layer in the admin panel can pick the right token without inventing magic numbers; the new `<OnlineStatusBanner>` consumes `var(--z-banner)`. Future Tailwind callers can read these via `[z-index:var(--z-banner)]` arbitrary-value syntax until a `tailwind.config` token is added.
+- **Status**: [COMPLETED] — Centralised z-index scale shipped in `index.css` as CSS custom properties on `:root` (`--z-base: 0`, `--z-sticky: 10`, `--z-sidebar: 20`, `--z-dropdown: 30`, `--z-overlay: 40`, `--z-drawer: 50`, `--z-modal: 60`, `--z-popover: 70`, `--z-tooltip: 80`, `--z-toast: 90`, `--z-banner: 95`, `--z-debug: 100`). Every layer in the admin panel can pick the right token without inventing magic numbers; new code consumes the tokens via `z-[var(--z-modal)]` arbitrary-value syntax. Future Tailwind callers can read these directly until a `tailwind.config` token is added.
 
 ## Animation/Transition Issues
 - **Files**: Various components with transition classes

@@ -11,7 +11,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { uploadAdminImage } from "@/lib/api";
+import { uploadAdminImageWithProgress } from "@/lib/api";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+
+interface ProductRowLite {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  originalPrice?: number;
+  category?: string;
+  type?: string;
+  unit?: string;
+  vendorName?: string;
+  inStock?: boolean;
+  deliveryTime?: string;
+  image?: string;
+  status?: string;
+}
+
+const errMsg = (e: unknown): string =>
+  e instanceof Error ? e.message : typeof e === "string" ? e : "Unknown error";
 
 const EMPTY_FORM = {
   name: "", description: "", price: "", originalPrice: "",
@@ -19,7 +39,7 @@ const EMPTY_FORM = {
   inStock: true, deliveryTime: "30-45 min", image: ""
 };
 
-function RejectModal({ product, onClose }: { product: any; onClose: () => void }) {
+function RejectModal({ product, onClose }: { product: ProductRowLite; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const { toast } = useToast();
   const reject = useRejectProduct();
@@ -27,7 +47,7 @@ function RejectModal({ product, onClose }: { product: any; onClose: () => void }
     if (!reason.trim()) { toast({ title: "Reason required", variant: "destructive" }); return; }
     reject.mutate({ id: product.id, reason: reason.trim() }, {
       onSuccess: () => { toast({ title: "Product rejected" }); onClose(); },
-      onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+      onError: (e: unknown) => toast({ title: "Error", description: errMsg(e), variant: "destructive" }),
     });
   };
   return (
@@ -81,10 +101,11 @@ export default function Products() {
   const [isFormOpen, setIsFormOpen]   = useState(false);
   const [editingId, setEditingId]     = useState<string | null>(null);
   const [formData, setFormData]       = useState({ ...EMPTY_FORM });
-  const [deleteTarget, setDeleteTarget] = useState<any>(null);
-  const [rejectTarget, setRejectTarget] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProductRowLite | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<ProductRowLite | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
   const [imageUploading, setImageUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const imageBlobRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -117,15 +138,17 @@ export default function Products() {
     imageBlobRef.current = previewUrl;
     setImagePreview(previewUrl);
     setImageUploading(true);
+    setUploadPercent(0);
     try {
-      const url = await uploadAdminImage(file);
+      const url = await uploadAdminImageWithProgress(file, (pct) => setUploadPercent(pct));
       setFormData(prev => ({ ...prev, image: url }));
       toast({ title: "Image uploaded ✅" });
-    } catch (err: any) {
-      toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Upload failed", description: errMsg(err), variant: "destructive" });
       setImagePreview(formData.image || "");
     } finally {
       setImageUploading(false);
+      setUploadPercent(null);
     }
   };
 
@@ -137,7 +160,7 @@ export default function Products() {
     setIsFormOpen(true);
   };
 
-  const openEdit = (prod: any) => {
+  const openEdit = (prod: ProductRowLite) => {
     setEditingId(prod.id);
     setFormData({
       name: prod.name || "", description: prod.description || "",
@@ -186,14 +209,14 @@ export default function Products() {
     });
   };
 
-  const handleApprove = (prod: any) => {
+  const handleApprove = (prod: ProductRowLite) => {
     approveMutation.mutate({ id: prod.id }, {
       onSuccess: () => toast({ title: "Product approved ✅", description: `${prod.name} is now live in the store` }),
-      onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+      onError: (err: unknown) => toast({ title: "Error", description: errMsg(err), variant: "destructive" }),
     });
   };
 
-  const toggleStock = (prod: any) => {
+  const toggleStock = (prod: ProductRowLite) => {
     updateMutation.mutate({ id: prod.id, inStock: !prod.inStock }, {
       onSuccess: () => toast({ title: prod.inStock ? "Marked out of stock" : "Marked in stock ✅" }),
       onError: err => toast({ title: "Failed", description: err.message, variant: "destructive" }),
@@ -202,7 +225,7 @@ export default function Products() {
 
   const exportCSV = () => {
     const header = "ID,Name,Category,Type,Price,Vendor,InStock";
-    const rows = filtered.map((p: any) =>
+    const rows = filtered.map((p: ProductRowLite) =>
       [p.id, p.name, p.category, p.type, p.price, p.vendorName || "", p.inStock ? "yes" : "no"].join(",")
     );
     const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
@@ -216,17 +239,17 @@ export default function Products() {
 
   const products = data?.products || [];
   const pendingProducts = pendingData?.products || [];
-  const vendors = [...new Set(products.filter((p: any) => p.vendorName).map((p: any) => p.vendorName as string))];
+  const vendors = [...new Set(products.filter((p: ProductRowLite) => p.vendorName).map((p: ProductRowLite) => p.vendorName as string))];
   const q = search.toLowerCase();
-  const filtered = products.filter((p: any) =>
+  const filtered = products.filter((p: ProductRowLite) =>
     (typeFilter === "all" || p.type === typeFilter) &&
     (stockFilter === "all" || (stockFilter === "in" ? p.inStock : !p.inStock)) &&
     (!vendorFilter || (p.vendorName || "").toLowerCase().includes(vendorFilter.toLowerCase())) &&
     (p.name.toLowerCase().includes(q) || (p.category || "").toLowerCase().includes(q))
   );
 
-  const martCount = products.filter((p: any) => p.type === "mart").length;
-  const foodCount = products.filter((p: any) => p.type === "food").length;
+  const martCount = products.filter((p: ProductRowLite) => p.type === "mart").length;
+  const foodCount = products.filter((p: ProductRowLite) => p.type === "food").length;
   const pendingCount = pendingProducts.length;
 
   return (
@@ -323,6 +346,15 @@ export default function Products() {
                 className="hidden"
                 onChange={handleImageSelect}
               />
+              {imageUploading && (
+                <div className="mt-2">
+                  <UploadProgress
+                    status="uploading"
+                    progress={uploadPercent ?? 0}
+                    fileName="Uploading image"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -489,7 +521,7 @@ export default function Products() {
                   <p className="text-sm">No products waiting for approval.</p>
                 </CardContent>
               </Card>
-            ) : pendingProducts.map((p: any) => (
+            ) : pendingProducts.map((p: ProductRowLite) => (
               <Card key={p.id} className="rounded-2xl border-border/50 shadow-sm">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
@@ -564,7 +596,7 @@ export default function Products() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    pendingProducts.map((p: any) => (
+                    pendingProducts.map((p: ProductRowLite) => (
                       <TableRow key={p.id} className="hover:bg-amber-50/40">
                         <TableCell>
                           <p className="font-semibold text-foreground">{p.name}</p>
@@ -679,7 +711,7 @@ export default function Products() {
               <Card className="rounded-2xl p-12 text-center border-border/50">
                 <p className="text-muted-foreground text-sm">No products found.</p>
               </Card>
-            ) : filtered.map((p: any) => (
+            ) : filtered.map((p: ProductRowLite) => (
               <Card key={p.id} className="rounded-2xl border-border/50 shadow-sm p-4">
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
@@ -734,7 +766,7 @@ export default function Products() {
                   ) : filtered.length === 0 ? (
                     <TableRow><TableCell colSpan={6} className="h-32 text-center text-muted-foreground">No products found.</TableCell></TableRow>
                   ) : (
-                    filtered.map((p: any) => (
+                    filtered.map((p: ProductRowLite) => (
                       <TableRow key={p.id} className="hover:bg-muted/30">
                         <TableCell>
                           <p className="font-semibold text-foreground">{p.name}</p>

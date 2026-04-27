@@ -126,6 +126,65 @@ export const uploadAdminImage = async (file: File): Promise<string> => {
   }
 };
 
+/**
+ * Upload an admin image with progress reporting.
+ * Uses XMLHttpRequest because fetch() cannot expose upload progress today.
+ * Calls `onProgress(percent)` (0-100) as bytes are sent.
+ */
+export const uploadAdminImageWithProgress = async (
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<string> => {
+  const send = async (): Promise<{ ok: boolean; status: number; body: unknown }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const csrfToken = getCsrfFromCookie();
+    void csrfToken;
+    const headers = await getAuthHeadersForUpload();
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/api/admin/uploads/admin`, true);
+      xhr.withCredentials = true;
+      Object.entries(headers).forEach(([k, v]) => {
+        if (typeof v === 'string') xhr.setRequestHeader(k, v);
+      });
+      if (onProgress && xhr.upload) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && event.total > 0) {
+            onProgress(Math.min(100, Math.round((event.loaded / event.total) * 100)));
+          }
+        };
+      }
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.onload = () => {
+        let parsed: unknown = null;
+        try { parsed = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { parsed = null; }
+        resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, body: parsed });
+      };
+      xhr.send(formData);
+    });
+  };
+
+  let result = await send();
+  if (result.status === 401 && tokenRefresher) {
+    try {
+      await tokenRefresher();
+      result = await send();
+    } catch (err) {
+      console.error('Token refresh failed for upload:', err);
+      throw err;
+    }
+  }
+  if (!result.ok) {
+    const errorMsg = (result.body as { error?: string } | null)?.error ?? `Upload failed with status ${result.status}`;
+    throw new Error(errorMsg);
+  }
+  const json = result.body as { data?: { url?: string }; url?: string } | null;
+  const url = json?.data?.url ?? json?.url;
+  if (typeof url !== 'string') throw new Error('Upload response missing url');
+  return url;
+};
+
 // ============================================================================
 // API Fetchers - Bridged to new fetcher
 // ============================================================================

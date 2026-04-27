@@ -626,16 +626,24 @@ router.get("/faqs", async (_req, res) => {
 /* ── POST /platform-config/consent-log — Log a consent event ── */
 router.post("/consent-log", customerAuth, async (req, res) => {
   const userId = req.customerId!;
-  const { consentType, consentVersion } = req.body as { consentType?: string; consentVersion?: string };
+  const { consentType, consentVersion, source: bodySource } =
+    req.body as { consentType?: string; consentVersion?: string; source?: string };
   if (!consentType || !consentVersion) {
     sendValidationError(res, "consentType and consentVersion are required");
     return;
   }
   const ip = getClientIp(req);
+  /* `user_agent` and `source` are persisted alongside ip+timestamp so the
+     admin Consent Log page can show the full audit trail per row. We
+     truncate UA to 1024 chars to keep one runaway header from blowing
+     up the row size. `source` defaults to "mobile" since the customer
+     auth context only fires from the consumer app today. */
+  const userAgent = (req.headers["user-agent"] ?? "").toString().slice(0, 1024) || null;
+  const source = (bodySource ?? "mobile").slice(0, 32);
   try {
     await db.execute(sql`
-      INSERT INTO consent_log (id, user_id, consent_type, consent_version, ip_address, created_at)
-      VALUES (${generateId()}, ${userId}, ${consentType}, ${consentVersion}, ${ip}, NOW())
+      INSERT INTO consent_log (id, user_id, consent_type, consent_version, ip_address, user_agent, source, created_at)
+      VALUES (${generateId()}, ${userId}, ${consentType}, ${consentVersion}, ${ip}, ${userAgent}, ${source}, NOW())
     `);
     sendSuccess(res, { logged: true });
   } catch (e) {
@@ -664,13 +672,19 @@ router.post("/accept-terms", customerAuth, async (req, res) => {
     return;
   }
   const ip = getClientIp(req);
+  const userAgent = (req.headers["user-agent"] ?? "").toString().slice(0, 1024) || null;
   try {
     await db.execute(sql`
       UPDATE users SET accepted_terms_version = ${termsVersion} WHERE id = ${userId}
     `);
+    /* Use the canonical 'terms' policy slug (matching the new
+       /legal/terms-versions contract) instead of the legacy
+       'terms_acceptance' string. The /legal/consent-log GET handler
+       maps ?policy=terms to match both values for backwards-compatible
+       reads of pre-existing rows. */
     await db.execute(sql`
-      INSERT INTO consent_log (id, user_id, consent_type, consent_version, ip_address, created_at)
-      VALUES (${generateId()}, ${userId}, 'terms_acceptance', ${termsVersion}, ${ip}, NOW())
+      INSERT INTO consent_log (id, user_id, consent_type, consent_version, ip_address, user_agent, source, created_at)
+      VALUES (${generateId()}, ${userId}, 'terms', ${termsVersion}, ${ip}, ${userAgent}, 'mobile', NOW())
     `);
     sendSuccess(res, { accepted: true });
   } catch (e) {

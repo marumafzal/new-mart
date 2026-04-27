@@ -6,7 +6,7 @@ import {
   termsVersionsTable,
   usersTable,
 } from "@workspace/db/schema";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   invalidatePlatformSettingsCache,
   invalidateSettingsCache,
@@ -253,8 +253,26 @@ router.get("/consent-log", async (req, res) => {
   }
   const { policy, version, userId, limit, offset } = parsed.data;
 
+  /* Backwards-compatible policy aliases: pre-existing rows written by
+     /platform-config/accept-terms before this task used
+     consent_type='terms_acceptance'. New rows use the canonical 'terms'
+     slug. We map ?policy=terms (or terms_acceptance) to match BOTH
+     values so the admin Consent Log filter shows the full history. Add
+     more aliases here as legacy slugs surface. */
+  const POLICY_ALIASES: Record<string, string[]> = {
+    terms:             ["terms", "terms_acceptance"],
+    terms_acceptance:  ["terms", "terms_acceptance"],
+  };
+
   const filters = [];
-  if (policy)  filters.push(eq(consentLogTable.consentType, policy));
+  if (policy) {
+    const aliases = POLICY_ALIASES[policy] ?? [policy];
+    filters.push(
+      aliases.length === 1
+        ? eq(consentLogTable.consentType, aliases[0]!)
+        : inArray(consentLogTable.consentType, aliases),
+    );
+  }
   if (version) filters.push(eq(consentLogTable.consentVersion, version));
   if (userId)  filters.push(eq(consentLogTable.userId, userId));
   const where = filters.length === 1 ? filters[0] : filters.length > 1 ? and(...filters) : undefined;

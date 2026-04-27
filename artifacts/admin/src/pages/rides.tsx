@@ -570,9 +570,13 @@ function useDispatchTileConfig() {
     provider: "osm",
   });
   useEffect(() => {
-    fetch(`${window.location.origin}/api/maps/config?app=admin`)
+    // AbortController prevents the .then callback from updating state
+    // after this map widget unmounts (e.g. during fast tab switching).
+    const controller = new AbortController();
+    fetch(`${window.location.origin}/api/maps/config?app=admin`, { signal: controller.signal })
       .then(r => r.json())
       .then((d: any) => {
+        if (controller.signal.aborted) return;
         const cfg = d?.data ?? d;
         const prov = cfg?.provider ?? "osm";
         const tok  = cfg?.token ?? "";
@@ -591,8 +595,10 @@ function useDispatchTileConfig() {
         }
       })
       .catch((err) => {
+        if (err?.name === "AbortError") return;
         console.error("[Rides] Map tile config fetch failed:", err);
       });
+    return () => controller.abort();
   }, []);
   return tile;
 }

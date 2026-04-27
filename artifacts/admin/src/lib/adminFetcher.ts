@@ -1,4 +1,5 @@
 import { readCsrfFromCookie } from './adminAuthContext.js';
+import { safeSessionSet } from './safeStorage';
 
 // Global handlers set by the app
 let getAccessToken: (() => string | null) | null = null;
@@ -41,7 +42,11 @@ export async function fetchAdmin(
       // Refresh failed - need to redirect to login
       console.error('Token refresh failed (no token):', err);
       const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
-      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
+      // Persist the reason via safeSessionSet so the login page can show
+      // a clear "Your session has expired" toast instead of the user
+      // wondering why they were bounced back. Failures are logged in the
+      // shared [safeStorage] channel.
+      safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
       window.location.href = loginUrl;
       throw err;
     }
@@ -89,7 +94,7 @@ export async function fetchAdmin(
         // Refresh or retry failed - redirect to login
         console.error('Token refresh failed:', err);
         const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
-        try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
+        safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
         window.location.href = loginUrl;
         throw new Error('Session expired. Please log in again.');
       }
@@ -132,7 +137,7 @@ export async function fetchAdminAbsolute(
     } catch (err) {
       console.error('Token refresh failed (no token, absolute):', err);
       const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
-      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
+      safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
       window.location.href = loginUrl;
       throw err;
     }
@@ -161,7 +166,7 @@ export async function fetchAdminAbsolute(
     } catch (err) {
       console.error('Token refresh failed (absolute):', err);
       const loginUrl = `${import.meta.env.BASE_URL || '/'}login`;
-      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
+      safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
       window.location.href = loginUrl;
       throw new Error('Session expired. Please log in again.');
     }
@@ -198,7 +203,7 @@ export async function fetchAdminAbsoluteResponse(
     try { token = await refreshToken(); }
     catch (err) {
       console.error('Token refresh failed (no token, response):', err);
-      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
+      safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
       window.location.href = `${import.meta.env.BASE_URL || '/'}login`;
       throw err;
     }
@@ -220,7 +225,7 @@ export async function fetchAdminAbsoluteResponse(
       response = await fetch(path, { ...options, headers: baseHeaders, credentials: 'include' });
     } catch (err) {
       console.error('Token refresh failed (response):', err);
-      try { sessionStorage.setItem('admin_session_expired', 'Your session has expired. Please log in again.'); } catch {}
+      safeSessionSet('admin_session_expired', 'Your session has expired. Please log in again.');
       window.location.href = `${import.meta.env.BASE_URL || '/'}login`;
       throw new Error('Session expired. Please log in again.');
     }

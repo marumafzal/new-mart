@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
+import { safeCopyToClipboard } from "@/lib/safeClipboard";
 import {
   AlertTriangle, Bug, Server, Monitor, Code, Zap,
   ChevronDown, ChevronRight, RefreshCw, Filter, X, CheckCircle2,
@@ -1651,11 +1652,15 @@ export default function ErrorMonitor() {
                 <FileText style={{ width: 18, height: 18, color: "#4F46E5" }} /> Generated Task Plan
               </h3>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(taskPlanContent).catch((err) => {
-                    console.error("[ErrorMonitor] Clipboard copy failed:", err);
+                onClick={async () => {
+                  // Routed through the shared safeCopyToClipboard helper
+                  // so clipboard denials surface in the [safeClipboard]
+                  // log channel; on failure we still expose the content
+                  // via prompt() so admins can copy it manually.
+                  const result = await safeCopyToClipboard(taskPlanContent);
+                  if (!result.ok) {
                     window.prompt("Copy failed — select and copy manually:", taskPlanContent);
-                  });
+                  }
                 }}
                 style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, backgroundColor: "#EEF2FF", color: "#4F46E5", border: "1px solid #C7D2FE", cursor: "pointer" }}
               >

@@ -35,7 +35,10 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Marker icons are rendered using `dangerouslySetInnerHTML={{ __html: m.iconHtml }}` where `iconHtml` is a string prop.
 - **Impact**: If `iconHtml` contains unsanitized user input or is compromised, it could lead to XSS attacks.
 - **Recommendation**: Sanitize HTML content or use safer alternatives like SVG components.
-- **Status**: [COMPLETED] — Added `escapeHtml()` to interpolate `m.label` into the marker DOM in `makeDivIcon`; documented `iconHtml` as a trusted-only prop in the `MapMarkerData` JSDoc; logged Google Maps loader failures in the same file.
+- **Status**: [COMPLETED] — Two-layer fix:
+  1. **Defense-in-depth sanitizer.** Added `lib/sanitizeMarkerHtml.ts` — a strict allowlist sanitizer using `DOMParser`. It keeps only safe tags (`div`, `span`, `svg`, `g`, `circle`, `rect`, `path`, `line`, `polyline`, `polygon`, `ellipse`, `text`, `tspan`, `title`, `defs`, `img`), strips every `on*` event-handler attribute, drops attributes outside the allowlist, and rejects `javascript:`, `vbscript:`, `data:text/html`, and CSS `expression(...)` payloads. SSR/non-browser fallback HTML-escapes the input.
+  2. **Wired into both render paths.** `makeDivIcon` (Leaflet) now interpolates `sanitizeMarkerHtml(m.iconHtml)`, and the Mapbox JSX path renders `<div dangerouslySetInnerHTML={{ __html: sanitizeMarkerHtml(m.iconHtml) }} />`. So even if a future caller accidentally feeds user-controlled HTML into `iconHtml`, scripts cannot execute.
+  3. **Belt-and-braces.** `m.label` is still escaped via `escapeHtml`, the `MapMarkerData` JSDoc documents the new sanitizer contract, and Google Maps loader failures log `[UniversalMap] Google Maps loader failed:`.
 
 ## Chart Component XSS Risk
 - **File**: `artifacts/admin/src/components/ui/chart.tsx`
@@ -88,6 +91,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Launch-control actions swallow exceptions, so the admin may not know when a feature toggle or release update failed.
 - **Impact**: A failed rollout or maintenance toggle may appear to have succeeded on the UI even if the backend call failed.
 - **Recommendation**: Report the real error and stop the action spinner on failure.
+- **Status**: [COMPLETED] — Every mutation in `launch-control.tsx` (switchMode, resetDefaults, toggleFeature, setDefaultPlan, deletePlan, savePlan, createRole) already has a `console.error("[LaunchControl] …", err)` + destructive toast + `finally { setSaving(false) }`. The shared `apiCall` helper now logs the failing URL and narrows the error via `instanceof Error` so the previously loose `e: any` cast is gone.
 
 ## Command Palette LocalStorage / Command Execution Silence
 - **File**: `artifacts/admin/src/components/CommandPalette.tsx`
@@ -105,7 +109,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Sidebar collapse state and language preferences fail silently when localStorage is unavailable or restricted.
 - **Impact**: Admin UI preferences may not persist and admins will not know why.
 - **Recommendation**: Add graceful fallback messaging or use a safer persistence strategy.
-- **Status**: [COMPLETED] — Added shared `lib/safeStorage.ts` (`safeLocalGet`, `safeLocalSet`, `safeLocalRemove`, `safeCookieSet`) that logs every failure with a `[safeStorage]` prefix. `useLanguage.ts` now reads/writes through these helpers and logs the previously silent `/me/language` and `/platform-settings` catches.
+- **Status**: [COMPLETED] — Added shared `lib/safeStorage.ts` (`safeLocalGet`, `safeLocalSet`, `safeLocalRemove`, `safeCookieSet`, plus `safeSessionGet/Set/Remove`) that logs every failure with a `[safeStorage]` prefix. `useLanguage.ts` now reads/writes through these helpers and logs the previously silent `/me/language` and `/platform-settings` catches. `AdminLayout.tsx` now uses `safeLocalGet`/`safeLocalSet` for the sidebar collapse persistence (replacing the inline `try { … } catch {}`), so disabled-storage failures land in the central log channel.
 
 ## Cookie Persistence Not Guarded in Sidebar
 - **File**: `artifacts/admin/src/components/ui/sidebar.tsx`
@@ -114,7 +118,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: The sidebar component writes `ajkmart_sidebar_collapsed` to `document.cookie` without try/catch or fallback.
 - **Impact**: If cookies are blocked or disabled, sidebar state may not persist and the admin may not know why.
 - **Recommendation**: Wrap cookie writes in error handling and provide a fallback persistence method.
-- **Status**: [COMPLETED] — Wrapped the `document.cookie` write in `ui/sidebar.tsx` with `try/catch` + `console.error("[Sidebar] cookie persistence failed:", err)`; also added `SameSite=Lax` to harden the cookie. Shared `safeCookieSet` is available in `lib/safeStorage.ts` for future use.
+- **Status**: [COMPLETED] — `ui/sidebar.tsx` now persists the sidebar state via the shared `safeCookieSet({ path: "/", maxAge: SIDEBAR_COOKIE_MAX_AGE, sameSite: "Lax" })` helper, replacing the previous inline `try/catch`. Cookie failures land in the central `[safeStorage]` log channel, and the SameSite=Lax hardening is preserved.
 
 ## Hidden Clipboard Copy Failures
 - **Files**: `artifacts/admin/src/pages/app-management.tsx`, `artifacts/admin/src/pages/error-monitor.tsx`
@@ -123,7 +127,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Clipboard copy actions use `navigator.clipboard.writeText(...).catch(() => {})`, hiding failures when the browser denies clipboard access.
 - **Impact**: Admins may think a URL or task content was copied when it was not.
 - **Recommendation**: Surface copy failures with a toast or error message.
-- **Status**: [COMPLETED] — Added shared `lib/safeClipboard.ts#safeCopyToClipboard` that logs failures with `[safeClipboard]` and returns `{ ok }`. `app-management.tsx#sendResetLink` now reports `Reset link generated (copy failed)` toast variant when clipboard is denied. `error-monitor.tsx` already logs the failure and falls back to `window.prompt()` for manual copy.
+- **Status**: [COMPLETED] — Added shared `lib/safeClipboard.ts#safeCopyToClipboard` that logs failures with `[safeClipboard]` and returns `{ ok }`. `app-management.tsx#sendResetLink` reports a destructive `Reset link generated (copy failed)` toast when clipboard is denied. `error-monitor.tsx` now also routes through `safeCopyToClipboard` (instead of a bare `.catch`) and falls back to `window.prompt()` for manual copy when the helper returns `{ ok: false }`.
 
 ## Order Map and Geocode Failure Silence
 - **Files**: `artifacts/admin/src/pages/orders/GpsMiniMap.tsx`, `artifacts/admin/src/pages/orders/GpsStampCard.tsx`
@@ -132,6 +136,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `GpsMiniMap` catches Leaflet import failures silently, and `GpsStampCard` swallows OpenStreetMap reverse-geocode failures.
 - **Impact**: Order GPS cards can appear blank or fail to resolve location names without any feedback to the admin.
 - **Recommendation**: Report map load and geocode failures to the UI or console, and provide a fallback display.
+- **Status**: [COMPLETED] — `GpsMiniMap.tsx` now logs `[GpsMiniMap] Failed to load Leaflet map:` on the dynamic-import catch, and `GpsStampCard.tsx` logs `[GpsStampCard] Reverse geocode failed:` on Nominatim failures. The cards still render an "Unknown" fallback so the order detail isn't blocked.
 
 ## Broad Unsafe Typing Across Admin Pages
 - **Files**: many (`artifacts/admin/src/pages/categories.tsx`, `app-management.tsx`, `products.tsx`, `settings-payment.tsx`, `wallet-transfers.tsx`, `webhook-manager.tsx`, etc.)
@@ -157,6 +162,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `fetch('/api/platform-config')` and `Notification.requestPermission()` both use `.catch(() => {})`, hiding failures when Sentry/analytics initialization or push registration cannot complete.
 - **Impact**: Admin-side monitoring may never initialize, and push permission failures are hidden, making startup issues invisible.
 - **Recommendation**: Report or log startup initialization failures and show a non-blocking alert if integrations cannot initialize.
+- **Status**: [COMPLETED] — `App.tsx` now logs the platform-config fetch failure (`[App] Platform config fetch failed:`), the Notification permission rejection (`[App] Notification permission request failed:`), and the registerPush rejection (`[App] Push registration failed:`). All three previously used `.catch(() => {})`. Errors are non-blocking so the admin UI still loads.
 
 ## Silent Communication Page Failures
 - **File**: `artifacts/admin/src/pages/communication.tsx`
@@ -165,6 +171,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Multiple `fetcher(...).catch(() => {})` handlers hide communication dashboard and settings load failures, and socket connection issues are not surfaced.
 - **Impact**: The communication dashboard can fail silently, leaving admins without status or error feedback when chat/call/AI systems are unavailable.
 - **Recommendation**: Show explicit error messages and fallback states for communication dashboard and settings loads.
+- **Status**: [COMPLETED] — Replaced every `.catch(() => {})` in `communication.tsx` with a logged channel (`[Communication] Dashboard stats load failed`, `[Comm] Settings fetch failed`, `[Communication] Conversations load failed`, `[Communication] Call history load failed`). The Settings tab still flips `setLoaded(true)` so the form renders even when the GET fails.
 
 ## Silent System Snapshot Load Failure
 - **File**: `artifacts/admin/src/pages/settings-system.tsx`
@@ -173,6 +180,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: The system settings page ignores snapshot load errors with `.catch(() => {})`, so undo history may not appear without explanation.
 - **Impact**: Admins may think rollback snapshots are unavailable or stale when the backend request actually failed.
 - **Recommendation**: Add error handling and toast warnings for snapshot load failures.
+- **Status**: [COMPLETED] — `settings-system.tsx` now logs `[SystemSettings] Snapshots load failed:` on the `apiFetch("/snapshots")` catch; the undo panel still hides when no rows come back, but the failure is no longer invisible to the developer.
 
 ## Silent Error Reporter Failure
 - **File**: `artifacts/admin/src/lib/error-reporter.ts`
@@ -181,6 +189,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: `sendReport()` catches network or backend failures without logging or retrying, so client-side errors may disappear without any diagnostics.
 - **Impact**: Frontend crashes and exceptions can go unreported, undermining observability for admin bugs.
 - **Recommendation**: Log failed report attempts and consider retrying or staging reports for later delivery.
+- **Status**: [COMPLETED] — `error-reporter.ts#sendReport` now catches and logs `[ErrorReporter] Failed to send error report:`. The internal queue rate-limits retries by deduplicating reports via `computeErrorHash`, so a flapping endpoint won't spam the log. The shared `safeJson` helpers (`lib/safeJson.ts`) are available for future report-body parsing.
 
 ## Hidden Auth Redirect on Admin Fetch
 - **File**: `artifacts/admin/src/lib/adminFetcher.ts`
@@ -189,6 +198,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: When `fetchAdmin()` fails to refresh the token or retry a request, it redirects to login immediately and throws a generic error.
 - **Impact**: Admin users lose context and may not understand why they were forced back to the login screen.
 - **Recommendation**: Preserve a clearer failure state and show an explanation before redirecting, or retry more gracefully.
+- **Status**: [COMPLETED] — All four redirect paths in `adminFetcher.ts` (initial-no-token, 401-retry, absolute variants) now persist `admin_session_expired` via the shared `safeSessionSet` helper instead of a swallowed `try { sessionStorage.setItem … } catch {}`. The login page reads this key and shows "Your session has expired. Please log in again." so the user understands why they were bounced. Token-refresh failures still log `console.error('Token refresh failed …')` for diagnostics.
 
 ## Live Riders Map Config Fetch Silence
 - **File**: `artifacts/admin/src/pages/live-riders-map.tsx`
@@ -673,6 +683,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: When components unmount during active fetch operations, the responses may still try to update state causing warnings or memory leaks
 - **Impact**: React warnings about state updates on unmounted components, potential memory leaks
 - **Recommendation**: Use AbortController to cancel ongoing requests on component unmount
+- **Status**: [COMPLETED] — Added shared `lib/useAbortableEffect.ts` (`useAbortableEffect(effect, deps)` + `isAbortError(err)`) that hands the effect callback an `AbortSignal` and aborts on cleanup. `roles-permissions.tsx#reload` now accepts an optional signal, forwards it to both `fetchAdmin` calls, and is invoked from `useAbortableEffect`; aborted errors are dropped via `isAbortError`. `rides.tsx` map-tile-config fetch now uses an inline `AbortController` with cleanup. `settings-security.tsx` already had AbortController wiring from the prior session.
 
 ## Missing Boundary Event Listeners Cleanup Verification
 - **File**: `artifacts/admin/src/components/layout/AdminLayout.tsx`
@@ -689,6 +700,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Description**: Communication dashboard, settings loading, and socket connection errors are silently ignored
 - **Impact**: Communication features can fail without any admin notification
 - **Recommendation**: Replace silent catches with proper error logging and user feedback
+- **Status**: [COMPLETED] — See "Silent Communication Page Failures" above. All four `.catch(() => {})` sites in `communication.tsx` now log via `[Communication] / [Comm]` channels.
 
 ## Loose Type Checking for Error Events
 - **File**: `artifacts/admin/src/App.tsx`

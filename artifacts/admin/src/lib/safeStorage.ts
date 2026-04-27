@@ -47,6 +47,41 @@ export function safeLocalRemove(key: string): SafeStorageResult {
   }
 }
 
+export function safeSessionGet(key: string): string | null {
+  try {
+    return typeof sessionStorage !== "undefined" ? sessionStorage.getItem(key) : null;
+  } catch (err) {
+    console.error(`[safeStorage] sessionStorage.getItem("${key}") failed:`, err);
+    return null;
+  }
+}
+
+export function safeSessionSet(key: string, value: string): SafeStorageResult {
+  try {
+    if (typeof sessionStorage === "undefined") {
+      return { ok: false, error: new Error("sessionStorage unavailable") };
+    }
+    sessionStorage.setItem(key, value);
+    return { ok: true };
+  } catch (err) {
+    console.error(`[safeStorage] sessionStorage.setItem("${key}") failed:`, err);
+    return { ok: false, error: err };
+  }
+}
+
+export function safeSessionRemove(key: string): SafeStorageResult {
+  try {
+    if (typeof sessionStorage === "undefined") {
+      return { ok: false, error: new Error("sessionStorage unavailable") };
+    }
+    sessionStorage.removeItem(key);
+    return { ok: true };
+  } catch (err) {
+    console.error(`[safeStorage] sessionStorage.removeItem("${key}") failed:`, err);
+    return { ok: false, error: err };
+  }
+}
+
 export interface CookieOptions {
   path?: string;
   maxAge?: number;

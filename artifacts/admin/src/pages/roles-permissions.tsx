@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useAbortableEffect, isAbortError } from "@/lib/useAbortableEffect";
 
 interface PermissionDef {
   id: string;
@@ -76,13 +77,14 @@ export default function RolesPermissionsPage() {
       || [...draftPerms].some(p => !activeRole.permissions.includes(p));
   }, [activeRole, draftPerms]);
 
-  const reload = async () => {
+  const reload = async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const [catRes, rolesRes] = await Promise.all([
-        fetchAdmin("/api/admin/system/rbac/permissions"),
-        fetchAdmin("/api/admin/system/rbac/roles"),
+        fetchAdmin("/api/admin/system/rbac/permissions", { signal }),
+        fetchAdmin("/api/admin/system/rbac/roles", { signal }),
       ]);
+      if (signal?.aborted) return;
       const cat: PermissionDef[] = catRes?.data?.permissions ?? catRes?.permissions ?? [];
       const rls: RbacRole[] = rolesRes?.data?.roles ?? rolesRes?.roles ?? [];
       setCatalog(cat);
@@ -92,13 +94,18 @@ export default function RolesPermissionsPage() {
         setDraftPerms(new Set(rls[0]!.permissions));
       }
     } catch (err) {
+      if (isAbortError(err)) return;
+      console.error("[RolesPermissions] reload failed:", err);
       toast({ title: "Failed to load roles", description: String(err), variant: "destructive" });
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
-  useEffect(() => { void reload(); /* eslint-disable-next-line */ }, []);
+  // Initial load is wrapped in useAbortableEffect so a fast unmount (e.g.
+  // user navigates away while the two fetches are in flight) cancels the
+  // requests instead of triggering "setState on unmounted component".
+  useAbortableEffect((signal) => { void reload(signal); }, []);
 
   /* ── Admin assignments ──────────────────────────────────────── */
   const loadAdmins = async () => {
@@ -259,7 +266,7 @@ export default function RolesPermissionsPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={tab === "roles" ? reload : loadAdmins} disabled={loading || adminsLoading}>
+          <Button variant="outline" onClick={() => { void (tab === "roles" ? reload() : loadAdmins()); }} disabled={loading || adminsLoading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${(loading || adminsLoading) ? "animate-spin" : ""}`} /> Reload
           </Button>
           {canManage && tab === "roles" && (

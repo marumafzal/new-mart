@@ -57,6 +57,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useLanguage } from "@/lib/useLanguage";
 import { useAdminAuth } from "@/lib/adminAuthContext";
+import { safeLocalGet, safeLocalSet } from "@/lib/safeStorage";
 import { tDual, type TranslationKey, LANGUAGE_OPTIONS } from "@workspace/i18n";
 import { io, type Socket } from "socket.io-client";
 import { fetcher } from "@/lib/api";
@@ -185,9 +186,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const { state, logout } = useAdminAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem("ajkmart_sidebar_collapsed") === "true"; } catch { return false; }
-  });
+  const [collapsed, setCollapsed] = useState(() => safeLocalGet("ajkmart_sidebar_collapsed") === "true");
   const [cmdOpen, setCmdOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -209,7 +208,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const toggleCollapsed = useCallback(() => {
     setCollapsed(c => {
       const next = !c;
-      try { localStorage.setItem("ajkmart_sidebar_collapsed", String(next)); } catch {}
+      // Failures are logged inside safeLocalSet under [safeStorage]; we
+      // intentionally still flip the in-memory state even if persistence
+      // fails so the admin's click is never ignored.
+      safeLocalSet("ajkmart_sidebar_collapsed", String(next));
       return next;
     });
   }, []);

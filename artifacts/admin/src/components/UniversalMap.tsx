@@ -15,6 +15,7 @@ import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { escapeHtml } from "@/lib/escapeHtml";
+import { sanitizeMarkerHtml } from "@/lib/sanitizeMarkerHtml";
 
 /* ── Fix Leaflet's broken default icon paths in Vite ── */
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -34,10 +35,17 @@ export interface MapMarkerData {
   /**
    * Pre-built SVG/HTML string for the icon body.
    *
-   * SECURITY: This is injected via `dangerouslySetInnerHTML`. Callers are
-   * responsible for ensuring the value is a trusted, statically-built
-   * markup snippet (e.g. SVG generated from internal config). Never pass
-   * user-controlled data here without sanitising it first.
+   * SECURITY: This is rendered into the DOM via Leaflet `divIcon` /
+   * React `dangerouslySetInnerHTML`. Before rendering, the value is run
+   * through `sanitizeMarkerHtml` (defense-in-depth) which:
+   *   - drops every tag outside an allowlist of safe SVG/HTML tags,
+   *   - strips `on*` event-handler attributes,
+   *   - rejects `javascript:`, `vbscript:`, `data:text/html`, and
+   *     CSS `expression(...)` payloads.
+   *
+   * Callers should still treat this as a trusted snippet (constructed
+   * from internal config), but raw user input can no longer execute
+   * scripts even if it accidentally reaches this prop.
    */
   iconHtml: string;
   /** Square pixel size of the icon container */
@@ -87,10 +95,14 @@ function makeDivIcon(m: MapMarkerData): L.DivIcon {
   const labelHtml = m.label
     ? `<div style="position:absolute;top:${-(m.iconSize / 2 + 18)}px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;pointer-events:none">${escapeHtml(m.label)}</div>`
     : "";
+  // Defense-in-depth: even though iconHtml is intended to be a trusted
+  // internal snippet, run it through the allowlist sanitizer so any
+  // accidental future user input cannot execute scripts.
+  const safeIcon = sanitizeMarkerHtml(m.iconHtml);
   return L.divIcon({
     html: `<div style="position:relative;opacity:${opacity}">
       ${labelHtml}
-      ${m.iconHtml}
+      ${safeIcon}
     </div>`,
     className: "",
     iconSize: [m.iconSize, m.iconSize],
@@ -258,7 +270,7 @@ const MapboxMapLazy = lazy(() =>
                     {m.label}
                   </div>
                 )}
-                <div dangerouslySetInnerHTML={{ __html: m.iconHtml }} />
+                <div dangerouslySetInnerHTML={{ __html: sanitizeMarkerHtml(m.iconHtml) }} />
               </div>
             </MapboxMarker>
           ))}

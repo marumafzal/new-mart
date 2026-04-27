@@ -8,7 +8,7 @@ This document lists bugs and non-functional settings found in the AJKMart admin 
 - **Severity**: Low
 - **Description**: The TypeScript configuration references 'vite/client' types that may not be available in all environments.
 - **Impact**: Type checking may fail in some setups.
-- **Status**: Appears resolved after dependency installation.
+- **Status**: [COMPLETED] — Verified after `pnpm install` on Replit: `artifacts/admin/node_modules/vite/client.d.ts` is present, so the `"types": ["node", "vite/client"]` entry in `artifacts/admin/tsconfig.json` resolves correctly. No code change required — the issue was purely a missing-dependency artefact and is now resolved as part of the Replit migration install step.
 
 ## Silent Error Handling
 - **File**: `artifacts/admin/src/components/ServiceZonesManager.tsx`

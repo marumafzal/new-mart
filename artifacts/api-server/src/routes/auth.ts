@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import crypto from "crypto";
 import { z } from "zod";
@@ -101,9 +101,64 @@ const loginSchema = z.object({
   path: ["identifier"],
 });
 
+/* refreshToken is optional in the body because rider clients now carry the
+   refresh credential as an HttpOnly cookie (`ajkmart_rider_refresh`); the
+   handler validates that AT LEAST ONE source is present. The body field is
+   still accepted for one release as a documented fallback for legacy clients
+   and for non-rider apps (customer/vendor) that have not migrated to cookies.
+   TODO(remove-after-v1): once every active rider build is on the cookie
+   client, drop the body field from this schema and require the cookie. */
 const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(10, "refreshToken is required"),
+  refreshToken: z.string().min(10, "refreshToken must be at least 10 chars").optional(),
 }).strip();
+
+/* ── Rider refresh-token cookie ──────────────────────────────────────────────
+   HttpOnly + SameSite=Strict cookie that carries the refresh token for the
+   rider web client. Path is scoped to `/api/auth` so it is only sent to refresh
+   and logout endpoints. We deliberately gate cookie issuance to rider sessions
+   only, so customer/vendor flows are not affected.
+
+   `isRiderSession` checks BOTH the user object roles AND the request body
+   `role` field — the latter handles the OTP/login pre-issuance case where the
+   client signals which app it is logging into. */
+const RIDER_REFRESH_COOKIE = "ajkmart_rider_refresh";
+const RIDER_REFRESH_COOKIE_PATH = "/api/auth";
+
+function isRiderSession(req: Request, user?: { role?: string | null; roles?: string | null } | null): boolean {
+  const body: Record<string, unknown> = (req.body && typeof req.body === "object")
+    ? (req.body as Record<string, unknown>)
+    : {};
+  const bodyRoleRaw = body.role;
+  const bodyRole = typeof bodyRoleRaw === "string" ? bodyRoleRaw : undefined;
+  if (bodyRole === "rider") return true;
+  const rolesStr = (user?.roles ?? user?.role ?? "") as string;
+  if (!rolesStr) return false;
+  return rolesStr.split(",").map((r) => r.trim()).includes("rider");
+}
+
+function shouldUseSecureCookie(): boolean {
+  return process.env.NODE_ENV === "production" || !!process.env.REPLIT_DEV_DOMAIN;
+}
+
+function setRiderRefreshCookie(req: Request, res: Response, refreshRaw: string, user?: { role?: string | null; roles?: string | null } | null): void {
+  if (!isRiderSession(req, user)) return;
+  res.cookie(RIDER_REFRESH_COOKIE, refreshRaw, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: shouldUseSecureCookie(),
+    path: RIDER_REFRESH_COOKIE_PATH,
+    maxAge: getRefreshTokenTtlDays() * 24 * 60 * 60 * 1000,
+  });
+}
+
+function clearRiderRefreshCookie(res: Response): void {
+  res.clearCookie(RIDER_REFRESH_COOKIE, {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: shouldUseSecureCookie(),
+    path: RIDER_REFRESH_COOKIE_PATH,
+  });
+}
 
 const forgotPasswordSchema = z.object({
   phone: z.string().min(7).optional(),
@@ -942,6 +997,11 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
 
     emitWebhookEvent("user_registered", { userId: newUserId, phone, role: "customer", method: "phone_otp" }).catch(() => {});
 
+    /* New phone-OTP signups always create customer accounts, but the rider app
+       can also send role=rider on the verify-otp call. The cookie helper
+       checks both body role AND user roles so this is safe either way. */
+    setRiderRefreshCookie(req, res, refreshRaw, { roles: "customer" });
+
     res.json({
       token: accessToken,
       refreshToken: refreshRaw,
@@ -1180,6 +1240,9 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
   db.delete(refreshTokensTable)
     .where(and(eq(refreshTokensTable.userId, u.id), lt(refreshTokensTable.expiresAt, new Date())))
     .catch(() => {});
+
+  /* Set HttpOnly cookie for rider sessions (no-op for customer/vendor). */
+  setRiderRefreshCookie(req, res, refreshRaw, u);
 
   /* ── Post-OTP customer app cross-role check ──
      If the customer app context was detected and the user doesn't have the
@@ -1429,8 +1492,23 @@ router.post("/validate-token", async (req, res) => {
    Refresh tokens are rotated on use (old one revoked, new one issued).
 ───────────────────────────────────────────────────────────── */
 async function handleRefreshToken(req: Request, res: any) {
-  const { refreshToken } = req.body;
+  /* Read refresh token from HttpOnly cookie first (rider client), then fall
+     back to the body field for legacy clients (one-release transition window).
+     TODO(remove-after-v1): drop the bodyToken branch once the cookie-bearing
+     rider build has fully propagated. */
+  const cookieToken = (req.cookies && typeof req.cookies === "object")
+    ? (req.cookies as Record<string, string>)[RIDER_REFRESH_COOKIE]
+    : undefined;
+  const bodyToken = (req.body && typeof req.body === "object")
+    ? (req.body as { refreshToken?: string }).refreshToken
+    : undefined;
+  const refreshToken = cookieToken || bodyToken;
   const ip = getClientIp(req);
+
+  if (!refreshToken || refreshToken.length < 10) {
+    res.status(400).json({ error: "Refresh token required" });
+    return;
+  }
 
   const tokenHash = hashRefreshToken(refreshToken);
   const [rt] = await db.select().from(refreshTokensTable).where(eq(refreshTokensTable.tokenHash, tokenHash)).limit(1);
@@ -1516,6 +1594,11 @@ async function handleRefreshToken(req: Request, res: any) {
 
   writeAuthAuditLog("token_refresh", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined });
 
+  /* Re-issue the rider HttpOnly cookie with the rotated refresh token. The
+     rider session check uses the user's stored roles (not req.body.role) so
+     this fires correctly for refresh requests, which carry no role hint. */
+  setRiderRefreshCookie(req, res, newRefreshRaw, user);
+
   res.json({
     token:        newAccessToken,
     refreshToken: newRefreshRaw,
@@ -1534,7 +1617,16 @@ router.post("/logout", async (req, res) => {
   const authHeader = req.headers["authorization"] as string | undefined;
   const tokenHeader = req.headers["x-auth-token"] as string | undefined;
   const raw = tokenHeader || authHeader?.replace(/^Bearer\s+/i, "");
-  const { refreshToken } = req.body ?? {};
+  /* Read refresh token from cookie first (rider client), fall back to body
+     for legacy clients still posting the token. The cookie always wins so an
+     accidental token in the body cannot bypass cookie-scoped revocation.
+     TODO(remove-after-v1): drop the bodyRefresh branch once the cookie-bearing
+     rider build has fully propagated. */
+  const cookieRefresh = (req.cookies && typeof req.cookies === "object")
+    ? (req.cookies as Record<string, string>)[RIDER_REFRESH_COOKIE]
+    : undefined;
+  const { refreshToken: bodyRefresh } = (req.body ?? {}) as { refreshToken?: string };
+  const refreshToken = cookieRefresh || bodyRefresh;
   const ip = getClientIp(req);
 
   if (raw) {
@@ -1551,12 +1643,16 @@ router.post("/logout", async (req, res) => {
     }
   }
 
-  /* Revoke all refresh tokens for this user if refreshToken provided */
+  /* Revoke the refresh token from whichever source provided it */
   if (refreshToken) {
     const tokenHash = hashRefreshToken(refreshToken);
     await revokeRefreshToken(tokenHash).catch(() => {});
     writeAuthAuditLog("token_revoked", { ip });
   }
+
+  /* Always clear the rider cookie on logout, even if the request did not
+     carry one — defends against stale cookies after role/app switches. */
+  clearRiderRefreshCookie(res);
 
   res.json({ success: true, message: "Logged out successfully" });
 });
@@ -1835,6 +1931,8 @@ router.post("/verify-email-otp", verifyCaptcha, async (req, res) => {
   await db.insert(refreshTokensTable).values({ id: generateId(), userId: user.id, tokenHash: refreshHash, authMethod: "email_otp", expiresAt: refreshExpiresAt });
   db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch(() => {});
 
+  setRiderRefreshCookie(req, res, refreshRaw, user);
+
   writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { method: "email_otp" } });
 
   /* Post-OTP customer app cross-role check: issue token + wrongApp flag so frontend
@@ -2034,6 +2132,8 @@ async function handleUnifiedLogin(req: Request, res: any) {
   await db.insert(refreshTokensTable).values({ id: generateId(), userId: user.id, tokenHash: refreshHash, authMethod: "password", expiresAt: refreshExpiresAt });
   db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch(() => {});
 
+  setRiderRefreshCookie(req, res, refreshRaw, user);
+
   writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { method: `password_${idType}`, identifier: lookupKey } });
 
   res.json({
@@ -2132,6 +2232,8 @@ router.post("/login/verify-otp", async (req, res) => {
     id: generateId(), userId: user.id, tokenHash: refreshHash, authMethod: "password_otp",
     expiresAt: new Date(Date.now() + getRefreshTokenTtlDays() * 24 * 60 * 60 * 1000),
   });
+
+  setRiderRefreshCookie(req, res, refreshRaw, user);
 
   writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { method: "password_otp_verified" } });
 
@@ -2292,6 +2394,8 @@ router.post("/complete-profile", async (req, res) => {
   db.delete(refreshTokensTable)
     .where(and(eq(refreshTokensTable.userId, updated!.id), lt(refreshTokensTable.expiresAt, new Date())))
     .catch(() => {});
+
+  setRiderRefreshCookie(req, res, refreshRaw, updated);
 
   res.json({
     success: true,
@@ -2616,6 +2720,7 @@ router.post("/register", verifyCaptcha, sharedValidateBody(registerSchema), asyn
         id: generateId(), userId, tokenHash: refreshHash, authMethod: "register_otp_bypass",
         expiresAt: new Date(Date.now() + getRefreshTokenTtlDays() * 24 * 60 * 60 * 1000),
       });
+      setRiderRefreshCookie(req, res, refreshRaw, { roles: userRole });
       res.status(201).json({
         message: "Registration successful.",
         userId, role: userRole,
@@ -3180,7 +3285,7 @@ function parseUserAgent(ua?: string): { deviceName: string; browser: string; os:
   return { deviceName, browser, os };
 }
 
-async function issueTokensForUser(user: any, ip: string, method: string, userAgent?: string) {
+async function issueTokensForUser(user: any, ip: string, method: string, userAgent?: string, req?: Request, res?: Response) {
   const accessToken = signAccessToken(user.id, user.phone ?? "", user.role ?? "customer", user.roles ?? user.role ?? "customer", user.tokenVersion ?? 0);
   const { raw: refreshRaw, hash: refreshHash } = generateRefreshToken();
   const refreshExpiresAt = new Date(Date.now() + getRefreshTokenTtlDays() * 24 * 60 * 60 * 1000);
@@ -3190,6 +3295,13 @@ async function issueTokensForUser(user: any, ip: string, method: string, userAge
   db.delete(refreshTokensTable).where(and(eq(refreshTokensTable.userId, user.id), lt(refreshTokensTable.expiresAt, new Date()))).catch((err) => { console.error("[auth] Expired token cleanup failed:", err); });
   await db.update(usersTable).set({ lastLoginAt: new Date() }).where(eq(usersTable.id, user.id));
   writeAuthAuditLog("login_success", { userId: user.id, ip, userAgent, metadata: { method } });
+
+  /* Cookie path is exercised by social/2FA/magic-link/firebase callers; req
+     and res are optional to preserve the function's existing API for any
+     internal call site that does not have a response object. */
+  if (req && res) {
+    setRiderRefreshCookie(req, res, refreshRaw, user);
+  }
 
   const parsed = parseUserAgent(userAgent);
   const tokenHash = crypto.createHash("sha256").update(accessToken).digest("hex");
@@ -3354,7 +3466,7 @@ router.post("/social/google", async (req, res) => {
   }
 
   addAuditEntry({ action: "social_google_login", ip, details: `Google login: ${email ?? googleId}`, result: "success" });
-  const result = await issueTokensForUser(user!, ip, "social_google", req.headers["user-agent"] as string);
+  const result = await issueTokensForUser(user!, ip, "social_google", req.headers["user-agent"] as string, req, res);
   res.json({ ...result, isNewUser, needsProfileCompletion: isNewUser || !user!.cnic || !user!.name });
 });
 
@@ -3452,7 +3564,7 @@ router.post("/social/facebook", async (req, res) => {
   }
 
   addAuditEntry({ action: "social_facebook_login", ip, details: `Facebook login: ${email ?? facebookId}`, result: "success" });
-  const result = await issueTokensForUser(user!, ip, "social_facebook", req.headers["user-agent"] as string);
+  const result = await issueTokensForUser(user!, ip, "social_facebook", req.headers["user-agent"] as string, req, res);
   res.json({ ...result, isNewUser, needsProfileCompletion: isNewUser || !user!.cnic || !user!.name });
 });
 
@@ -3568,7 +3680,7 @@ router.post("/2fa/verify", async (req, res) => {
 
   writeAuthAuditLog("2fa_verified", { userId: user.id, ip, userAgent: req.headers["user-agent"] as string });
   const originalMethod = challengePayload.authMethod ?? "phone_otp";
-  const result = await issueTokensForUser(user, ip, originalMethod, req.headers["user-agent"] as string);
+  const result = await issueTokensForUser(user, ip, originalMethod, req.headers["user-agent"] as string, req, res);
   res.json(result);
 });
 
@@ -3654,7 +3766,7 @@ router.post("/2fa/recovery", async (req, res) => {
   addAuditEntry({ action: "2fa_recovery_used", ip, details: `Backup code used for user ${user.id}, ${storedCodes.length} codes remaining`, result: "success" });
 
   const recoveryOrigMethod = challengePayload.authMethod ?? "phone_otp";
-  const result = await issueTokensForUser(user, ip, recoveryOrigMethod, req.headers["user-agent"] as string);
+  const result = await issueTokensForUser(user, ip, recoveryOrigMethod, req.headers["user-agent"] as string, req, res);
   res.json({ ...result, codesRemaining: storedCodes.length });
 });
 
@@ -3830,7 +3942,7 @@ router.post("/magic-link/verify", async (req, res) => {
   await db.update(usersTable).set({ emailVerified: true, updatedAt: new Date() }).where(eq(usersTable.id, user.id));
 
   addAuditEntry({ action: "magic_link_login", ip, details: `Magic link login: ${user.email ?? matchedRow.userId}`, result: "success" });
-  const result = await issueTokensForUser(user, ip, "magic_link", req.headers["user-agent"] as string);
+  const result = await issueTokensForUser(user, ip, "magic_link", req.headers["user-agent"] as string, req, res);
   res.json(result);
 });
 
@@ -4218,7 +4330,7 @@ router.post("/firebase-verify", async (req, res) => {
 
   /* Issue platform tokens */
   const userAgent = req.headers["user-agent"] as string | undefined;
-  const tokenData = await issueTokensForUser(user, ip, "firebase", userAgent);
+  const tokenData = await issueTokensForUser(user, ip, "firebase", userAgent, req, res);
 
   writeAuthAuditLog("firebase_login", { userId: user.id, ip, userAgent, metadata: { uid: decoded.uid } });
 

@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
@@ -221,6 +221,10 @@ export default function Wallet() {
   const [showCodHistory, setShowCodHistory] = useState(false);
   const [balanceHidden, setBalanceHidden]   = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /* W2: sentinel observed at the bottom of the transactions list to trigger
+     fetchNextPage. Kept as a ref so the IntersectionObserver re-binds only
+     when the sentinel mounts/unmounts, not on every render. */
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     return () => {
@@ -234,9 +238,23 @@ export default function Wallet() {
     toastTimer.current = setTimeout(() => setToast(null), 3500);
   };
 
-  const { data, isLoading, refetch } = useQuery({
+  /* W2: Cursor-paginated wallet history with infinite scroll. The first page
+     also carries the canonical `balance`. Subsequent pages append to the
+     visible list; the IntersectionObserver below auto-loads the next page
+     when the sentinel scrolls into view. */
+  const PAGE_SIZE = 50;
+  const {
+    data,
+    isLoading,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["rider-wallet"],
-    queryFn: () => api.getWallet(),
+    queryFn: ({ pageParam }) => api.getWalletPage({ cursor: pageParam ?? null, limit: PAGE_SIZE }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage?.nextCursor ?? null,
     refetchInterval: 30000,
     enabled: config.features.wallet,
   });
@@ -284,10 +302,21 @@ export default function Wallet() {
   });
   const minBalance = (minBalanceData?.minBalance ?? minBalanceFallback) as number;
 
-  const transactions: WalletTx[] = data?.transactions || [];
-  /* Only show balance once the wallet query resolves — never fall back to user.walletBalance
-     to avoid the "jumping" effect when the two sources differ. */
-  const balanceFromServer = data?.balance;
+  /* W2: Flatten paged results into a single transactions array. Balance is
+     authoritative on the FIRST page only (each subsequent page also returns
+     the live balance, but using the first page avoids tiny flicker as later
+     pages stream in). Aggregates below (today/week/total) sum the loaded
+     pages — same behaviour as before, but now extends as the rider scrolls. */
+  const pages = data?.pages ?? [];
+  const transactions: WalletTx[] = useMemo(() => {
+    const out: WalletTx[] = [];
+    for (const p of pages) {
+      const items = (p?.items ?? []) as WalletTx[];
+      for (const it of items) out.push(it);
+    }
+    return out;
+  }, [pages]);
+  const balanceFromServer = pages[0]?.balance;
   const balance = balanceFromServer != null ? Number(balanceFromServer) : 0;
   const isBalanceStale = false;
 
@@ -341,6 +370,25 @@ export default function Wallet() {
       qc.invalidateQueries({ queryKey: ["rider-withdrawals"] }),
     ]);
   }, [qc]);
+
+  /* W2: Auto-load next page when the sentinel scrolls into view. We re-bind
+     the observer whenever `hasNextPage` flips so that once we exhaust the
+     dataset we stop spending CPU on intersection callbacks. */
+  useEffect(() => {
+    if (!hasNextPage) return;
+    const node = loadMoreRef.current;
+    if (!node) return;
+    const obs = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting && !isFetchingNextPage) {
+          fetchNextPage();
+          break;
+        }
+      }
+    }, { rootMargin: "200px" });
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   if (isLoading) {
     return (
@@ -803,6 +851,20 @@ export default function Wallet() {
                   </div>
                 </div>
               ))}
+              {/* W2: infinite-scroll sentinel + spinner. Only rendered when
+                 there is a next page so we never show a permanent loader. */}
+              {hasNextPage && (
+                <div ref={loadMoreRef} className="px-5 py-4 flex items-center justify-center">
+                  {isFetchingNextPage ? (
+                    <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin"/>
+                  ) : (
+                    <div className="h-5"/>
+                  )}
+                </div>
+              )}
+              {!hasNextPage && transactions.length > 0 && (
+                <p className="text-center text-[10px] text-gray-300 py-3">{T("allTransactionsSecure")}</p>
+              )}
             </div>
           )}
         </div>

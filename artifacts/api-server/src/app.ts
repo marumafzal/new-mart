@@ -179,11 +179,21 @@ export function createServer() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Report-Signature'],
   }));
   
   app.use(cookieParser());
-  app.use(express.json({ limit: "256kb" }));
+  /* Capture raw body bytes on every JSON request so endpoints that rely on
+     request signing (e.g. /api/error-reports HMAC-SHA256 verification) can
+     hash the exact bytes the client signed, regardless of JSON formatting
+     differences. The buffer is small (capped at 256kb) and only retained for
+     the lifetime of the request. */
+  app.use(express.json({
+    limit: "256kb",
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+    },
+  }));
   app.use(express.urlencoded({ extended: true, limit: "256kb" }));
   
   app.get("/health", (req, res) => {

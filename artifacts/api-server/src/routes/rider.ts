@@ -1916,18 +1916,97 @@ router.get("/earnings", async (req, res) => {
   });
 });
 
-/* ── GET /rider/wallet/transactions ── */
+/* ── GET /rider/wallet/transactions ──
+   Cursor-paginated. Default page size 50, hard cap 200. The cursor is an
+   opaque base64 of `{ createdAt, id }` from the last item of the previous
+   page; pages are sorted by `(createdAt DESC, id DESC)` so the (createdAt,id)
+   tuple is a strict, deterministic ordering even when two transactions land
+   in the same millisecond.
+
+   Legacy mode: when the request includes `?legacy=1` we return the original
+   non-paginated `{ balance, transactions }` shape (capped at 100) so that
+   any client still on the old API keeps working through the transition. The
+   rider-app frontend uses the paginated path. */
 router.get("/wallet/transactions", async (req, res) => {
   const riderId = req.riderId!;
   const user = req.riderUser!;
-  const limit = Math.min(parseInt(String(req.query["limit"] || "50")), 100);
-  const txns = await db.select().from(walletTransactionsTable)
-    .where(eq(walletTransactionsTable.userId, riderId))
-    .orderBy(desc(walletTransactionsTable.createdAt))
-    .limit(limit);
+
+  /* Parse `limit` defensively: malformed query strings (e.g. `?limit=abc`)
+     produce NaN from parseInt, which would silently propagate as a broken
+     LIMIT clause. Normalise to the default and clamp into the allowed range. */
+  function parseLimit(raw: unknown, fallback: number, max: number): number {
+    const n = parseInt(String(raw ?? ""), 10);
+    const safe = Number.isFinite(n) && n > 0 ? n : fallback;
+    return Math.min(Math.max(1, safe), max);
+  }
+
+  const isLegacy = String(req.query["legacy"] ?? "") === "1";
+  if (isLegacy) {
+    const legacyLimit = parseLimit(req.query["limit"], 50, 100);
+    const txns = await db.select().from(walletTransactionsTable)
+      .where(eq(walletTransactionsTable.userId, riderId))
+      .orderBy(desc(walletTransactionsTable.createdAt))
+      .limit(legacyLimit);
+    sendSuccess(res, {
+      balance: safeNum(user.walletBalance),
+      transactions: txns.map(t => ({ ...t, amount: safeNum(t.amount) })),
+    });
+    return;
+  }
+
+  const limit = parseLimit(req.query["limit"], 50, 200);
+
+  /* Decode opaque cursor → { createdAt, id }. Bad/forged cursors are silently
+     treated as "no cursor" so a stale link cannot 500 the endpoint. */
+  let cursorCreatedAt: Date | null = null;
+  let cursorId: string | null = null;
+  const cursorRaw = String(req.query["cursor"] ?? "");
+  if (cursorRaw) {
+    try {
+      const decoded = JSON.parse(Buffer.from(cursorRaw, "base64").toString("utf8"));
+      const ts = typeof decoded?.createdAt === "string" ? new Date(decoded.createdAt) : null;
+      const cid = typeof decoded?.id === "string" ? decoded.id : null;
+      if (ts && !isNaN(ts.getTime()) && cid) { cursorCreatedAt = ts; cursorId = cid; }
+    } catch { /* ignore malformed cursor */ }
+  }
+
+  /* Fetch limit+1 to determine whether a next page exists without a count(). */
+  const baseFilter = eq(walletTransactionsTable.userId, riderId);
+  const filter = (cursorCreatedAt && cursorId)
+    ? and(baseFilter, or(
+        sql`${walletTransactionsTable.createdAt} < ${cursorCreatedAt}`,
+        and(
+          sql`${walletTransactionsTable.createdAt} = ${cursorCreatedAt}`,
+          sql`${walletTransactionsTable.id} < ${cursorId}`,
+        ),
+      ))
+    : baseFilter;
+
+  const rows = await db.select().from(walletTransactionsTable)
+    .where(filter)
+    .orderBy(desc(walletTransactionsTable.createdAt), desc(walletTransactionsTable.id))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  let nextCursor: string | null = null;
+  if (hasMore) {
+    const last = page[page.length - 1]!;
+    const createdAt = last.createdAt instanceof Date
+      ? last.createdAt
+      : new Date(String(last.createdAt));
+    nextCursor = Buffer.from(JSON.stringify({
+      createdAt: createdAt.toISOString(),
+      id: last.id,
+    }), "utf8").toString("base64");
+  }
+
   sendSuccess(res, {
     balance: safeNum(user.walletBalance),
-    transactions: txns.map(t => ({ ...t, amount: safeNum(t.amount) })),
+    items: page.map(t => ({ ...t, amount: safeNum(t.amount) })),
+    nextCursor,
+    limit,
   });
 });
 

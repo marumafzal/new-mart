@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
+import crypto from "crypto";
 import { z } from "zod";
 import { db } from "@workspace/db";
 import { errorReportsTable, customerErrorReportsTable, errorResolutionBackupsTable, autoResolveLogTable, platformSettingsTable } from "@workspace/db/schema";
@@ -10,6 +11,130 @@ import { validateBody } from "../middleware/validate.js";
 import { logger } from "../lib/logger.js";
 
 const router = Router();
+
+/* ── Public ingest abuse controls ────────────────────────────────────────────
+   The public POST `/api/error-reports` endpoint accepts unauthenticated
+   reports from every client app, which is also a tempting target for a
+   self-amplifying log-flood DoS. We protect it with two cheap, complementary
+   guards:
+
+   1. HMAC-SHA256 signature over the raw request body, keyed by a server-side
+      secret that is also injected into client builds at build time. A missing
+      or wrong signature returns 401 BEFORE any DB work runs.
+   2. A small in-memory token bucket per client IP (default 30 req/min). When
+      the bucket is empty the request returns 429.
+
+   In development the HMAC check is bypassed when no secret is configured so
+   local work isn't blocked. In production we **fail-closed**: if
+   `ERROR_REPORT_HMAC_SECRET` is missing or unsigned requests arrive, we
+   reject with 401 rather than silently accepting them.
+   ──────────────────────────────────────────────────────────────────────── */
+const ERROR_REPORT_HMAC_HEADER = "x-report-signature";
+
+function isProduction(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+function getHmacSecret(): string | null {
+  return (process.env.ERROR_REPORT_HMAC_SECRET ?? "").trim() || null;
+}
+
+/* Trust the IP that Express derived for us. `app.set('trust proxy', 1)` is
+   enabled in app.ts so `req.ip` is the first hop in the X-Forwarded-For chain
+   when behind the Replit proxy, and the socket address otherwise. We never
+   parse the X-Forwarded-For header directly because attackers can spoof it
+   to rotate identities and evade per-IP rate limits. */
+function getClientIpFromReq(req: Request): string {
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+
+/* ── In-memory token bucket per IP ──
+   Map<ip, { tokens, lastRefillMs }>. Buckets are pruned lazily — entries are
+   only deleted when an IP comes back; no global GC is needed because the map
+   stays small as long as legitimate IPs keep refilling. */
+type Bucket = { tokens: number; lastRefillMs: number };
+const ipBuckets = new Map<string, Bucket>();
+
+function getRateLimitConfig(): { capacity: number; refillPerMs: number } {
+  const perMin = Math.max(1, parseInt(process.env.ERROR_REPORT_RATE_PER_MIN ?? "30", 10) || 30);
+  return { capacity: perMin, refillPerMs: perMin / 60_000 };
+}
+
+function tryConsume(ip: string): boolean {
+  const { capacity, refillPerMs } = getRateLimitConfig();
+  const now = Date.now();
+  const existing = ipBuckets.get(ip);
+  if (!existing) {
+    ipBuckets.set(ip, { tokens: capacity - 1, lastRefillMs: now });
+    return true;
+  }
+  const elapsed = now - existing.lastRefillMs;
+  const refilled = Math.min(capacity, existing.tokens + elapsed * refillPerMs);
+  if (refilled < 1) {
+    existing.tokens = refilled;
+    existing.lastRefillMs = now;
+    return false;
+  }
+  existing.tokens = refilled - 1;
+  existing.lastRefillMs = now;
+  return true;
+}
+
+function timingSafeEqualHex(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
+  } catch {
+    return false;
+  }
+}
+
+/* Middleware: HMAC verify + rate limit. Order: rate-limit FIRST so a flood of
+   unsigned requests is rejected without running the (cheap) HMAC compare. */
+function errorReportIngestGuard(req: Request, res: Response, next: NextFunction): void {
+  const ip = getClientIpFromReq(req);
+  if (!tryConsume(ip)) {
+    res.status(429).set("Retry-After", "60").json({
+      success: false,
+      error: "Too many error reports — please slow down",
+    });
+    return;
+  }
+
+  const secret = getHmacSecret();
+  if (!secret) {
+    /* No secret configured. In production this is a misconfiguration —
+       fail-closed so the endpoint is never silently unauthenticated.
+       In development we accept unsigned reports so local work isn't blocked. */
+    if (isProduction()) {
+      res.status(401).json({ success: false, error: "Error-report ingest not configured" });
+      return;
+    }
+    next();
+    return;
+  }
+
+  const provided = (req.headers[ERROR_REPORT_HMAC_HEADER] as string | undefined)?.trim() ?? "";
+  if (!provided) {
+    res.status(401).json({ success: false, error: "Missing error-report signature" });
+    return;
+  }
+
+  /* Use raw body bytes captured by the express.json verify hook in app.ts.
+     Falling back to the parsed JSON re-stringified is intentionally NOT done:
+     any whitespace/key-order differences would silently break verification. */
+  const raw = (req as Request & { rawBody?: Buffer }).rawBody;
+  if (!raw || raw.length === 0) {
+    res.status(401).json({ success: false, error: "Missing request body" });
+    return;
+  }
+  const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
+  if (!timingSafeEqualHex(expected, provided.toLowerCase())) {
+    res.status(401).json({ success: false, error: "Invalid error-report signature" });
+    return;
+  }
+  next();
+}
 
 const VALID_SOURCE_APPS = ["customer", "rider", "vendor", "admin", "api"] as const;
 const VALID_ERROR_TYPES = ["frontend_crash", "api_error", "db_error", "route_error", "ui_error", "unhandled_exception"] as const;
@@ -77,7 +202,7 @@ function computeErrorHash(errorMessage: string, errorType: string, sourceApp: st
 
 const DEDUP_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
 
-router.post("/", validateBody(createErrorReportSchema), async (req, res) => {
+router.post("/", errorReportIngestGuard, validateBody(createErrorReportSchema), async (req, res) => {
   try {
     const body = req.body;
     const severity = classifySeverity(body.errorType, body.statusCode, body.errorMessage);

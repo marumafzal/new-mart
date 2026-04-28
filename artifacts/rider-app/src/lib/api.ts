@@ -11,18 +11,28 @@ const TOKEN_KEY   = "ajkmart_rider_token";
 const REFRESH_KEY = "ajkmart_rider_refresh_token";
 
 /* ── Secure token storage ──────────────────────────────────────────────────────
-   Access tokens are stored in localStorage so that closing a tab mid-trip does
+   Access tokens still live in localStorage so closing a tab mid-trip does
    not force a full re-login — the rider can reopen the browser and the active
-   trip screen rehydrates automatically via the existing refresh-token flow.
-   Refresh tokens also live in localStorage for cross-session persistence.
-   Server-side revocation (tokenVersion) is the primary security boundary.
+   trip screen rehydrates automatically via the refresh flow.
 
-   Separate in-memory variables are used per token class so that storage-restricted
-   environments (incognito strict mode, cross-origin iframes) cannot accidentally
-   mix access and refresh tokens. */
+   Refresh tokens are now carried by an HttpOnly cookie issued by the server
+   (`ajkmart_rider_refresh`, scoped to /api/auth) which is invisible to JS and
+   immune to XSS exfiltration. We keep an in-memory shadow copy of the refresh
+   raw value so the legacy POST-body fallback continues to work for one
+   release while older bundles roll out — but we deliberately DO NOT persist it
+   to localStorage anymore. A one-shot purge on app boot wipes any
+   leftover refresh token from previous installs. */
 
 let _inMemoryAccessToken   = "";
 let _inMemoryRefreshToken  = "";
+
+/* One-time purge of legacy refresh-token persistence. Runs at module init in
+   browser environments. Safe to no-op when storage is unavailable. */
+try {
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem(REFRESH_KEY);
+  }
+} catch { /* storage may be blocked — nothing to purge */ }
 
 /* Access token helpers — localStorage (persists across tab close / mid-trip reopen) */
 function sessionGet(): string {
@@ -35,15 +45,25 @@ function sessionRemove(): void {
   try { localStorage.removeItem(TOKEN_KEY); } catch { _inMemoryAccessToken = ""; }
 }
 
-/* Refresh token helpers — localStorage */
+/* Refresh token helpers — IN-MEMORY ONLY.
+   The raw value is also delivered as an HttpOnly cookie by the server for
+   subsequent /auth/refresh and /auth/logout calls. The in-memory copy backs
+   the legacy POST-body fallback during the cookie-rollout window.
+   TODO(remove-after-v1): once the cookie-bearing rider build has fully
+   propagated, remove _inMemoryRefreshToken and the body fallback in
+   refreshAccessToken/logout. */
 function localGet(): string {
-  try { return localStorage.getItem(REFRESH_KEY) ?? ""; } catch { return _inMemoryRefreshToken; }
+  return _inMemoryRefreshToken;
 }
 function localSet(value: string): void {
-  try { localStorage.setItem(REFRESH_KEY, value); } catch { _inMemoryRefreshToken = value; }
+  _inMemoryRefreshToken = value;
+  /* Also belt-and-braces clear any stale localStorage entry that may have
+     been written by an older bundle still cached in this browser. */
+  try { localStorage.removeItem(REFRESH_KEY); } catch {}
 }
 function localRemove(): void {
-  try { localStorage.removeItem(REFRESH_KEY); } catch { _inMemoryRefreshToken = ""; }
+  _inMemoryRefreshToken = "";
+  try { localStorage.removeItem(REFRESH_KEY); } catch {}
 }
 
 /* Read the access token from localStorage (current scheme) or scan for legacy keys. */
@@ -126,13 +146,20 @@ export function isApiError(e: unknown): e is ApiError {
 }
 
 async function _doRefresh(): Promise<RefreshResult> {
+  /* The refresh credential travels in an HttpOnly cookie set by the server.
+     We still pass any in-memory shadow copy in the body as a one-release
+     legacy fallback for older API servers that have not been redeployed. If
+     neither path can prove identity we mark this as auth_failed so the
+     caller routes to login — but only when there is genuinely no cookie OR
+     in-memory token to send. We cannot read the cookie from JS, so we
+     optimistically attempt the request and let the server respond. */
   const refreshToken = getRefreshToken();
-  if (!refreshToken) return "auth_failed";
   try {
     const res = await fetch(`${BASE}/auth/refresh`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify(refreshToken ? { refreshToken } : {}),
     });
     if (!res.ok) {
       /* 5xx / network-level: transient, keep tokens, let apiFetch retry */
@@ -257,7 +284,11 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudge
 
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, { ...opts, headers, signal });
+    /* `credentials: "include"` ensures the HttpOnly refresh cookie set by the
+       server is sent on every API call. Cookies are scoped server-side to
+       /api/auth so non-auth endpoints will not see them; this is purely
+       enabling the cookie-aware paths. */
+    res = await fetch(`${BASE}${path}`, { ...opts, headers, signal, credentials: "include" });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -438,7 +469,20 @@ export const api = {
     apiFetch("/rider/location/batch", { method: "POST", body: JSON.stringify({ locations: pings }) }),
 
   /* Wallet */
-  getWallet:      () => apiFetch("/rider/wallet/transactions"),
+  /* getWallet — kept for backward compatibility. Calls the legacy non-paged
+     endpoint shape `{ balance, transactions }` via `?legacy=1`. New code
+     should use `getWalletPage` for cursor pagination. */
+  getWallet:      () => apiFetch("/rider/wallet/transactions?legacy=1"),
+  /* getWalletPage — cursor-paginated. Returns `{ balance, items, nextCursor, limit }`.
+     Pass `cursor` (opaque string from the previous response) to fetch the
+     next page. Pass `limit` (1–200) to control page size; default 50. */
+  getWalletPage:  (opts: { cursor?: string | null; limit?: number } = {}): Promise<{ balance: number; items: Array<{ id: string; type: string; amount: number; description?: string | null; reference?: string | null; createdAt: string; [k: string]: unknown }>; nextCursor: string | null; limit: number }> => {
+    const params = new URLSearchParams();
+    if (opts.limit) params.set("limit", String(opts.limit));
+    if (opts.cursor) params.set("cursor", opts.cursor);
+    const qs = params.toString();
+    return apiFetch(`/rider/wallet/transactions${qs ? `?${qs}` : ""}`);
+  },
   getMinBalance:  () => apiFetch("/rider/wallet/min-balance"),
   withdrawWallet: (data: { amount: number; bankName: string; accountNumber: string; accountTitle: string; paymentMethod?: string; note?: string }) =>
     apiFetch("/rider/wallet/withdraw", { method: "POST", body: JSON.stringify(data) }),

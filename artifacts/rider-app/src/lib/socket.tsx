@@ -52,6 +52,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       reconnectionDelay: 2000,
       reconnectionDelayMax: 30000,
       reconnectionAttempts: 20,
+      /* withCredentials lets the browser attach the HttpOnly refresh cookie
+         to the polling-transport handshake. The websocket transport does
+         not require it but enabling here is harmless and keeps both
+         transports symmetric for any cookie-aware server middleware. */
+      withCredentials: true,
     });
     socketRef.current = s;
     setSocket(s);

@@ -48,12 +48,72 @@ function isBenignRejection(err: unknown): boolean {
   return BENIGN_REJECTION_SUBSTRINGS.some(s => msg.includes(s));
 }
 
-async function sendReport(report: Record<string, unknown>): Promise<void> {
+/* S-Sec4: HMAC-SHA256 sign every error report so the server can verify the
+   payload originated from a legitimate rider build. The shared secret comes
+   from `VITE_ERROR_REPORT_HMAC_SECRET` injected at build time; when it is
+   missing we **skip the POST entirely** and warn once in dev so a missing
+   build-time secret never silently produces unsigned traffic in production.
+   The signature is hex-encoded and sent in the `X-Report-Signature` header. */
+const _hmacSecret: string = (import.meta.env.VITE_ERROR_REPORT_HMAC_SECRET as string | undefined) ?? "";
+let _warnedNoSecret = false;
+let _hmacKeyPromise: Promise<CryptoKey | null> | null = null;
+function getHmacKey(): Promise<CryptoKey | null> {
+  if (!_hmacSecret) return Promise.resolve(null);
+  if (_hmacKeyPromise) return _hmacKeyPromise;
+  _hmacKeyPromise = (async () => {
+    try {
+      const enc = new TextEncoder();
+      return await crypto.subtle.importKey(
+        "raw",
+        enc.encode(_hmacSecret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+      );
+    } catch { return null; }
+  })();
+  return _hmacKeyPromise;
+}
+async function signBody(body: string): Promise<string | null> {
+  const key = await getHmacKey();
+  if (!key) return null;
   try {
+    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+    const bytes = new Uint8Array(sig);
+    let hex = "";
+    for (let i = 0; i < bytes.length; i++) {
+      hex += bytes[i]!.toString(16).padStart(2, "0");
+    }
+    return hex;
+  } catch { return null; }
+}
+
+async function sendReport(report: Record<string, unknown>): Promise<void> {
+  /* S-Sec4: Without a build-time HMAC secret we cannot sign the payload.
+     Per requirement, skip the POST entirely (warn once in dev) so missing
+     config can never produce unsigned traffic in production. */
+  if (!_hmacSecret) {
+    if (!_warnedNoSecret) {
+      _warnedNoSecret = true;
+      if (import.meta.env.DEV) {
+        /* eslint-disable-next-line no-console */
+        console.warn("[ErrorReporter] VITE_ERROR_REPORT_HMAC_SECRET is not set — error reports will NOT be sent.");
+      }
+    }
+    return;
+  }
+  try {
+    const body = JSON.stringify(report);
+    const sig = await signBody(body);
+    if (!sig) return;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-Report-Signature": sig,
+    };
     await fetch(`${getApiBase()}/error-reports`, { /* PWA4: Use centralized getApiBase() (COMPLETED) */
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(report),
+      headers,
+      body,
     });
   } catch {}
 }

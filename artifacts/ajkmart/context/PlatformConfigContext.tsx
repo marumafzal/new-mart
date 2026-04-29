@@ -114,7 +114,7 @@ export interface PlatformConfig {
     maxTransfer: number;
     dailyLimit: number;
     p2pDailyLimit: number;
-    withdrawalProcessingDays: number;
+    withdrawalProcessingDays: number | null;
     kycRequired: boolean;
     topupMethods: string;
     referralEnabled: boolean;
@@ -317,7 +317,7 @@ const DEFAULT: PlatformConfig = {
   },
   customer: {
     walletMax: 50000, minTopup: 100, maxTopup: 25000, minWithdrawal: 200, maxWithdrawal: 10000, minTransfer: 200, maxTransfer: 10000,
-    dailyLimit: 20000, p2pDailyLimit: 10000, withdrawalProcessingDays: 2, kycRequired: false,
+    dailyLimit: 20000, p2pDailyLimit: 10000, withdrawalProcessingDays: null, kycRequired: false,
     topupMethods: "jazzcash,easypaisa,bank",
     referralEnabled: true, referralBonus: 100,
     loyaltyEnabled: true, loyaltyPtsPerRs100: 5, loyaltyMin: 10,

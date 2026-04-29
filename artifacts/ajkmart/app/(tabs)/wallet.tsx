@@ -647,6 +647,9 @@ type WithdrawStep = "method" | "details" | "confirm" | "done";
 const NOTE_MAX_LENGTH = 200;
 
 function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdrawal, pinToken }: { onClose: () => void; onSuccess: () => void; onFrozen?: () => void; token: string | null; balance: number; minWithdrawal: number; pinToken?: string | null }) {
+  const { config: withdrawConfig } = usePlatformConfig();
+  const withdrawalProcessingDays = withdrawConfig.customer?.withdrawalProcessingDays;
+  const processingText = withdrawalProcessingDays ? `${withdrawalProcessingDays} business day(s)` : "24–48 hours";
   const { symbol: currencySymbol, code: currencyCode } = useCurrency();
   const [step, setStep]               = useState<WithdrawStep>("method");
   const [withdrawMethods, setWithdrawMethods] = useState<WithdrawMethod[]>([]);
@@ -748,7 +751,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
                     <Ionicons name="arrow-up-circle" size={40} color={C.danger} />
                   </View>
                   <Text style={{ ...Typ.title, color: C.text, marginBottom: 8 }}>Request Submitted!</Text>
-                  <Text style={{ ...Typ.body, color: C.textMuted, textAlign: "center", lineHeight: 20, maxWidth: 280 }}>Your withdrawal will be processed within 1-2 business days.</Text>
+                  <Text style={{ ...Typ.body, color: C.textMuted, textAlign: "center", lineHeight: 20, maxWidth: 280 }}>Your withdrawal will be processed within {processingText}.</Text>
                   <View style={{ backgroundColor: C.surfaceSecondary, borderRadius: 16, padding: 16, width: "100%", marginTop: 20, gap: 10, borderWidth: 1, borderColor: C.border }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                       <Text style={{ ...Typ.body, fontSize: 13, color: C.textMuted }}>Method</Text>
@@ -908,7 +911,7 @@ function WithdrawModal({ onClose, onSuccess, onFrozen, token, balance, minWithdr
 
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.amberSoft, borderRadius: 12, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: C.amberBorder }}>
                     <Ionicons name="information-circle-outline" size={16} color={C.amber} />
-                    <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>Once submitted, this request cannot be cancelled. Make sure account details are correct.</Text>
+                    <Text style={{ ...Typ.caption, color: C.amberDark, flex: 1 }}>Once submitted, this request cannot be cancelled. Make sure account details are correct. Withdrawals are processed within {processingText} by admin.</Text>
                   </View>
 
                   {err ? (
@@ -2054,7 +2057,7 @@ function WalletScreenInner() {
           onClose={() => { setShowWithdraw(false); setActivePinToken(null); }}
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: walletQueryKey });
-            showToast("Withdrawal request submitted! It will be processed within 1-2 business days.", "success");
+            showToast(`Withdrawal request submitted! It will be processed within ${platformConfig.customer?.withdrawalProcessingDays ? `${platformConfig.customer.withdrawalProcessingDays} business day(s)` : "24–48 hours"}.`, "success");
             setActivePinToken(null);
           }}
           onFrozen={() => setWalletFrozen(true)}

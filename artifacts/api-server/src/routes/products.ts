@@ -248,7 +248,7 @@ router.get("/search", async (req, res) => {
     if (authHeader?.startsWith("Bearer ")) {
       const token = authHeader.slice(7);
       const payload = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as jwt.JwtPayload;
-      if (payload?.userId) searchUserId = payload.userId as string;
+      if (payload?.sub) searchUserId = payload.sub;
     }
   } catch { /* ignore invalid/missing tokens */ }
   db.insert(searchLogsTable).values({ query: trimmed, resultCount: total, userId: searchUserId }).catch(() => {});

@@ -88,12 +88,16 @@ async function registerFcmPush(
     const registerTokenWithServer = async (token: string) => {
       const authToken = api.getToken();
       if (!authToken) return;
-      await fetch(`${apiBase}/api/push/subscribe`, {
+      const res = await fetch(`${apiBase}/api/push/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
         body: JSON.stringify({ type: "fcm", token, role: "rider" }),
       });
-      if (import.meta.env.DEV) console.log("[push] FCM token registered/refreshed");
+      if (!res.ok) {
+        console.warn("[push] FCM token registration failed:", res.status, res.statusText);
+      } else if (import.meta.env.DEV) {
+        console.log("[push] FCM token registered/refreshed");
+      }
     };
 
     /* Attach ALL listeners BEFORE calling register() so no token/error events

@@ -1000,7 +1000,7 @@ export function renderSection(
         <div className="space-y-3 border-t border-border/40 pt-6">
           <SLabel icon={BarChart3}>Live Checkout Preview</SLabel>
           <p className="text-xs text-muted-foreground -mt-1">What delivery fee customers see at checkout for different cart subtotals — updates instantly as you change values above.</p>
-          <div className="rounded-xl border border-border bg-white overflow-hidden">
+          <div className="rounded-xl border border-border bg-white overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-sky-50 border-b border-sky-100">
@@ -1858,7 +1858,7 @@ export function renderSection(
         <div className="border-t border-border/40 pt-5">
           <SLabel icon={BarChart3}>Rider Earnings Simulation</SLabel>
           <p className="text-xs text-muted-foreground mb-3 -mt-1">Live preview of rider take-home for different delivery fee amounts at current settings</p>
-          <div className="overflow-hidden rounded-xl border border-border bg-white">
+          <div className="overflow-x-auto rounded-xl border border-border bg-white">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>
@@ -2067,7 +2067,7 @@ export function renderSection(
         <div className="border-t border-border/40 pt-5">
           <SLabel icon={BarChart3}>Vendor Earnings Summary</SLabel>
           <p className="text-xs text-muted-foreground mb-3 -mt-1">Live preview of what a typical vendor experiences with current settings</p>
-          <div className="overflow-hidden rounded-xl border border-border bg-white">
+          <div className="overflow-x-auto rounded-xl border border-border bg-white">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-border">
                 <tr>

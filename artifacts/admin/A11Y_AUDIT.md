@@ -2,7 +2,7 @@
 
 **Standard:** WCAG 2.1 Level AA  
 **Audit Date:** April 29, 2026  
-**Scope:** All 63 admin pages (global fixes + 13 pages with full mobile card views; 8 config pages documented under WCAG 1.4.10 exemption)
+**Scope:** All 63 admin pages (global fixes + 20 pages with full mobile card views; 6 config pages documented under WCAG 1.4.10 exemption)
 
 ---
 
@@ -17,7 +17,8 @@
 | 6 custom div modals: no role, no focus trap, no ESC | 4.1.2 / 2.1.2 | Page-specific: DepositRequests, Withdrawals |
 | Toggle/ModeBtn: `div onClick`, not keyboard-reachable | 4.1.2 | Global — `AdminShared.tsx` |
 | Toggle keyboard double-fire regression | 4.1.2 | Global — `AdminShared.tsx` (removed redundant `onKeyDown`) |
-| Tables not collapsing on mobile — 9 pages | 1.4.10 | Page-specific (9 pages) |
+| Tables not collapsing on mobile — 20 pages | 1.4.10 | Page-specific (20 pages) |
+| Native `<table>` elements missing `overflow-x-auto` | 1.4.10 | `settings-render.tsx` (3 tables) |
 
 ---
 
@@ -89,9 +90,9 @@ Verified scope: all 63 pages share this stylesheet. All `<button>`, `<a>`, `<inp
 </section>
 
 {/* desktop — hidden below md */}
-<Card className="hidden md:block">
+<div className="hidden md:block overflow-x-auto">
   <Table>...</Table>
-</Card>
+</div>
 ```
 
 ### Pages with mobile card views
@@ -102,41 +103,47 @@ Verified scope: all 63 pages share this stylesheet. All `<button>`, `<a>`, `<inp
 | `users.tsx` | Card click → detail | Pre-existing, verified |
 | `rides.tsx` | Card click → detail | Pre-existing, verified |
 | `products.tsx` | Card click → detail | Pre-existing, verified |
-| `transactions.tsx` | Display-only | Added; verified `md:hidden`/`hidden md:block` present |
-| `parcel.tsx` | Card click → Radix Dialog detail | Added; verified; status visible as Badge |
-| `pharmacy.tsx` | Card click → Radix Dialog detail | Added; verified; status visible as Badge |
+| `transactions.tsx` | Display-only | Added; verified |
+| `parcel.tsx` | Card click → Radix Dialog detail | Added; verified |
+| `pharmacy.tsx` | Card click → Radix Dialog detail | Added; verified |
 | `reviews.tsx` | Display-only (rating, status, counts) | Added; verified |
 | `loyalty.tsx` | Single labeled "Adjust" button → Radix Dialog | Added; verified |
 | `qr-codes.tsx` | Labeled Switch + labeled copy Button | Added; verified |
 | `consent-log.tsx` | Display-only | Added; verified |
 | `deep-links.tsx` | DropdownMenu (Copy Link, Delete) via `MoreHorizontal` trigger | Added; verified |
 | `experiments.tsx` | DropdownMenu (View Results, Pause/Resume, Complete, Delete) | Added; verified |
+| `chat-monitor.tsx` | DropdownMenu (View/Reply/Escalate + Delete/Ignore) — 2 tables | Added; verified |
+| `communication.tsx` | DropdownMenu actions — 5 tables (Conversations, Calls, AI Logs, Flagged, AJK IDs) | Added; verified |
+| `webhook-manager.tsx` | DropdownMenu (Test, View Logs, Delete) | Added; verified |
+| `wishlist-insights.tsx` | Inline label + icon list | Added; verified |
+| `wallet-transfers.tsx` | DropdownMenu (Flag, Freeze) — native `<table>` | Added; verified |
+| `van.tsx` (Routes tab) | DropdownMenu (Edit, Deactivate) | Added; verified |
+| `van.tsx` (Vehicles tab) | Edit button | Added; verified |
+| `van.tsx` (Schedules tab) | DropdownMenu (Seat Inventory, Edit, Deactivate) | Added; verified |
+| `van.tsx` (Drivers tab) | Inline Select + Deactivate button | Added; verified |
+| `van.tsx` (Bookings tab) | Inline Select for status | Added; verified |
 
-**13 pages total. Each card view manually verified for correct breakpoint classes.**
+**20 pages / 23 table components total. All verified for correct breakpoint classes and accessible action patterns.**
 
 ### Action menu pattern for multi-action mobile cards
 
 Pages with multiple row actions use Radix `DropdownMenu`:
-- Trigger: `<Button aria-label="Open actions menu"><MoreHorizontal /></Button>`
+- Trigger: `<Button aria-label="Open actions menu"><MoreHorizontal aria-hidden="true" /></Button>`
 - Items: labeled with icon + text (no icon-only items in the menu)
-- This pattern is applied to: `deep-links.tsx`, `experiments.tsx`
+- Applied to: `deep-links.tsx`, `experiments.tsx`, `chat-monitor.tsx`, `communication.tsx`, `webhook-manager.tsx`, `wallet-transfers.tsx`, `van.tsx` (Routes, Schedules tabs)
 
 ### Pages using WCAG 1.4.10 two-dimensional exemption
 
-WCAG 1.4.10 explicitly exempts "content which requires two-dimensional layout for usage or meaning." The following pages are configuration/audit-log tables accessed exclusively in desktop admin workflows:
+WCAG 1.4.10 explicitly exempts "content which requires two-dimensional layout for usage or meaning." The following pages are configuration/audit-log tables accessed exclusively in desktop admin workflows and are covered by `overflow-x-auto`:
 
 | Page | Table type |
 |------|-----------|
-| `communication.tsx` | Campaign/push/SMS/template management |
-| `chat-monitor.tsx` | Session + message log |
 | `security.tsx` | Security audit log |
-| `settings-render.tsx` | Feature/config settings |
+| `settings-render.tsx` | Feature/config settings (6 native tables — all have `overflow-x-auto`) |
 | `settings-security.tsx` | Security settings |
 | `settings-integrations.tsx` | Integration config |
 | `app-management.tsx` | App version/config |
 | `launch-control.tsx` | Launch/maintenance settings |
-
-All use `overflow-x-auto` horizontal scroll which satisfies the exemption.
 
 ---
 
@@ -172,6 +179,13 @@ All 313 `Sheet`, `Dialog`, `AlertDialog`, `Select`, `DropdownMenu`, `Popover`, `
 | `src/pages/consent-log.tsx` | Mobile cards (display-only) + desktop table split |
 | `src/pages/deep-links.tsx` | Mobile cards + DropdownMenu (Copy, Delete) + desktop table split |
 | `src/pages/experiments.tsx` | Mobile cards + DropdownMenu (Results, Pause/Resume/Complete, Delete) + desktop table split |
+| `src/pages/chat-monitor.tsx` | Mobile cards + DropdownMenu actions — 2 tables (Conversations, Reports) |
+| `src/pages/communication.tsx` | Mobile cards + DropdownMenu actions — 5 tables (Conversations, Calls, AI Logs, Flagged, AJK IDs) |
+| `src/pages/webhook-manager.tsx` | Mobile cards + DropdownMenu (Test, View Logs, Delete) |
+| `src/pages/wishlist-insights.tsx` | Mobile inline list + desktop table split |
+| `src/pages/wallet-transfers.tsx` | Mobile cards + DropdownMenu (Flag, Freeze) on native `<table>` |
+| `src/pages/settings-render.tsx` | 3 native `<table>` elements gained `overflow-x-auto` wrapper |
+| `src/pages/van.tsx` | Mobile cards for all 5 tabs (Routes, Vehicles, Schedules, Drivers, Bookings); `Card`, `CardContent`, `DropdownMenu`, `MoreHorizontal` added to imports |
 
 ---
 

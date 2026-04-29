@@ -254,9 +254,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         {isMobile && (
           <button
             onClick={() => setIsMobileMenuOpen(false)}
+            aria-label="Close navigation menu"
             className="ml-auto w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
           >
-            <X className="w-4 h-4 text-white/50" />
+            <X className="w-4 h-4 text-white/50" aria-hidden="true" />
           </button>
         )}
       </div>

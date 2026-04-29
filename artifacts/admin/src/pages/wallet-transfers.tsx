@@ -2,12 +2,13 @@ import { useState } from "react";
 import {
   Wallet, Search, RefreshCw, Flag, FlagOff, AlertTriangle,
   TrendingUp, DollarSign, ShieldOff, ShieldCheck, Filter,
-  ArrowRight, ChevronDown, ChevronUp, User
+  ArrowRight, ChevronDown, ChevronUp, User, MoreHorizontal,
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { fetcher, apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -266,71 +267,113 @@ function TransactionsPanel() {
             <p className="text-sm">No P2P transactions found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
-                  <th className="text-left px-4 py-2.5 font-medium">Date</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Sender</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Receiver</th>
-                  <th className="text-right px-4 py-2.5 font-medium">Amount</th>
-                  <th className="text-center px-3 py-2.5 font-medium">Status</th>
-                  <th className="text-left px-3 py-2.5 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map(tx => (
-                  <tr key={tx.id} className={`border-b last:border-0 hover:bg-muted/20 ${tx.flagged ? "bg-red-50/40" : ""}`}>
-                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                      {formatDate(tx.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-xs">{tx.sender_name || "Unknown"}</div>
-                      <div className="text-xs text-muted-foreground">{tx.sender_phone}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-xs">{tx.receiver_name || "Unknown"}</div>
-                      <div className="text-xs text-muted-foreground">{tx.receiver_phone || tx.receiver_id?.slice(0, 8)}</div>
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-green-700 whitespace-nowrap">
-                      Rs. {parseFloat(tx.amount).toLocaleString()}
-                    </td>
-                    <td className="px-3 py-3 text-center">
+          <>
+            {/* Mobile card list */}
+            <section className="md:hidden divide-y divide-border" aria-label="P2P transfers">
+              {transactions.map(tx => (
+                <div key={tx.id} className={`p-4 space-y-2 ${tx.flagged ? "bg-red-50/40" : ""}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{tx.sender_name || "Unknown"} → {tx.receiver_name || "Unknown"}</p>
+                      <p className="text-xs text-muted-foreground">{tx.sender_phone} → {tx.receiver_phone || tx.receiver_id?.slice(0, 8)}</p>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" aria-label="Open actions menu">
+                          <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setFlagModal(tx)}>
+                          {tx.flagged ? <><FlagOff className="w-4 h-4 mr-2 text-red-500" aria-hidden="true" /> Unflag</> : <><Flag className="w-4 h-4 mr-2" aria-hidden="true" /> Flag</>}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setFreezeModal({ userId: tx.sender_id, name: tx.sender_name || tx.sender_phone || tx.sender_id })}>
+                          <ShieldOff className="w-4 h-4 mr-2 text-orange-500" aria-hidden="true" /> Freeze Sender
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">{formatDate(tx.created_at)}</span>
+                    <div className="flex items-center gap-2">
                       {tx.flagged ? (
-                        <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
-                          <Flag className="w-2.5 h-2.5 mr-1" /> Flagged
-                        </Badge>
+                        <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200"><Flag className="w-2.5 h-2.5 mr-1" aria-hidden="true" /> Flagged</Badge>
                       ) : (
-                        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                          Clean
-                        </Badge>
+                        <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">Clean</Badge>
                       )}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost" size="icon"
-                          className={`h-7 w-7 ${tx.flagged ? "text-red-500 hover:text-red-700" : "text-muted-foreground hover:text-red-500"}`}
-                          title={tx.flagged ? `Unflag (${tx.flag_reason ?? ""})` : "Flag as suspicious"}
-                          onClick={() => setFlagModal(tx)}
-                        >
-                          {tx.flagged ? <FlagOff className="w-3.5 h-3.5" /> : <Flag className="w-3.5 h-3.5" />}
-                        </Button>
-                        <Button
-                          variant="ghost" size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-orange-500"
-                          title="Freeze sender's P2P"
-                          onClick={() => setFreezeModal({ userId: tx.sender_id, name: tx.sender_name || tx.sender_phone || tx.sender_id })}
-                        >
-                          <ShieldOff className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </td>
+                      <span className="font-semibold text-green-700 text-sm">Rs. {parseFloat(tx.amount).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </section>
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                    <th className="text-left px-4 py-2.5 font-medium">Date</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Sender</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Receiver</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Amount</th>
+                    <th className="text-center px-3 py-2.5 font-medium">Status</th>
+                    <th className="text-left px-3 py-2.5 font-medium">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {transactions.map(tx => (
+                    <tr key={tx.id} className={`border-b last:border-0 hover:bg-muted/20 ${tx.flagged ? "bg-red-50/40" : ""}`}>
+                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDate(tx.created_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-xs">{tx.sender_name || "Unknown"}</div>
+                        <div className="text-xs text-muted-foreground">{tx.sender_phone}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-xs">{tx.receiver_name || "Unknown"}</div>
+                        <div className="text-xs text-muted-foreground">{tx.receiver_phone || tx.receiver_id?.slice(0, 8)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-green-700 whitespace-nowrap">
+                        Rs. {parseFloat(tx.amount).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        {tx.flagged ? (
+                          <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+                            <Flag className="w-2.5 h-2.5 mr-1" aria-hidden="true" /> Flagged
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                            Clean
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost" size="icon"
+                            className={`h-7 w-7 ${tx.flagged ? "text-red-500 hover:text-red-700" : "text-muted-foreground hover:text-red-500"}`}
+                            aria-label={tx.flagged ? "Unflag transaction" : "Flag as suspicious"}
+                            onClick={() => setFlagModal(tx)}
+                          >
+                            {tx.flagged ? <FlagOff className="w-3.5 h-3.5" aria-hidden="true" /> : <Flag className="w-3.5 h-3.5" aria-hidden="true" />}
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-orange-500"
+                            aria-label="Freeze sender's P2P"
+                            onClick={() => setFreezeModal({ userId: tx.sender_id, name: tx.sender_name || tx.sender_phone || tx.sender_id })}
+                          >
+                            <ShieldOff className="w-3.5 h-3.5" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {pages > 1 && (

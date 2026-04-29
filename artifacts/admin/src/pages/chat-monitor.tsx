@@ -2,7 +2,8 @@ import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,7 +13,7 @@ import { MobileDrawer } from "@/components/MobileDrawer";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import {
   MessageCircle, Search, VolumeX, Volume2, Eye, AlertTriangle,
-  CheckCircle2, Clock, Loader2, Users, Flag, Shield,
+  CheckCircle2, Clock, Loader2, Users, Flag, Shield, MoreHorizontal,
 } from "lucide-react";
 
 type Participant = { id: string; name: string | null; phone: string | null; ajkId: string | null; chatMuted?: boolean };
@@ -131,7 +132,57 @@ export default function ChatMonitor() {
               <Input placeholder="Search by name, phone, or AJK ID..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 rounded-xl" />
             </div>
 
-            <Card className="overflow-hidden rounded-2xl">
+            {/* Mobile card list */}
+            <section className="md:hidden space-y-3" aria-label="Conversations">
+              {convLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i} className="rounded-2xl p-4 animate-pulse"><div className="h-4 w-36 bg-muted rounded mb-2" /><div className="h-3 w-24 bg-muted rounded" /></Card>
+                ))
+              ) : filtered.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground"><MessageCircle className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" /><p>No conversations found</p></div>
+              ) : filtered.map(c => (
+                <Card key={c.id} className="overflow-hidden rounded-2xl">
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-xs text-muted-foreground font-medium">Participants</p>
+                        <p className="text-sm font-semibold truncate">
+                          {pName(c.participant1)} {c.participant1?.chatMuted && <Badge variant="outline" className="text-[10px] text-red-600 border-red-200 ml-1">MUTED</Badge>}
+                          {" ↔ "}
+                          {pName(c.participant2)} {c.participant2?.chatMuted && <Badge variant="outline" className="text-[10px] text-red-600 border-red-200 ml-1">MUTED</Badge>}
+                        </p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 shrink-0" aria-label="Open actions menu">
+                            <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setSelectedConv(c.id)}>
+                            <Eye className="w-4 h-4 mr-2" aria-hidden="true" /> View Messages
+                          </DropdownMenuItem>
+                          {c.participant1 && (c.participant1.chatMuted
+                            ? <DropdownMenuItem onClick={() => unmuteMutation.mutate(c.participant1!.id)}><Volume2 className="w-4 h-4 mr-2 text-green-600" aria-hidden="true" /> Unmute {pName(c.participant1)}</DropdownMenuItem>
+                            : <DropdownMenuItem onClick={() => muteMutation.mutate(c.participant1!.id)}><VolumeX className="w-4 h-4 mr-2 text-red-600" aria-hidden="true" /> Mute {pName(c.participant1)}</DropdownMenuItem>
+                          )}
+                          {c.participant2 && (c.participant2.chatMuted
+                            ? <DropdownMenuItem onClick={() => unmuteMutation.mutate(c.participant2!.id)}><Volume2 className="w-4 h-4 mr-2 text-green-600" aria-hidden="true" /> Unmute {pName(c.participant2)}</DropdownMenuItem>
+                            : <DropdownMenuItem onClick={() => muteMutation.mutate(c.participant2!.id)}><VolumeX className="w-4 h-4 mr-2 text-red-600" aria-hidden="true" /> Mute {pName(c.participant2)}</DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1 border-t border-border/50">
+                      <Badge variant="secondary" className="text-xs">{c.messageCount} msgs</Badge>
+                      <span>{c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleDateString() : "—"}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </section>
+            {/* Desktop table */}
+            <Card className="hidden md:block overflow-hidden rounded-2xl">
               {convLoading ? (
                 <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
               ) : filtered.length === 0 ? (
@@ -169,18 +220,18 @@ export default function ChatMonitor() {
                           <TableCell><span className="text-xs text-muted-foreground">{c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleString() : "—"}</span></TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center gap-1 justify-end">
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setSelectedConv(c.id)} title="View messages">
-                                <Eye className="w-4 h-4" />
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setSelectedConv(c.id)} aria-label="View messages">
+                                <Eye className="w-4 h-4" aria-hidden="true" />
                               </Button>
                               {c.participant1 && (
                                 c.participant1.chatMuted
-                                  ? <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-green-600" onClick={() => unmuteMutation.mutate(c.participant1!.id)} title="Unmute P1"><Volume2 className="w-4 h-4" /></Button>
-                                  : <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-600" onClick={() => muteMutation.mutate(c.participant1!.id)} title="Mute P1"><VolumeX className="w-4 h-4" /></Button>
+                                  ? <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-green-600" onClick={() => unmuteMutation.mutate(c.participant1!.id)} aria-label={`Unmute ${pName(c.participant1)}`}><Volume2 className="w-4 h-4" aria-hidden="true" /></Button>
+                                  : <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-600" onClick={() => muteMutation.mutate(c.participant1!.id)} aria-label={`Mute ${pName(c.participant1)}`}><VolumeX className="w-4 h-4" aria-hidden="true" /></Button>
                               )}
                               {c.participant2 && (
                                 c.participant2.chatMuted
-                                  ? <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-green-600" onClick={() => unmuteMutation.mutate(c.participant2!.id)} title="Unmute P2"><Volume2 className="w-4 h-4" /></Button>
-                                  : <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-600" onClick={() => muteMutation.mutate(c.participant2!.id)} title="Mute P2"><VolumeX className="w-4 h-4" /></Button>
+                                  ? <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-green-600" onClick={() => unmuteMutation.mutate(c.participant2!.id)} aria-label={`Unmute ${pName(c.participant2)}`}><Volume2 className="w-4 h-4" aria-hidden="true" /></Button>
+                                  : <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-600" onClick={() => muteMutation.mutate(c.participant2!.id)} aria-label={`Mute ${pName(c.participant2)}`}><VolumeX className="w-4 h-4" aria-hidden="true" /></Button>
                               )}
                             </div>
                           </TableCell>
@@ -203,7 +254,40 @@ export default function ChatMonitor() {
                 </Button>
               ))}
             </div>
-            <Card className="overflow-hidden rounded-2xl">
+            {/* Mobile card list */}
+            <section className="md:hidden space-y-3" aria-label="Chat reports">
+              {reportLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i} className="rounded-2xl p-4 animate-pulse"><div className="h-4 w-32 bg-muted rounded mb-2" /><div className="h-3 w-20 bg-muted rounded" /></Card>
+                ))
+              ) : reports.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground"><Shield className="w-10 h-10 mx-auto mb-3 opacity-30" aria-hidden="true" /><p>No reports found</p></div>
+              ) : reports.map(r => (
+                <Card key={r.id} className="overflow-hidden rounded-2xl">
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold truncate">{r.reporter?.name || r.reporter?.phone || "—"} → {r.reportedUser?.name || r.reportedUser?.phone || "—"}</p>
+                        <p className="text-xs text-muted-foreground">{r.reason}</p>
+                      </div>
+                      <Badge variant="outline" className={r.status === "pending" ? "text-amber-600 border-amber-200 bg-amber-50 shrink-0" : "text-green-600 border-green-200 bg-green-50 shrink-0"}>
+                        {r.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                      <span className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleDateString()}</span>
+                      {r.status === "pending" && (
+                        <Button size="sm" variant="outline" className="rounded-lg text-xs h-7" onClick={() => resolveMutation.mutate(r.id)} disabled={resolveMutation.isPending}>
+                          Resolve
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </section>
+            {/* Desktop table */}
+            <Card className="hidden md:block overflow-hidden rounded-2xl">
               {reportLoading ? (
                 <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
               ) : reports.length === 0 ? (

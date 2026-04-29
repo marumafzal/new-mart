@@ -171,67 +171,107 @@ export default function WishlistInsights() {
               <p>No wishlist data yet</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Vendor</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-center">Stock</TableHead>
-                    <TableHead className="text-center">Wishlist Count</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {products.map((p, i) => {
-                    const pct = topCount > 0 ? Math.round((p.wishlistCount / topCount) * 100) : 0;
-                    return (
-                      <TableRow key={p.productId} className="hover:bg-muted/30">
-                        <TableCell className="font-bold text-muted-foreground">{i + 1}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            {p.productImage ? (
-                              <img src={p.productImage} alt="" className="w-10 h-10 rounded-lg object-cover border" />
-                            ) : (
-                              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                                <Package className="w-5 h-5 text-muted-foreground" />
-                              </div>
-                            )}
-                            <span className="text-sm font-semibold">{p.productName}</span>
+            <>
+              {/* Mobile card list */}
+              <section className="md:hidden divide-y divide-border" aria-label="Wishlist ranking">
+                {products.map((p, i) => {
+                  const pct = topCount > 0 ? Math.round((p.wishlistCount / topCount) * 100) : 0;
+                  return (
+                    <div key={p.productId} className="flex items-center gap-3 p-3">
+                      <span className="font-bold text-muted-foreground text-sm w-6 text-center shrink-0">{i + 1}</span>
+                      {p.productImage ? (
+                        <img src={p.productImage} alt="" className="w-10 h-10 rounded-lg object-cover border shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                          <Package className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold truncate">{p.productName}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Badge variant="secondary" className="text-[10px]">{p.productCategory}</Badge>
+                          <span>{p.vendorName || "—"}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full bg-pink-500 rounded-full" style={{ width: `${pct}%` }} />
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="text-xs">{p.productCategory}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm text-muted-foreground">{p.vendorName || "—"}</span>
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-sm">
-                          Rs {Number(p.productPrice).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className={p.productInStock
-                            ? "text-green-600 border-green-200 bg-green-50"
-                            : "text-red-600 border-red-200 bg-red-50"}>
-                            {p.productInStock ? "In Stock" : "Out"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center gap-2 justify-center">
-                            <div className="w-16 h-2 rounded-full bg-muted overflow-hidden">
-                              <div className="h-full bg-pink-500 rounded-full" style={{ width: `${pct}%` }} />
+                          <span className="text-xs font-bold text-pink-600">{p.wishlistCount}</span>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-mono font-semibold">Rs {Number(p.productPrice).toLocaleString()}</p>
+                        <Badge variant="outline" className={`text-[10px] mt-0.5 ${p.productInStock ? "text-green-600 border-green-200 bg-green-50" : "text-red-600 border-red-200 bg-red-50"}`}>
+                          {p.productInStock ? "In Stock" : "Out"}
+                        </Badge>
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Vendor</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-center">Stock</TableHead>
+                      <TableHead className="text-center">Wishlist Count</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {products.map((p, i) => {
+                      const pct = topCount > 0 ? Math.round((p.wishlistCount / topCount) * 100) : 0;
+                      return (
+                        <TableRow key={p.productId} className="hover:bg-muted/30">
+                          <TableCell className="font-bold text-muted-foreground">{i + 1}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              {p.productImage ? (
+                                <img src={p.productImage} alt="" className="w-10 h-10 rounded-lg object-cover border" />
+                              ) : (
+                                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                                  <Package className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+                                </div>
+                              )}
+                              <span className="text-sm font-semibold">{p.productName}</span>
                             </div>
-                            <span className="text-sm font-bold text-pink-600">{p.wishlistCount}</span>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="text-xs">{p.productCategory}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm text-muted-foreground">{p.vendorName || "—"}</span>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            Rs {Number(p.productPrice).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className={p.productInStock
+                              ? "text-green-600 border-green-200 bg-green-50"
+                              : "text-red-600 border-red-200 bg-red-50"}>
+                              {p.productInStock ? "In Stock" : "Out"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex items-center gap-2 justify-center">
+                              <div className="w-16 h-2 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full bg-pink-500 rounded-full" style={{ width: `${pct}%` }} />
+                              </div>
+                              <span className="text-sm font-bold text-pink-600">{p.wishlistCount}</span>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </Card>
       </div>

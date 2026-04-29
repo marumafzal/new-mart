@@ -13,10 +13,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { io } from "socket.io-client";
 import { getAdminAccessToken } from "@/lib/api";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   MessageCircle, Phone, Mic, Settings2, Shield, Bot, Flag, Download,
   Users, BarChart2, Eye, CheckCircle, Sparkles, Search,
-  Crown, Pencil, Plus, Trash2, AlertTriangle,
+  Crown, Pencil, Plus, Trash2, AlertTriangle, MoreHorizontal,
 } from "lucide-react";
 
 interface DashboardStats {
@@ -503,39 +504,68 @@ function ConversationsTab() {
         </Card>
       ) : (
         <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Participants</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Message</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {conversations.map((conv) => (
-                <TableRow key={conv.id}>
-                  <TableCell>
-                    <div>
-                      <span className="font-medium">{conv.participant1?.name || "Unknown"}</span>
-                      <span className="text-muted-foreground"> ({conv.participant1?.ajkId})</span>
-                      <span className="mx-2">↔</span>
-                      <span className="font-medium">{conv.participant2?.name || "Unknown"}</span>
-                      <span className="text-muted-foreground"> ({conv.participant2?.ajkId})</span>
+          {/* Mobile card list */}
+          <section className="md:hidden space-y-3" aria-label="Conversations">
+            {conversations.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">No conversations found</p>
+            ) : conversations.map((conv) => (
+              <Card key={conv.id} className="overflow-hidden rounded-2xl">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">
+                        {conv.participant1?.name || "Unknown"} ↔ {conv.participant2?.name || "Unknown"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{conv.participant1?.ajkId} ↔ {conv.participant2?.ajkId}</p>
                     </div>
-                  </TableCell>
-                  <TableCell><Badge variant={conv.status === "active" ? "default" : "secondary"}>{conv.status}</Badge></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleString() : "—"}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => viewMessages(conv)}><Eye className="h-4 w-4" /></Button>
-                  </TableCell>
+                    <Badge variant={conv.status === "active" ? "default" : "secondary"} className="shrink-0">{conv.status}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                    <span className="text-xs text-muted-foreground">{conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleDateString() : "—"}</span>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => viewMessages(conv)}>
+                      <Eye className="h-3 w-3 mr-1" aria-hidden="true" /> View
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </section>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Participants</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Last Message</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-              {conversations.length === 0 && (
-                <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No conversations found</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {conversations.map((conv) => (
+                  <TableRow key={conv.id}>
+                    <TableCell>
+                      <div>
+                        <span className="font-medium">{conv.participant1?.name || "Unknown"}</span>
+                        <span className="text-muted-foreground"> ({conv.participant1?.ajkId})</span>
+                        <span className="mx-2">↔</span>
+                        <span className="font-medium">{conv.participant2?.name || "Unknown"}</span>
+                        <span className="text-muted-foreground"> ({conv.participant2?.ajkId})</span>
+                      </div>
+                    </TableCell>
+                    <TableCell><Badge variant={conv.status === "active" ? "default" : "secondary"}>{conv.status}</Badge></TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{conv.lastMessageAt ? new Date(conv.lastMessageAt).toLocaleString() : "—"}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm" onClick={() => viewMessages(conv)} aria-label="View messages"><Eye className="h-4 w-4" aria-hidden="true" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {conversations.length === 0 && (
+                  <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No conversations found</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
           <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />
         </>
       )}
@@ -562,29 +592,54 @@ function CallHistoryTab() {
       <div className="flex justify-end">
         <Button variant="outline" onClick={() => window.open(`/api/admin/communication/export/calls`, "_blank")}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Caller</TableHead>
-            <TableHead>Callee</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Duration</TableHead>
-            <TableHead>Time</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {calls.map((call) => (
-            <TableRow key={call.id}>
-              <TableCell>{call.caller?.name || "Unknown"} <span className="text-xs text-muted-foreground">({call.caller?.ajkId})</span></TableCell>
-              <TableCell>{call.callee?.name || "Unknown"} <span className="text-xs text-muted-foreground">({call.callee?.ajkId})</span></TableCell>
-              <TableCell><Badge variant={(statusColor[call.status] || "secondary") as "default" | "destructive" | "secondary" | "outline"}>{call.status}</Badge></TableCell>
-              <TableCell>{call.duration ? `${Math.floor(call.duration / 60)}:${(call.duration % 60).toString().padStart(2, "0")}` : "—"}</TableCell>
-              <TableCell className="text-sm">{new Date(call.startedAt || call.started_at || "").toLocaleString()}</TableCell>
+      {/* Mobile card list */}
+      <section className="md:hidden space-y-3" aria-label="Call history">
+        {calls.length === 0 ? (
+          <p className="text-center py-8 text-muted-foreground">No call history</p>
+        ) : calls.map((call) => (
+          <Card key={call.id} className="overflow-hidden rounded-2xl">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{call.caller?.name || "Unknown"} → {call.callee?.name || "Unknown"}</p>
+                  <p className="text-xs text-muted-foreground">{call.caller?.ajkId} → {call.callee?.ajkId}</p>
+                </div>
+                <Badge variant={(statusColor[call.status] || "secondary") as "default" | "destructive" | "secondary" | "outline"} className="shrink-0">{call.status}</Badge>
+              </div>
+              <div className="flex items-center gap-3 pt-1 border-t border-border/50 text-xs text-muted-foreground">
+                <span>{call.duration ? `${Math.floor(call.duration / 60)}:${(call.duration % 60).toString().padStart(2, "0")}` : "—"}</span>
+                <span>{new Date(call.startedAt || call.started_at || "").toLocaleDateString()}</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Caller</TableHead>
+              <TableHead>Callee</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Duration</TableHead>
+              <TableHead>Time</TableHead>
             </TableRow>
-          ))}
-          {calls.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No call history</TableCell></TableRow>}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {calls.map((call) => (
+              <TableRow key={call.id}>
+                <TableCell>{call.caller?.name || "Unknown"} <span className="text-xs text-muted-foreground">({call.caller?.ajkId})</span></TableCell>
+                <TableCell>{call.callee?.name || "Unknown"} <span className="text-xs text-muted-foreground">({call.callee?.ajkId})</span></TableCell>
+                <TableCell><Badge variant={(statusColor[call.status] || "secondary") as "default" | "destructive" | "secondary" | "outline"}>{call.status}</Badge></TableCell>
+                <TableCell>{call.duration ? `${Math.floor(call.duration / 60)}:${(call.duration % 60).toString().padStart(2, "0")}` : "—"}</TableCell>
+                <TableCell className="text-sm">{new Date(call.startedAt || call.started_at || "").toLocaleString()}</TableCell>
+              </TableRow>
+            ))}
+            {calls.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No call history</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+      </div>
       <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />
     </div>
   );
@@ -607,31 +662,56 @@ function AILogsTab() {
       <div className="flex justify-end">
         <Button variant="outline" onClick={() => window.open(`/api/admin/communication/export/ai-logs`, "_blank")}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>User</TableHead>
-            <TableHead>Action</TableHead>
-            <TableHead>Input</TableHead>
-            <TableHead>Output</TableHead>
-            <TableHead>Tokens</TableHead>
-            <TableHead>Time</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {logs.map((log) => (
-            <TableRow key={log.id}>
-              <TableCell>{log.user?.name || "Unknown"} <span className="text-xs text-muted-foreground">({log.user?.ajkId})</span></TableCell>
-              <TableCell><Badge variant="outline">{log.actionType || log.action_type}</Badge></TableCell>
-              <TableCell className="max-w-48 truncate text-sm">{log.inputText || log.input_text || "—"}</TableCell>
-              <TableCell className="max-w-48 truncate text-sm">{log.outputText || log.output_text || "—"}</TableCell>
-              <TableCell>{log.tokensUsed || log.tokens_used || 0}</TableCell>
-              <TableCell className="text-sm">{new Date(log.createdAt || log.created_at || "").toLocaleString()}</TableCell>
+      {/* Mobile card list */}
+      <section className="md:hidden space-y-3" aria-label="AI logs">
+        {logs.length === 0 ? (
+          <p className="text-center py-8 text-muted-foreground">No AI logs</p>
+        ) : logs.map((log) => (
+          <Card key={log.id} className="overflow-hidden rounded-2xl">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{log.user?.name || "Unknown"} <span className="font-normal text-muted-foreground">({log.user?.ajkId})</span></p>
+                  <p className="text-xs text-muted-foreground truncate">{log.inputText || log.input_text || "—"}</p>
+                </div>
+                <Badge variant="outline" className="shrink-0">{log.actionType || log.action_type}</Badge>
+              </div>
+              <div className="flex items-center gap-3 pt-1 border-t border-border/50 text-xs text-muted-foreground">
+                <span>{log.tokensUsed || log.tokens_used || 0} tokens</span>
+                <span>{new Date(log.createdAt || log.created_at || "").toLocaleDateString()}</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>User</TableHead>
+              <TableHead>Action</TableHead>
+              <TableHead>Input</TableHead>
+              <TableHead>Output</TableHead>
+              <TableHead>Tokens</TableHead>
+              <TableHead>Time</TableHead>
             </TableRow>
-          ))}
-          {logs.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No AI logs</TableCell></TableRow>}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {logs.map((log) => (
+              <TableRow key={log.id}>
+                <TableCell>{log.user?.name || "Unknown"} <span className="text-xs text-muted-foreground">({log.user?.ajkId})</span></TableCell>
+                <TableCell><Badge variant="outline">{log.actionType || log.action_type}</Badge></TableCell>
+                <TableCell className="max-w-48 truncate text-sm">{log.inputText || log.input_text || "—"}</TableCell>
+                <TableCell className="max-w-48 truncate text-sm">{log.outputText || log.output_text || "—"}</TableCell>
+                <TableCell>{log.tokensUsed || log.tokens_used || 0}</TableCell>
+                <TableCell className="text-sm">{new Date(log.createdAt || log.created_at || "").toLocaleString()}</TableCell>
+              </TableRow>
+            ))}
+            {logs.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No AI logs</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+      </div>
       <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />
     </div>
   );
@@ -666,36 +746,65 @@ function FlaggedTab() {
         <Button variant={status === "pending" ? "default" : "outline"} onClick={() => setStatus("pending")}>Pending</Button>
         <Button variant={status === "resolved" ? "default" : "outline"} onClick={() => setStatus("resolved")}>Resolved</Button>
       </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Reason</TableHead>
-            <TableHead>Keyword</TableHead>
-            <TableHead>Message</TableHead>
-            <TableHead>Time</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {flags.map((flag) => (
-            <TableRow key={flag.id}>
-              <TableCell>{flag.reason}</TableCell>
-              <TableCell>{flag.keyword || "—"}</TableCell>
-              <TableCell className="max-w-64 truncate text-sm">{flag.message?.content || flag.message?.original_content || "—"}</TableCell>
-              <TableCell className="text-sm">{new Date(flag.createdAt || flag.created_at || "").toLocaleString()}</TableCell>
-              <TableCell>
-                {!flag.resolvedAt && !flag.resolved_at && (
-                  <div className="space-y-1">
-                    <Button variant="ghost" size="sm" onClick={() => resolve(flag.id)}><CheckCircle className="h-4 w-4 text-green-600" /></Button>
-                    {resolveErrors[flag.id] && <p className="text-xs text-destructive">{resolveErrors[flag.id]}</p>}
-                  </div>
+      {/* Mobile card list */}
+      <section className="md:hidden space-y-3" aria-label="Flagged messages">
+        {flags.length === 0 ? (
+          <p className="text-center py-8 text-muted-foreground">No flagged messages</p>
+        ) : flags.map((flag) => (
+          <Card key={flag.id} className="overflow-hidden rounded-2xl">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{flag.reason} {flag.keyword && <span className="text-muted-foreground font-normal">· {flag.keyword}</span>}</p>
+                  <p className="text-xs text-muted-foreground truncate">{flag.message?.content || flag.message?.original_content || "—"}</p>
+                </div>
+                {(!flag.resolvedAt && !flag.resolved_at) && (
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0 text-green-600" onClick={() => resolve(flag.id)} aria-label="Resolve flag">
+                    <CheckCircle className="h-4 w-4" aria-hidden="true" />
+                  </Button>
                 )}
-              </TableCell>
+              </div>
+              <div className="pt-1 border-t border-border/50 text-xs text-muted-foreground">
+                <span>{new Date(flag.createdAt || flag.created_at || "").toLocaleDateString()}</span>
+                {resolveErrors[flag.id] && <p className="text-destructive mt-1">{resolveErrors[flag.id]}</p>}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+      {/* Desktop table */}
+      <div className="hidden md:block overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Reason</TableHead>
+              <TableHead>Keyword</TableHead>
+              <TableHead>Message</TableHead>
+              <TableHead>Time</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
-          ))}
-          {flags.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No flagged messages</TableCell></TableRow>}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {flags.map((flag) => (
+              <TableRow key={flag.id}>
+                <TableCell>{flag.reason}</TableCell>
+                <TableCell>{flag.keyword || "—"}</TableCell>
+                <TableCell className="max-w-64 truncate text-sm">{flag.message?.content || flag.message?.original_content || "—"}</TableCell>
+                <TableCell className="text-sm">{new Date(flag.createdAt || flag.created_at || "").toLocaleString()}</TableCell>
+                <TableCell>
+                  {!flag.resolvedAt && !flag.resolved_at && (
+                    <div className="space-y-1">
+                      <Button variant="ghost" size="sm" onClick={() => resolve(flag.id)} aria-label="Resolve flag"><CheckCircle className="h-4 w-4 text-green-600" aria-hidden="true" /></Button>
+                      {resolveErrors[flag.id] && <p className="text-xs text-destructive">{resolveErrors[flag.id]}</p>}
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+            {flags.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No flagged messages</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
@@ -1158,57 +1267,97 @@ function AjkIdsTab() {
             </select>
           </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Current AJK ID</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map(u => (
-                <TableRow key={u.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{u.name || "—"}</p>
+          {/* Mobile card list */}
+          <section className="md:hidden space-y-3" aria-label="AJK ID users">
+            {users.length === 0 ? (
+              <p className="text-center py-8 text-muted-foreground">No users found</p>
+            ) : users.map(u => (
+              <Card key={u.id} className="overflow-hidden rounded-2xl">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{u.name || "—"}</p>
                       <p className="text-xs text-muted-foreground">{u.phone}</p>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{Array.isArray(u.roles) ? u.roles.join(", ") : u.roles || "customer"}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-mono font-bold text-primary">{u.ajkId}</span>
-                  </TableCell>
-                  <TableCell>
-                    {u.commBlocked ? <Badge variant="destructive">Blocked</Badge> : <Badge className="bg-green-100 text-green-700">Active</Badge>}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex gap-1 justify-end flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => { setEditUser(u); setEditId(u.ajkId || ""); setError(""); }}>
-                        <Pencil className="h-3 w-3 mr-1" />Edit ID
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={u.commBlocked ? "outline" : "destructive"}
-                        onClick={() => toggleBlock(u)}
-                        disabled={blockingId === u.id}
-                      >
-                        {blockingId === u.id ? "..." : (u.commBlocked ? "Unblock" : "Block")}
-                      </Button>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <Badge variant="outline" className="text-xs">{Array.isArray(u.roles) ? u.roles.join(", ") : u.roles || "customer"}</Badge>
+                      {u.commBlocked ? <Badge variant="destructive" className="text-xs">Blocked</Badge> : <Badge className="bg-green-100 text-green-700 text-xs">Active</Badge>}
                     </div>
-                    {blockErrors[u.id] && <p className="text-xs text-destructive mt-1">{blockErrors[u.id]}</p>}
-                  </TableCell>
+                  </div>
+                  <p className="font-mono font-bold text-primary text-sm">{u.ajkId}</p>
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs flex-1" onClick={() => { setEditUser(u); setEditId(u.ajkId || ""); setError(""); }}>
+                      <Pencil className="h-3 w-3 mr-1" aria-hidden="true" /> Edit ID
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={u.commBlocked ? "outline" : "destructive"}
+                      className="h-7 px-2 text-xs flex-1"
+                      onClick={() => toggleBlock(u)}
+                      disabled={blockingId === u.id}
+                    >
+                      {blockingId === u.id ? "..." : (u.commBlocked ? "Unblock" : "Block")}
+                    </Button>
+                  </div>
+                  {blockErrors[u.id] && <p className="text-xs text-destructive">{blockErrors[u.id]}</p>}
+                </CardContent>
+              </Card>
+            ))}
+          </section>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Current AJK ID</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-              {users.length === 0 && (
-                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No users found</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {users.map(u => (
+                  <TableRow key={u.id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{u.name || "—"}</p>
+                        <p className="text-xs text-muted-foreground">{u.phone}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{Array.isArray(u.roles) ? u.roles.join(", ") : u.roles || "customer"}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-mono font-bold text-primary">{u.ajkId}</span>
+                    </TableCell>
+                    <TableCell>
+                      {u.commBlocked ? <Badge variant="destructive">Blocked</Badge> : <Badge className="bg-green-100 text-green-700">Active</Badge>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex gap-1 justify-end flex-wrap">
+                        <Button size="sm" variant="outline" onClick={() => { setEditUser(u); setEditId(u.ajkId || ""); setError(""); }}>
+                          <Pencil className="h-3 w-3 mr-1" aria-hidden="true" />Edit ID
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={u.commBlocked ? "outline" : "destructive"}
+                          onClick={() => toggleBlock(u)}
+                          disabled={blockingId === u.id}
+                        >
+                          {blockingId === u.id ? "..." : (u.commBlocked ? "Unblock" : "Block")}
+                        </Button>
+                      </div>
+                      {blockErrors[u.id] && <p className="text-xs text-destructive mt-1">{blockErrors[u.id]}</p>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {users.length === 0 && (
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No users found</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
           <Pagination page={page} total={total} limit={LIMIT} onPage={setPage} />
         </CardContent>
       </Card>

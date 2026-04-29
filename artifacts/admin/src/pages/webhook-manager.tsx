@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Switch } from "@/components/ui/switch";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import {
-  Webhook, Plus, Loader2, Trash2, Send, Eye, CheckCircle2, XCircle,
+  Webhook, Plus, Loader2, Trash2, Send, Eye, CheckCircle2, XCircle, MoreHorizontal,
 } from "lucide-react";
 
 const SUPPORTED_EVENTS = [
@@ -164,57 +165,106 @@ export default function WebhookManagerPage() {
             <p className="text-muted-foreground">No webhooks registered yet.</p>
           </Card>
         ) : (
-          <Card className="rounded-2xl overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>URL</TableHead>
-                  <TableHead>Events</TableHead>
-                  <TableHead>Active</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {webhooks.map(wh => (
-                  <TableRow key={wh.id}>
-                    <TableCell>
-                      <div className="font-mono text-sm truncate max-w-[250px]">{wh.url}</div>
-                      {wh.description && <div className="text-xs text-muted-foreground">{wh.description}</div>}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {(wh.events as string[]).map(ev => (
-                          <Badge key={ev} variant="outline" className="text-xs">{ev}</Badge>
-                        ))}
+          <>
+            {/* Mobile card list */}
+            <section className="md:hidden space-y-3" aria-label="Webhooks">
+              {webhooks.map(wh => (
+                <Card key={wh.id} className="overflow-hidden rounded-2xl">
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-semibold truncate">{wh.url}</p>
+                        {wh.description && <p className="text-xs text-muted-foreground">{wh.description}</p>}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Switch checked={wh.isActive} onCheckedChange={() => toggleMutation.mutate(wh.id)} />
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(wh.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => testMutation.mutate(wh.id)}
-                          disabled={testMutation.isPending} title="Test Ping">
-                          <Send className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setShowLogs(wh.id)} title="View Logs">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700"
-                          onClick={() => { if (confirm("Delete this webhook?")) deleteMutation.mutate(wh.id); }}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" aria-label="Open actions menu">
+                            <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => testMutation.mutate(wh.id)} disabled={testMutation.isPending}>
+                            <Send className="w-4 h-4 mr-2" aria-hidden="true" /> Test Ping
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setShowLogs(wh.id)}>
+                            <Eye className="w-4 h-4 mr-2" aria-hidden="true" /> View Logs
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={() => { if (confirm("Delete this webhook?")) deleteMutation.mutate(wh.id); }}>
+                            <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {(wh.events as string[]).map(ev => (
+                        <Badge key={ev} variant="outline" className="text-[10px]">{ev}</Badge>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                      <span className="text-xs text-muted-foreground">{new Date(wh.createdAt).toLocaleDateString()}</span>
+                      <Switch
+                        checked={wh.isActive}
+                        onCheckedChange={() => toggleMutation.mutate(wh.id)}
+                        aria-label={`${wh.isActive ? "Disable" : "Enable"} webhook`}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </section>
+            {/* Desktop table */}
+            <Card className="hidden md:block rounded-2xl overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>URL</TableHead>
+                    <TableHead>Events</TableHead>
+                    <TableHead>Active</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+                </TableHeader>
+                <TableBody>
+                  {webhooks.map(wh => (
+                    <TableRow key={wh.id}>
+                      <TableCell>
+                        <div className="font-mono text-sm truncate max-w-[250px]">{wh.url}</div>
+                        {wh.description && <div className="text-xs text-muted-foreground">{wh.description}</div>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {(wh.events as string[]).map(ev => (
+                            <Badge key={ev} variant="outline" className="text-xs">{ev}</Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Switch checked={wh.isActive} onCheckedChange={() => toggleMutation.mutate(wh.id)} aria-label={`${wh.isActive ? "Disable" : "Enable"} webhook`} />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(wh.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => testMutation.mutate(wh.id)}
+                            disabled={testMutation.isPending} aria-label="Test Ping">
+                            <Send className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => setShowLogs(wh.id)} aria-label="View Logs">
+                            <Eye className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" aria-label="Delete webhook"
+                            onClick={() => { if (confirm("Delete this webhook?")) deleteMutation.mutate(wh.id); }}>
+                            <Trash2 className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          </>
         )}
 
         <Dialog open={showCreate} onOpenChange={v => { if (!v) resetForm(); }}>

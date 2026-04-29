@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -16,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import {
   Bus, Plus, Pencil, Trash2, RefreshCw, Users, Route, Clock, Calendar, UserCheck, Navigation,
-  Settings, ChevronDown, ChevronRight, Save, Loader2, AlertTriangle,
+  Settings, ChevronDown, ChevronRight, Save, Loader2, AlertTriangle, MoreHorizontal,
 } from "lucide-react";
 
 import { apiAbsoluteFetch } from "@/lib/api";
@@ -180,37 +182,76 @@ function RoutesTab() {
         <Button size="sm" onClick={openNew}><Plus className="w-4 h-4 mr-1" />New Route</Button>
       </div>
       {isLoading ? <div className="text-center py-8 text-muted-foreground">Loading…</div> : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Route</TableHead>
-              <TableHead>From → To</TableHead>
-              <TableHead>Window</TableHead>
-              <TableHead>Aisle</TableHead>
-              <TableHead>Economy</TableHead>
-              <TableHead>Default</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Mobile card list */}
+          <section className="md:hidden space-y-3" aria-label="Routes">
             {routes.map(r => (
-              <TableRow key={r.id}>
-                <TableCell className="font-medium">{r.name}</TableCell>
-                <TableCell className="text-sm">{r.fromAddress} → {r.toAddress}</TableCell>
-                <TableCell className="font-semibold text-amber-700">{r.fareWindow ? `Rs ${parseFloat(r.fareWindow).toFixed(0)}` : "—"}</TableCell>
-                <TableCell className="font-semibold text-blue-700">{r.fareAisle ? `Rs ${parseFloat(r.fareAisle).toFixed(0)}` : "—"}</TableCell>
-                <TableCell className="font-semibold text-green-700">{r.fareEconomy ? `Rs ${parseFloat(r.fareEconomy).toFixed(0)}` : "—"}</TableCell>
-                <TableCell className="font-semibold text-gray-600">Rs {parseFloat(r.farePerSeat).toFixed(0)}</TableCell>
-                <TableCell><Badge variant={r.isActive ? "default" : "secondary"}>{r.isActive ? "Active" : "Inactive"}</Badge></TableCell>
-                <TableCell className="text-right space-x-1">
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(r)}><Pencil className="w-4 h-4" /></Button>
-                  <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => setRouteDeleteId(r.id)}><Trash2 className="w-4 h-4" /></Button>
-                </TableCell>
-              </TableRow>
+              <Card key={r.id} className="overflow-hidden rounded-2xl">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{r.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{r.fromAddress} → {r.toAddress}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Badge variant={r.isActive ? "default" : "secondary"} className="text-xs">{r.isActive ? "Active" : "Inactive"}</Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Open actions menu">
+                            <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(r)}><Pencil className="w-4 h-4 mr-2" aria-hidden="true" /> Edit</DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={() => setRouteDeleteId(r.id)}><Trash2 className="w-4 h-4 mr-2" aria-hidden="true" /> Deactivate</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs pt-1 border-t border-border/50">
+                    <div><p className="text-muted-foreground">Window</p><p className="font-semibold text-amber-700">{r.fareWindow ? `Rs ${parseFloat(r.fareWindow).toFixed(0)}` : "—"}</p></div>
+                    <div><p className="text-muted-foreground">Aisle</p><p className="font-semibold text-blue-700">{r.fareAisle ? `Rs ${parseFloat(r.fareAisle).toFixed(0)}` : "—"}</p></div>
+                    <div><p className="text-muted-foreground">Economy</p><p className="font-semibold text-green-700">{r.fareEconomy ? `Rs ${parseFloat(r.fareEconomy).toFixed(0)}` : "—"}</p></div>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
-          </TableBody>
-        </Table>
+          </section>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Route</TableHead>
+                  <TableHead>From → To</TableHead>
+                  <TableHead>Window</TableHead>
+                  <TableHead>Aisle</TableHead>
+                  <TableHead>Economy</TableHead>
+                  <TableHead>Default</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {routes.map(r => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell className="text-sm">{r.fromAddress} → {r.toAddress}</TableCell>
+                    <TableCell className="font-semibold text-amber-700">{r.fareWindow ? `Rs ${parseFloat(r.fareWindow).toFixed(0)}` : "—"}</TableCell>
+                    <TableCell className="font-semibold text-blue-700">{r.fareAisle ? `Rs ${parseFloat(r.fareAisle).toFixed(0)}` : "—"}</TableCell>
+                    <TableCell className="font-semibold text-green-700">{r.fareEconomy ? `Rs ${parseFloat(r.fareEconomy).toFixed(0)}` : "—"}</TableCell>
+                    <TableCell className="font-semibold text-gray-600">Rs {parseFloat(r.farePerSeat).toFixed(0)}</TableCell>
+                    <TableCell><Badge variant={r.isActive ? "default" : "secondary"}>{r.isActive ? "Active" : "Inactive"}</Badge></TableCell>
+                    <TableCell className="text-right space-x-1">
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(r)} aria-label="Edit route"><Pencil className="w-4 h-4" aria-hidden="true" /></Button>
+                      <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => setRouteDeleteId(r.id)} aria-label="Deactivate route"><Trash2 className="w-4 h-4" aria-hidden="true" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
       <RouteFormDialog open={newRouteOpen} onClose={() => setNewRouteOpen(false)} />
       {editRoute && <RouteFormDialog open={!!editRoute} onClose={() => setEditRoute(null)} id={editRoute.id} />}
@@ -386,32 +427,59 @@ function VehiclesTab() {
         <Button size="sm" onClick={openNew}><Plus className="w-4 h-4 mr-1" />New Vehicle</Button>
       </div>
       {isLoading ? <div className="text-center py-8 text-muted-foreground">Loading…</div> : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Plate</TableHead>
-              <TableHead>Model</TableHead>
-              <TableHead>Seats</TableHead>
-              <TableHead>Driver</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Mobile card list */}
+          <section className="md:hidden space-y-3" aria-label="Vehicles">
             {vehicles.map(v => (
-              <TableRow key={v.id}>
-                <TableCell className="font-mono font-semibold">{v.plateNumber}</TableCell>
-                <TableCell>{v.model}</TableCell>
-                <TableCell>{v.totalSeats}</TableCell>
-                <TableCell className="text-sm">{v.driverName || <span className="text-muted-foreground">Unassigned</span>}</TableCell>
-                <TableCell><Badge variant={v.isActive ? "default" : "secondary"}>{v.isActive ? "Active" : "Inactive"}</Badge></TableCell>
-                <TableCell className="text-right">
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(v)}><Pencil className="w-4 h-4" /></Button>
-                </TableCell>
-              </TableRow>
+              <Card key={v.id} className="overflow-hidden rounded-2xl">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono font-semibold text-sm">{v.plateNumber}</p>
+                      <p className="text-xs text-muted-foreground">{v.model} · {v.totalSeats} seats</p>
+                      <p className="text-xs text-muted-foreground">{v.driverName || "Unassigned"}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Badge variant={v.isActive ? "default" : "secondary"} className="text-xs">{v.isActive ? "Active" : "Inactive"}</Badge>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(v)} aria-label="Edit vehicle">
+                        <Pencil className="w-4 h-4" aria-hidden="true" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
-          </TableBody>
-        </Table>
+          </section>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Plate</TableHead>
+                  <TableHead>Model</TableHead>
+                  <TableHead>Seats</TableHead>
+                  <TableHead>Driver</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {vehicles.map(v => (
+                  <TableRow key={v.id}>
+                    <TableCell className="font-mono font-semibold">{v.plateNumber}</TableCell>
+                    <TableCell>{v.model}</TableCell>
+                    <TableCell>{v.totalSeats}</TableCell>
+                    <TableCell className="text-sm">{v.driverName || <span className="text-muted-foreground">Unassigned</span>}</TableCell>
+                    <TableCell><Badge variant={v.isActive ? "default" : "secondary"}>{v.isActive ? "Active" : "Inactive"}</Badge></TableCell>
+                    <TableCell className="text-right">
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(v)} aria-label="Edit vehicle"><Pencil className="w-4 h-4" aria-hidden="true" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
       <VehicleFormDialog open={newOpen} onClose={() => setNewOpen(false)} />
       {editVehicle && <VehicleFormDialog open={!!editVehicle} onClose={() => setEditVehicle(null)} id={editVehicle.id} />}
@@ -669,54 +737,102 @@ function SchedulesTab() {
         <Button size="sm" onClick={openNew}><Plus className="w-4 h-4 mr-1" />New Schedule</Button>
       </div>
       {isLoading ? <div className="text-center py-8 text-muted-foreground">Loading…</div> : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Route</TableHead>
-              <TableHead>Departure</TableHead>
-              <TableHead>Return</TableHead>
-              <TableHead>Days</TableHead>
-              <TableHead>Vehicle</TableHead>
-              <TableHead>Driver</TableHead>
-              <TableHead>Van Code</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Mobile card list */}
+          <section className="md:hidden space-y-3" aria-label="Schedules">
             {schedules.map(s => (
-              <TableRow key={s.id}>
-                <TableCell className="font-medium text-sm">{s.routeName || s.routeId}</TableCell>
-                <TableCell><span className="font-mono font-semibold text-indigo-700">{s.departureTime}</span></TableCell>
-                <TableCell><span className="font-mono text-muted-foreground">{s.returnTime || "—"}</span></TableCell>
-                <TableCell>
-                  <div className="flex gap-0.5 flex-wrap">
+              <Card key={s.id} className="overflow-hidden rounded-2xl">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{s.routeName || s.routeId}</p>
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-mono text-indigo-700">{s.departureTime}</span>
+                        {s.returnTime && <span> → <span className="font-mono">{s.returnTime}</span></span>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Badge variant={s.isActive ? "default" : "secondary"} className="text-xs">{s.isActive ? "Active" : "Inactive"}</Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Open actions menu">
+                            <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setInventorySchedule(s)}><Users className="w-4 h-4 mr-2 text-indigo-500" aria-hidden="true" /> Seat Inventory</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEdit(s)}><Pencil className="w-4 h-4 mr-2" aria-hidden="true" /> Edit</DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600" onClick={() => { if (confirm("Deactivate this schedule?")) deleteMut.mutate(s.id); }}><Trash2 className="w-4 h-4 mr-2" aria-hidden="true" /> Deactivate</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-0.5">
                     {(Array.isArray(s.daysOfWeek) ? s.daysOfWeek as number[] : []).map(d => (
                       <span key={d} className="text-[10px] bg-indigo-100 text-indigo-700 rounded px-1 font-bold">{DAY_LABELS[d]}</span>
                     ))}
                   </div>
-                </TableCell>
-                <TableCell className="text-sm">{s.vehiclePlate || <span className="text-muted-foreground text-xs">Unassigned</span>}</TableCell>
-                <TableCell className="text-sm">{s.driverName || <span className="text-muted-foreground text-xs">Unassigned</span>}</TableCell>
-                <TableCell>
-                  {s.vanCode ? <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded">{s.vanCode}</span> : "—"}
-                </TableCell>
-                <TableCell><Badge variant={s.isActive ? "default" : "secondary"}>{s.isActive ? "Active" : "Inactive"}</Badge></TableCell>
-                <TableCell className="text-right space-x-1">
-                  <Button size="icon" variant="ghost" title="View seat inventory" onClick={() => setInventorySchedule(s)}>
-                    <Users className="w-4 h-4 text-indigo-500" />
-                  </Button>
-                  <Button size="icon" variant="ghost" title="Edit schedule" onClick={() => openEdit(s)}>
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" title="Deactivate" onClick={() => { if (confirm("Deactivate this schedule?")) deleteMut.mutate(s.id); }}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
+                  <div className="flex gap-4 text-xs text-muted-foreground pt-1 border-t border-border/50">
+                    <span>{s.vehiclePlate || "No vehicle"}</span>
+                    <span>{s.driverName || "No driver"}</span>
+                    {s.vanCode && <span className="bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded">{s.vanCode}</span>}
+                  </div>
+                </CardContent>
+              </Card>
             ))}
-          </TableBody>
-        </Table>
+          </section>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Route</TableHead>
+                  <TableHead>Departure</TableHead>
+                  <TableHead>Return</TableHead>
+                  <TableHead>Days</TableHead>
+                  <TableHead>Vehicle</TableHead>
+                  <TableHead>Driver</TableHead>
+                  <TableHead>Van Code</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {schedules.map(s => (
+                  <TableRow key={s.id}>
+                    <TableCell className="font-medium text-sm">{s.routeName || s.routeId}</TableCell>
+                    <TableCell><span className="font-mono font-semibold text-indigo-700">{s.departureTime}</span></TableCell>
+                    <TableCell><span className="font-mono text-muted-foreground">{s.returnTime || "—"}</span></TableCell>
+                    <TableCell>
+                      <div className="flex gap-0.5 flex-wrap">
+                        {(Array.isArray(s.daysOfWeek) ? s.daysOfWeek as number[] : []).map(d => (
+                          <span key={d} className="text-[10px] bg-indigo-100 text-indigo-700 rounded px-1 font-bold">{DAY_LABELS[d]}</span>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{s.vehiclePlate || <span className="text-muted-foreground text-xs">Unassigned</span>}</TableCell>
+                    <TableCell className="text-sm">{s.driverName || <span className="text-muted-foreground text-xs">Unassigned</span>}</TableCell>
+                    <TableCell>
+                      {s.vanCode ? <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded">{s.vanCode}</span> : "—"}
+                    </TableCell>
+                    <TableCell><Badge variant={s.isActive ? "default" : "secondary"}>{s.isActive ? "Active" : "Inactive"}</Badge></TableCell>
+                    <TableCell className="text-right space-x-1">
+                      <Button size="icon" variant="ghost" aria-label="View seat inventory" onClick={() => setInventorySchedule(s)}>
+                        <Users className="w-4 h-4 text-indigo-500" aria-hidden="true" />
+                      </Button>
+                      <Button size="icon" variant="ghost" aria-label="Edit schedule" onClick={() => openEdit(s)}>
+                        <Pencil className="w-4 h-4" aria-hidden="true" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" aria-label="Deactivate schedule" onClick={() => { if (confirm("Deactivate this schedule?")) deleteMut.mutate(s.id); }}>
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
 
       {/* New Schedule Dialog */}
@@ -805,44 +921,81 @@ function DriversTab() {
         <Button size="sm" onClick={() => { setForm({ userId: "", notes: "" }); setNewOpen(true); }}><Plus className="w-4 h-4 mr-1" />New Van Driver</Button>
       </div>
       {isLoading ? <div className="text-center py-8 text-muted-foreground">Loading…</div> : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Van Code</TableHead>
-              <TableHead>Driver Name</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Mobile card list */}
+          <section className="md:hidden space-y-3" aria-label="Van drivers">
             {drivers.map(d => (
-              <TableRow key={d.id}>
-                <TableCell><span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded">{d.vanCode}</span></TableCell>
-                <TableCell className="font-medium">{d.userName || d.userId}</TableCell>
-                <TableCell className="text-sm">{d.userPhone || "—"}</TableCell>
-                <TableCell>
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${APPROVAL_COLORS[d.approvalStatus] || "bg-gray-100 text-gray-700"}`}>
-                    {d.approvalStatus}
-                  </span>
-                </TableCell>
-                <TableCell><Badge variant={d.isActive ? "default" : "secondary"}>{d.isActive ? "Yes" : "No"}</Badge></TableCell>
-                <TableCell className="text-right space-x-1">
-                  <Select onValueChange={v => statusMut.mutate({ id: d.id, status: v })}>
-                    <SelectTrigger className="h-7 w-28 text-xs inline-flex"><SelectValue placeholder="Set status" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="approved">Approve</SelectItem>
-                      <SelectItem value="suspended">Suspend</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" onClick={() => { if (confirm("Deactivate this van driver?")) deactivateMut.mutate(d.id); }}><Trash2 className="w-4 h-4" /></Button>
-                </TableCell>
-              </TableRow>
+              <Card key={d.id} className="overflow-hidden rounded-2xl">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded">{d.vanCode}</span>
+                      <p className="text-sm font-medium mt-1">{d.userName || d.userId}</p>
+                      <p className="text-xs text-muted-foreground">{d.userPhone || "—"}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${APPROVAL_COLORS[d.approvalStatus] || "bg-gray-100 text-gray-700"}`}>{d.approvalStatus}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                    <Select onValueChange={v => statusMut.mutate({ id: d.id, status: v })}>
+                      <SelectTrigger className="h-7 flex-1 text-xs"><SelectValue placeholder="Set status" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="approved">Approve</SelectItem>
+                        <SelectItem value="suspended">Suspend</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-700 shrink-0" aria-label="Deactivate driver" onClick={() => { if (confirm("Deactivate this van driver?")) deactivateMut.mutate(d.id); }}>
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
-          </TableBody>
-        </Table>
+          </section>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Van Code</TableHead>
+                  <TableHead>Driver Name</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Active</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {drivers.map(d => (
+                  <TableRow key={d.id}>
+                    <TableCell><span className="bg-indigo-100 text-indigo-700 text-xs font-bold px-2 py-1 rounded">{d.vanCode}</span></TableCell>
+                    <TableCell className="font-medium">{d.userName || d.userId}</TableCell>
+                    <TableCell className="text-sm">{d.userPhone || "—"}</TableCell>
+                    <TableCell>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${APPROVAL_COLORS[d.approvalStatus] || "bg-gray-100 text-gray-700"}`}>
+                        {d.approvalStatus}
+                      </span>
+                    </TableCell>
+                    <TableCell><Badge variant={d.isActive ? "default" : "secondary"}>{d.isActive ? "Yes" : "No"}</Badge></TableCell>
+                    <TableCell className="text-right space-x-1">
+                      <Select onValueChange={v => statusMut.mutate({ id: d.id, status: v })}>
+                        <SelectTrigger className="h-7 w-28 text-xs inline-flex"><SelectValue placeholder="Set status" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="approved">Approve</SelectItem>
+                          <SelectItem value="suspended">Suspend</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700" aria-label="Deactivate driver" onClick={() => { if (confirm("Deactivate this van driver?")) deactivateMut.mutate(d.id); }}><Trash2 className="w-4 h-4" aria-hidden="true" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
 
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
@@ -918,74 +1071,123 @@ function BookingsTab() {
       {isLoading ? <div className="text-center py-8 text-muted-foreground">Loading…</div> : bookings.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">No bookings found for selected filters.</div>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Passenger</TableHead>
-              <TableHead>Route</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Time</TableHead>
-              <TableHead>Seats</TableHead>
-              <TableHead>Tier</TableHead>
-              <TableHead>Fare</TableHead>
-              <TableHead>Payment</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          {/* Mobile card list */}
+          <section className="md:hidden space-y-3" aria-label="Bookings">
             {bookings.map(b => (
-              <TableRow key={b.id}>
-                <TableCell>
-                  <div className="font-medium text-sm">{b.passengerName || b.userName || "—"}</div>
-                  <div className="text-xs text-muted-foreground">{b.userPhone || ""}</div>
-                </TableCell>
-                <TableCell className="text-sm">
-                  {b.routeName || "—"}
-                  {b.tripStatus === "in_progress" && (
-                    <span className="inline-flex items-center gap-0.5 ml-1 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
-                      <Navigation className="w-2.5 h-2.5" />LIVE
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-sm font-mono">{b.travelDate}</TableCell>
-                <TableCell className="text-sm font-mono">{b.departureTime || "—"}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1 flex-wrap">
-                    {(Array.isArray(b.seatNumbers) ? b.seatNumbers as number[] : []).map(s => (
-                      <span key={s} className="bg-indigo-100 text-indigo-800 text-xs font-bold rounded px-1.5 py-0.5">{s}</span>
-                    ))}
+              <Card key={b.id} className="overflow-hidden rounded-2xl">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">{b.passengerName || b.userName || "—"}</p>
+                      <p className="text-xs text-muted-foreground">{b.userPhone || ""}</p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[b.status] || "bg-gray-100 text-gray-700"}`}>{b.status}</span>
+                    </div>
                   </div>
-                </TableCell>
-                <TableCell>
-                  {b.tierBreakdown ? (
-                    <div className="flex gap-0.5 flex-wrap">
-                      {Object.entries(b.tierBreakdown).map(([tier, info]) => (
-                        <span key={tier} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${TIER_COLORS[tier as SeatTier] || "bg-gray-100 text-gray-600"}`}>
-                          {tier.charAt(0).toUpperCase()}{(info as {count: number; fare: number}).count}
-                        </span>
+                  <div className="text-xs space-y-0.5">
+                    <p className="text-muted-foreground">
+                      {b.routeName || "—"} · <span className="font-mono">{b.travelDate}</span> {b.departureTime && <span className="font-mono">@ {b.departureTime}</span>}
+                      {b.tripStatus === "in_progress" && <span className="inline-flex items-center gap-0.5 ml-1 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full"><Navigation className="w-2.5 h-2.5" aria-hidden="true" />LIVE</span>}
+                    </p>
+                    <div className="flex gap-1 flex-wrap">
+                      {(Array.isArray(b.seatNumbers) ? b.seatNumbers as number[] : []).map(s => (
+                        <span key={s} className="bg-indigo-100 text-indigo-800 text-xs font-bold rounded px-1.5 py-0.5">{s}</span>
                       ))}
                     </div>
-                  ) : "—"}
-                </TableCell>
-                <TableCell className="font-semibold text-green-700">Rs {parseFloat(b.fare).toFixed(0)}</TableCell>
-                <TableCell><Badge variant="outline">{b.paymentMethod}</Badge></TableCell>
-                <TableCell><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[b.status] || "bg-gray-100 text-gray-700"}`}>{b.status}</span></TableCell>
-                <TableCell className="text-right">
-                  <Select onValueChange={v => statusMut.mutate({ id: b.id, status: v })}>
-                    <SelectTrigger className="h-7 w-28 text-xs"><SelectValue placeholder="Set status" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="confirmed">Confirmed</SelectItem>
-                      <SelectItem value="boarded">Boarded</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </TableCell>
-              </TableRow>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                    <span className="font-semibold text-green-700 text-sm">Rs {parseFloat(b.fare).toFixed(0)}</span>
+                    <Badge variant="outline" className="text-xs">{b.paymentMethod}</Badge>
+                    <div className="ml-auto">
+                      <Select onValueChange={v => statusMut.mutate({ id: b.id, status: v })}>
+                        <SelectTrigger className="h-7 w-28 text-xs"><SelectValue placeholder="Set status" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="confirmed">Confirmed</SelectItem>
+                          <SelectItem value="boarded">Boarded</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
-          </TableBody>
-        </Table>
+          </section>
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Passenger</TableHead>
+                  <TableHead>Route</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Seats</TableHead>
+                  <TableHead>Tier</TableHead>
+                  <TableHead>Fare</TableHead>
+                  <TableHead>Payment</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {bookings.map(b => (
+                  <TableRow key={b.id}>
+                    <TableCell>
+                      <div className="font-medium text-sm">{b.passengerName || b.userName || "—"}</div>
+                      <div className="text-xs text-muted-foreground">{b.userPhone || ""}</div>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {b.routeName || "—"}
+                      {b.tripStatus === "in_progress" && (
+                        <span className="inline-flex items-center gap-0.5 ml-1 text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
+                          <Navigation className="w-2.5 h-2.5" aria-hidden="true" />LIVE
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm font-mono">{b.travelDate}</TableCell>
+                    <TableCell className="text-sm font-mono">{b.departureTime || "—"}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1 flex-wrap">
+                        {(Array.isArray(b.seatNumbers) ? b.seatNumbers as number[] : []).map(s => (
+                          <span key={s} className="bg-indigo-100 text-indigo-800 text-xs font-bold rounded px-1.5 py-0.5">{s}</span>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {b.tierBreakdown ? (
+                        <div className="flex gap-0.5 flex-wrap">
+                          {Object.entries(b.tierBreakdown).map(([tier, info]) => (
+                            <span key={tier} className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${TIER_COLORS[tier as SeatTier] || "bg-gray-100 text-gray-600"}`}>
+                              {tier.charAt(0).toUpperCase()}{(info as {count: number; fare: number}).count}
+                            </span>
+                          ))}
+                        </div>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell className="font-semibold text-green-700">Rs {parseFloat(b.fare).toFixed(0)}</TableCell>
+                    <TableCell><Badge variant="outline">{b.paymentMethod}</Badge></TableCell>
+                    <TableCell><span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[b.status] || "bg-gray-100 text-gray-700"}`}>{b.status}</span></TableCell>
+                    <TableCell className="text-right">
+                      <Select onValueChange={v => statusMut.mutate({ id: b.id, status: v })}>
+                        <SelectTrigger className="h-7 w-28 text-xs"><SelectValue placeholder="Set status" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="confirmed">Confirmed</SelectItem>
+                          <SelectItem value="boarded">Boarded</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
     </div>
   );

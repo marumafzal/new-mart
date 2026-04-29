@@ -87,6 +87,7 @@ import DeepLinks from "@/pages/deep-links";
 import LaunchControl from "@/pages/launch-control";
 import OtpControl from "@/pages/otp-control";
 import SmsGateways from "@/pages/sms-gateways";
+import AuthMethods from "@/pages/auth-methods";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -304,6 +305,7 @@ function Router() {
       <Route path="/launch-control"><ProtectedRoute component={LaunchControl} /></Route>
       <Route path="/otp-control"><ProtectedRoute component={OtpControl} /></Route>
       <Route path="/sms-gateways"><ProtectedRoute component={SmsGateways} /></Route>
+      <Route path="/auth-methods"><ProtectedRoute component={AuthMethods} /></Route>
       <Route path="/roles-permissions"><ProtectedRoute component={RolesPermissions} /></Route>
       <Route path="/accessibility"><ProtectedRoute component={AccessibilityPage} /></Route>
       <Route path="/consent-log"><ProtectedRoute component={ConsentLogPage} /></Route>

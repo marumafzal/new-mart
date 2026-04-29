@@ -45,24 +45,21 @@ export async function checkOTPBypass(phone: string): Promise<OTPBypassStatus> {
     }
 
     // Priority 2: Global OTP disable
-    const settings = await db.query.platformSettingsTable.findFirst({
-      where: eq(platformSettingsTable.key, "otp_global_disabled_until"),
+    const activeDisable = await db.query.platformSettingsTable.findFirst({
+      where: and(
+        eq(platformSettingsTable.key, "otp_global_disabled_until"),
+        gt(platformSettingsTable.value, now.toISOString()),
+      ),
       columns: { value: true },
     });
 
-    if (settings && settings.value) {
-      try {
-        const disabledUntil = new Date(settings.value);
-        if (disabledUntil > now) {
-          return {
-            isBypassed: true,
-            reason: "global",
-            expiresAt: disabledUntil,
-          };
-        }
-      } catch (e) {
-        logger.error({ error: e }, "[OTPBypass] Failed to parse global disable timestamp");
-      }
+    if (activeDisable?.value) {
+      const disabledUntil = new Date(activeDisable.value);
+      return {
+        isBypassed: true,
+        reason: "global",
+        expiresAt: disabledUntil,
+      };
     }
 
     // Priority 3: Whitelist bypass

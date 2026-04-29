@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ElementType, type ReactNode } from "react";
 import { PageHeader } from "@/components/shared";
 import {
   Shield, RefreshCw, CheckCircle2, XCircle, Loader2,
@@ -53,17 +53,21 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" });
 }
 
+function generateBypassCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 type OTPStatus = { isGloballyDisabled: boolean; disabledUntil: string | null; activeBypassCount: number };
 type UserRow   = { id: string; name: string | null; phone: string | null; email?: string | null; otpBypassUntil?: string | null };
 type AuditRow  = { id: string; event: string; userId: string | null; phone: string | null; name: string | null; ip: string; result: string | null; createdAt: string };
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div className={`rounded-2xl border border-border bg-white p-5 ${className}`}>{children}</div>
   );
 }
 
-function SectionTitle({ icon: Icon, label, color }: { icon: React.ElementType; label: string; color: string }) {
+function SectionTitle({ icon: Icon, label, color }: { icon: ElementType; label: string; color: string }) {
   return (
     <div className={`flex items-center gap-2 mb-4 ${color}`}>
       <Icon className="w-4 h-4" />
@@ -408,19 +412,37 @@ function WhitelistSection() {
 
   const [identifier, setIdentifier] = useState("");
   const [label, setLabel] = useState("");
-  const [bypassCode, setBypassCode] = useState("000000");
+  const [bypassCode, setBypassCode] = useState(() => generateBypassCode());
   const [expiresAt, setExpiresAt] = useState("");
   const [adding, setAdding] = useState(false);
 
   const entries: any[] = data?.entries ?? [];
 
   async function handleAdd() {
-    if (!identifier.trim()) { toast({ title: "Identifier required", variant: "destructive" }); return; }
+    if (!identifier.trim()) {
+      toast({ title: "Identifier required", variant: "destructive" });
+      return;
+    }
+
+    const code = bypassCode?.trim() || generateBypassCode();
+    if (!/^[0-9]{6}$/.test(code)) {
+      toast({ title: "Invalid bypass code", description: "Use a 6-digit numeric code.", variant: "destructive" });
+      return;
+    }
+
     setAdding(true);
     try {
-      await addEntry.mutateAsync({ identifier: identifier.trim(), label: label.trim() || undefined, bypassCode: bypassCode || "000000", expiresAt: expiresAt || undefined });
-      toast({ title: "Added to whitelist" });
-      setIdentifier(""); setLabel(""); setBypassCode("000000"); setExpiresAt("");
+      await addEntry.mutateAsync({
+        identifier: identifier.trim(),
+        label: label.trim() || undefined,
+        bypassCode: code,
+        expiresAt: expiresAt || undefined,
+      });
+      toast({ title: "Added to whitelist", description: `Bypass code ${code} is active.` });
+      setIdentifier("");
+      setLabel("");
+      setBypassCode(generateBypassCode());
+      setExpiresAt("");
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally { setAdding(false); }
@@ -441,14 +463,14 @@ function WhitelistSection() {
     <Card>
       <SectionTitle icon={ListChecks} label="OTP Whitelist — Per-Identity Bypass" color="text-indigo-700" />
       <p className="text-xs text-muted-foreground mb-4">
-        Phones or emails added here bypass real SMS. They accept the configured bypass code (default: <code className="bg-muted px-1 rounded">000000</code>) without sending a real OTP. Perfect for App Store reviewers and testers.
+        Phones or emails added here bypass real SMS. They accept the configured 6-digit bypass code without sending a real OTP. Perfect for App Store reviewers and testers.
       </p>
 
       {/* Add form */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 p-3 rounded-xl bg-muted/30 border">
         <Input className="rounded-xl h-9 text-sm" placeholder="Phone or email (identifier)" value={identifier} onChange={e => setIdentifier(e.target.value)} />
         <Input className="rounded-xl h-9 text-sm" placeholder="Label (e.g. Apple Reviewer)" value={label} onChange={e => setLabel(e.target.value)} />
-        <Input className="rounded-xl h-9 text-sm" placeholder="Bypass code (default: 000000)" value={bypassCode} onChange={e => setBypassCode(e.target.value)} />
+        <Input className="rounded-xl h-9 text-sm" placeholder="Bypass code (6 digits)" value={bypassCode} onChange={e => setBypassCode(e.target.value)} />
         <Input className="rounded-xl h-9 text-sm" type="datetime-local" placeholder="Expires (optional)" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} />
         <div className="md:col-span-2">
           <Button size="sm" className="rounded-xl gap-1.5 w-full" onClick={handleAdd} disabled={adding}>

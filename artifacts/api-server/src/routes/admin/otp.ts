@@ -6,6 +6,10 @@ import {
   addAuditEntry, getClientIp, getPlatformSettings, invalidateSettingsCache,
   type AdminRequest,
 } from "../admin-shared.js";
+
+function generateBypassCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 import { sendSuccess, sendNotFound, sendValidationError } from "../../lib/response.js";
 import { generateSecureOtp, generateId } from "../../services/password.js";
 import { createHash } from "crypto";
@@ -332,15 +336,25 @@ router.get("/whitelist", async (_req, res) => {
 
 /* ─── POST /admin/whitelist ───────────────────────────────────────────────────*/
 router.post("/whitelist", async (req, res) => {
-  const { identifier, label, bypassCode = "000000" } = req.body;
+  const { identifier, label, bypassCode, expiresAt } = req.body;
   const adminReq = req as AdminRequest;
+  const code = (bypassCode || generateBypassCode()).trim();
 
   if (!identifier || identifier.length < 7) {
     return sendValidationError(res, "Identifier must be at least 7 characters (phone or email)");
   }
 
-  if (!/^\d{6}$/.test(bypassCode)) {
+  if (!/^\d{6}$/.test(code)) {
     return sendValidationError(res, "Bypass code must be exactly 6 digits");
+  }
+
+  let expires: Date | null = null;
+  if (expiresAt) {
+    const parsed = new Date(expiresAt);
+    if (Number.isNaN(parsed.getTime())) {
+      return sendValidationError(res, "Expires At must be a valid date/time");
+    }
+    expires = parsed;
   }
 
   try {
@@ -360,8 +374,9 @@ router.post("/whitelist", async (req, res) => {
       id,
       identifier,
       label: label || null,
-      bypassCode,
+      bypassCode: code,
       isActive: true,
+      expiresAt: expires,
       createdBy: adminReq.adminId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -385,9 +400,9 @@ router.post("/whitelist", async (req, res) => {
         id,
         identifier,
         label: label || null,
-        bypassCode,
+        bypassCode: code,
         isActive: true,
-        expiresAt: null,
+        expiresAt: expires ? expires.toISOString() : null,
       },
     });
   } catch (error: any) {

@@ -81,4 +81,5 @@ export * from "./admin_role_presets";
 export * from "./sms_gateways";
 export * from "./whitelist_users";
 export * from "./integration_test_history";
+export * from "./search_logs";
 

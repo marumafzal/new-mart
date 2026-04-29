@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { productsTable, productVariantsTable, flashDealsTable, reviewsTable, stockSubscriptionsTable } from "@workspace/db/schema";
+import { productsTable, productVariantsTable, flashDealsTable, reviewsTable, stockSubscriptionsTable, searchLogsTable } from "@workspace/db/schema";
 import { eq, ilike, and, SQL, gte, lte, gt, desc, asc, sql, isNotNull, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { generateId } from "../lib/id.js";
@@ -99,50 +99,70 @@ router.get("/flash-deals", async (req, res) => {
   }
 });
 
-/* ── GET /products/trending-searches — top search terms (MVP: top product names) ── */
+/* ── GET /products/trending-searches — top search terms from real search logs ── */
 router.get("/trending-searches", async (req, res) => {
   const s2 = await getPlatformSettings();
   const trendingDefault = parseInt(s2["pagination_trending_limit"] ?? "12") || 12;
   const trendingMax = parseInt(s2["pagination_products_max"] ?? "50") || 50;
   const limit = Math.min(parseInt(req.query.limit as string) || trendingDefault, trendingMax);
 
-  const topProducts = await db
-    .select({ name: productsTable.name })
-    .from(productsTable)
-    .where(and(
-      eq(productsTable.approvalStatus, "approved"),
-      eq(productsTable.inStock, true),
-    ))
-    .orderBy(desc(productsTable.reviewCount))
-    .limit(limit * 3);
+  // Pull real search terms from the log — top queries by frequency in the past 30 days
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
 
-  const seen = new Set<string>();
-  const searches: string[] = [];
+  const logRows = await db
+    .select({
+      query: searchLogsTable.query,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(searchLogsTable)
+    .where(gte(searchLogsTable.createdAt, since))
+    .groupBy(searchLogsTable.query)
+    .orderBy(desc(sql`count(*)`))
+    .limit(limit);
 
-  for (const p of topProducts) {
-    const words = p.name.trim().split(/\s+/);
-    const term = words.length > 2 ? words.slice(0, 2).join(" ") : p.name.trim();
-    const key = term.toLowerCase();
-    if (!seen.has(key) && term.length >= 3) {
-      seen.add(key);
-      searches.push(term);
-    }
-    if (searches.length >= limit) break;
-  }
+  const searches: string[] = logRows.map(r => r.query);
 
-  const FALLBACK_TERMS = [
-    "Fruits", "Vegetables", "Meat", "Dairy", "Bread",
-    "Beverages", "Snacks", "Rice", "Chicken", "Eggs",
-    "Biryani", "Pizza", "Burger",
-  ];
+  // Fallback to product-name inference when insufficient real data
   if (searches.length < 5) {
-    for (const t of FALLBACK_TERMS) {
-      const key = t.toLowerCase();
-      if (!seen.has(key)) {
+    const topProducts = await db
+      .select({ name: productsTable.name })
+      .from(productsTable)
+      .where(and(
+        eq(productsTable.approvalStatus, "approved"),
+        eq(productsTable.inStock, true),
+      ))
+      .orderBy(desc(productsTable.reviewCount))
+      .limit(limit * 3);
+
+    const seen = new Set<string>(searches.map(s => s.toLowerCase()));
+
+    for (const p of topProducts) {
+      const words = p.name.trim().split(/\s+/);
+      const term = words.length > 2 ? words.slice(0, 2).join(" ") : p.name.trim();
+      const key = term.toLowerCase();
+      if (!seen.has(key) && term.length >= 3) {
         seen.add(key);
-        searches.push(t);
+        searches.push(term);
       }
       if (searches.length >= limit) break;
+    }
+
+    const FALLBACK_TERMS = [
+      "Fruits", "Vegetables", "Meat", "Dairy", "Bread",
+      "Beverages", "Snacks", "Rice", "Chicken", "Eggs",
+      "Biryani", "Pizza", "Burger",
+    ];
+    if (searches.length < 5) {
+      const seen2 = new Set<string>(searches.map(s => s.toLowerCase()));
+      for (const t of FALLBACK_TERMS) {
+        const key = t.toLowerCase();
+        if (!seen2.has(key)) {
+          seen2.add(key);
+          searches.push(t);
+        }
+        if (searches.length >= limit) break;
+      }
     }
   }
 
@@ -218,6 +238,9 @@ router.get("/search", async (req, res) => {
   ]);
 
   const total = countResult[0]?.total ?? 0;
+
+  // Non-blocking search event logging — never delays the response
+  db.insert(searchLogsTable).values({ query: trimmed, resultCount: total }).catch(() => {});
 
   const slimSearch = req.query.slim === "true";
 

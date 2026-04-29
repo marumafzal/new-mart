@@ -33,6 +33,18 @@ type TrendingProduct = {
   reason?: string;
 };
 
+type TopTerm = {
+  query: string;
+  occurrences: number;
+  zeroResults: number;
+};
+
+type ZeroResultQuery = {
+  query: string;
+  occurrences: number;
+  lastSearchedAt: string;
+};
+
 type StatsData = {
   productCount?: number;
   restaurantCount?: number;
@@ -135,6 +147,20 @@ export default function SearchAnalyticsPage() {
     staleTime: 5 * 60_000,
   });
 
+  const [termsDays, setTermsDays] = useState("30");
+  const { data: topTermsData, isLoading: topTermsLoading } = useQuery<{ terms: TopTerm[] }>({
+    queryKey: ["admin-search-top-terms", termsDays],
+    queryFn: () => fetcher(`/search-analytics/top-terms?days=${termsDays}&limit=30`),
+    staleTime: 2 * 60_000,
+  });
+
+  const [zeroDays, setZeroDays] = useState("30");
+  const { data: zeroResultsData, isLoading: zeroResultsLoading } = useQuery<{ queries: ZeroResultQuery[] }>({
+    queryKey: ["admin-search-zero-results", zeroDays],
+    queryFn: () => fetcher(`/search-analytics/zero-results?days=${zeroDays}&limit=50`),
+    staleTime: 2 * 60_000,
+  });
+
   const { data: statsData, isLoading: statsLoading } = useQuery<StatsData>({
     queryKey: ["admin-platform-stats"],
     queryFn: () => apiFetch("/stats/public"),
@@ -155,13 +181,18 @@ export default function SearchAnalyticsPage() {
 
   const trending: TrendingProduct[] = trendingData?.products ?? [];
   const searchTerms: string[] = Array.isArray(trendingSearchData?.searches) ? trendingSearchData.searches : [];
+  const topTerms: TopTerm[] = topTermsData?.terms ?? [];
+  const zeroQueries: ZeroResultQuery[] = zeroResultsData?.queries ?? [];
   const timeline: InteractionTimelineEntry[] = timelineData?.timeline ?? [];
 
-  // Bar chart data for search terms — ranked position with explicit label
-  const searchChartData = searchTerms.slice(0, 12).map((term, i) => ({
-    term: term.length > 14 ? term.slice(0, 12) + "…" : term,
-    fullTerm: term,
-    rank: searchTerms.length - i, // higher bar = higher rank
+  // Use real top-terms if available, fall back to trending-searches for the chart
+  const chartTerms = topTerms.length > 0 ? topTerms.slice(0, 12) : searchTerms.slice(0, 12).map(t => ({ query: t, occurrences: 1, zeroResults: 0 }));
+
+  // Bar chart data for search terms — real occurrence counts
+  const searchChartData = chartTerms.map(t => ({
+    term: t.query.length > 14 ? t.query.slice(0, 12) + "…" : t.query,
+    fullTerm: t.query,
+    occurrences: t.occurrences,
   }));
 
   // Product score chart data
@@ -318,12 +349,24 @@ export default function SearchAnalyticsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Search Terms Bar Chart */}
         <Card className="rounded-2xl shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b bg-gradient-to-r from-orange-50 to-amber-50">
-            <Search className="w-4 h-4 text-orange-600" />
-            <span className="font-semibold text-sm text-gray-800">Top Search Terms</span>
+          <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-orange-50 to-amber-50">
+            <div className="flex items-center gap-2">
+              <Search className="w-4 h-4 text-orange-600" />
+              <span className="font-semibold text-sm text-gray-800">Top Search Terms</span>
+            </div>
+            <Select value={termsDays} onValueChange={setTermsDays}>
+              <SelectTrigger className="h-7 w-20 text-xs rounded-lg border-gray-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 days</SelectItem>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="90">90 days</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <CardContent className="p-4">
-            {searchLoading ? (
+            {topTermsLoading ? (
               <div className="flex items-center justify-center h-52 text-gray-400 text-sm animate-pulse">Loading…</div>
             ) : searchChartData.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-52 text-gray-400 gap-2">
@@ -340,7 +383,7 @@ export default function SearchAnalyticsPage() {
                       <YAxis type="category" dataKey="term" width={80}
                         tick={{ fontSize: 10, fill: "#374151" }} axisLine={false} tickLine={false} />
                       <Tooltip content={<BarTooltip />} cursor={{ fill: "#fef9f0" }} />
-                      <Bar dataKey="rank" name="Search Rank" radius={[0, 6, 6, 0]} barSize={14}>
+                      <Bar dataKey="occurrences" name="Searches" radius={[0, 6, 6, 0]} barSize={14}>
                         {searchChartData.map((_, i) => (
                           <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                         ))}
@@ -348,7 +391,7 @@ export default function SearchAnalyticsPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="text-[10px] text-gray-400 text-right mt-1">Ranked by search frequency (higher bar = more popular)</p>
+                <p className="text-[10px] text-gray-400 text-right mt-1">Based on real search events (last {termsDays} days)</p>
               </>
             )}
           </CardContent>
@@ -404,41 +447,106 @@ export default function SearchAnalyticsPage() {
 
       {/* Zero-Results Searches */}
       <Card className="rounded-2xl shadow-sm overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b bg-gradient-to-r from-red-50 to-rose-50">
-          <AlertCircle className="w-4 h-4 text-red-500" />
-          <span className="font-semibold text-sm text-gray-800">Zero-Result Searches</span>
-        </div>
-        <CardContent className="p-6 text-center">
-          <AlertCircle className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-          <p className="text-sm font-semibold text-gray-600 mb-1">Search event logging not yet enabled</p>
-          <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
-            To track zero-result searches, enable search event logging in the backend. When active, this section will list
-            queries that returned no products — giving you direct insight into inventory gaps.
-          </p>
-          <div className="mt-4 inline-flex items-center gap-1.5 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-xs text-amber-700 font-medium">
-            <AlertCircle className="w-3.5 h-3.5" /> Requires: search log table + event tracking in /products/search
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-red-50 to-rose-50">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-500" />
+            <span className="font-semibold text-sm text-gray-800">Zero-Result Searches</span>
+            <Badge variant="secondary" className="text-xs">{zeroQueries.length}</Badge>
           </div>
+          <Select value={zeroDays} onValueChange={setZeroDays}>
+            <SelectTrigger className="h-7 w-20 text-xs rounded-lg border-gray-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">7 days</SelectItem>
+              <SelectItem value="30">30 days</SelectItem>
+              <SelectItem value="90">90 days</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <CardContent className="p-0">
+          {zeroResultsLoading ? (
+            <div className="flex items-center justify-center h-32 text-gray-400 text-sm animate-pulse">Loading…</div>
+          ) : zeroQueries.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-gray-400 gap-2">
+              <AlertCircle className="w-8 h-8 opacity-20" />
+              <p className="text-sm">No zero-result searches in the last {zeroDays} days</p>
+              <p className="text-xs text-gray-400">Great — your inventory is covering all searches!</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Query</th>
+                    <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Searches</th>
+                    <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Last Searched</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {zeroQueries.map((row, i) => (
+                    <tr key={row.query} className={cn("border-b last:border-0 hover:bg-red-50/40 transition-colors", i % 2 === 0 ? "" : "bg-gray-50/50")}>
+                      <td className="px-4 py-2.5 font-medium text-gray-800 flex items-center gap-2">
+                        <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                        {row.query}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <Badge variant="secondary" className="text-xs bg-red-50 text-red-700 border-red-100">
+                          {row.occurrences}×
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-xs text-gray-400">
+                        {new Date(row.lastSearchedAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[10px] text-gray-400 px-4 py-2 text-right">
+                Queries that returned 0 products — add inventory to cover these gaps.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Ranked lists */}
       <div className="grid md:grid-cols-2 gap-5">
-        {/* Trending Search Terms List */}
+        {/* Top Search Terms List */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-orange-50 to-amber-50">
             <div className="flex items-center gap-2">
               <Search className="w-4 h-4 text-orange-600" />
-              <span className="font-semibold text-sm text-gray-800">Trending Searches</span>
+              <span className="font-semibold text-sm text-gray-800">Top Search Terms</span>
             </div>
-            <Badge variant="secondary" className="text-xs">{searchTerms.length}</Badge>
+            <Badge variant="secondary" className="text-xs">{topTerms.length || searchTerms.length}</Badge>
           </div>
           <div className="p-3">
-            {searchLoading ? (
+            {topTermsLoading ? (
               <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Loading…</div>
-            ) : searchTerms.length === 0 ? (
+            ) : topTerms.length === 0 && searchTerms.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-gray-400 gap-2">
                 <Search className="w-8 h-8 opacity-20" />
                 <p className="text-sm">No search data yet</p>
+              </div>
+            ) : topTerms.length > 0 ? (
+              <div className="space-y-1.5">
+                {topTerms.slice(0, 15).map((term, i) => (
+                  <div key={term.query} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-50 transition-colors">
+                    <span className={cn(
+                      "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+                      i === 0 ? "bg-amber-100 text-amber-700"
+                        : i === 1 ? "bg-gray-100 text-gray-600"
+                        : i === 2 ? "bg-orange-100 text-orange-700"
+                        : "bg-gray-50 text-gray-400"
+                    )}>
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 text-sm text-gray-700 truncate">{term.query}</span>
+                    <span className="text-xs text-gray-400 shrink-0">{term.occurrences}×</span>
+                    <TrendingUp className={cn("w-3.5 h-3.5 shrink-0", i < 3 ? "text-orange-500" : "text-gray-300")} />
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="space-y-1.5">

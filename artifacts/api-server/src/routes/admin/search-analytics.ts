@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { userInteractionsTable } from "@workspace/db/schema";
-import { gte, sql, count } from "drizzle-orm";
+import { userInteractionsTable, searchLogsTable } from "@workspace/db/schema";
+import { gte, sql, count, eq } from "drizzle-orm";
 import { sendSuccess } from "../../lib/response.js";
 
 const router = Router();
@@ -91,6 +91,56 @@ router.get("/search-analytics/interaction-stats", async (req, res) => {
     cartRate,
     days,
   });
+});
+
+/* ── GET /search-analytics/zero-results?days=30&limit=50 ──
+   Returns queries that returned 0 results, aggregated by frequency.
+─────────────────────────────────────────────────────────── */
+router.get("/search-analytics/zero-results", async (req, res) => {
+  const days = Math.min(parseInt(req.query.days as string) || 30, 90);
+  const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const rows = await db
+    .select({
+      query: searchLogsTable.query,
+      occurrences: sql<number>`count(*)::int`,
+      lastSearchedAt: sql<string>`max(${searchLogsTable.createdAt})::text`,
+    })
+    .from(searchLogsTable)
+    .where(
+      sql`${searchLogsTable.resultCount} = 0 AND ${searchLogsTable.createdAt} >= ${since}`
+    )
+    .groupBy(searchLogsTable.query)
+    .orderBy(sql`count(*) DESC`)
+    .limit(limit);
+
+  sendSuccess(res, { queries: rows, days, total: rows.length });
+});
+
+/* ── GET /search-analytics/top-terms?days=30 ──
+   Returns most frequent search queries overall (regardless of result count).
+─────────────────────────────────────────────────────────── */
+router.get("/search-analytics/top-terms", async (req, res) => {
+  const days = Math.min(parseInt(req.query.days as string) || 30, 90);
+  const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const rows = await db
+    .select({
+      query: searchLogsTable.query,
+      occurrences: sql<number>`count(*)::int`,
+      zeroResults: sql<number>`sum(case when ${searchLogsTable.resultCount} = 0 then 1 else 0 end)::int`,
+    })
+    .from(searchLogsTable)
+    .where(gte(searchLogsTable.createdAt, since))
+    .groupBy(searchLogsTable.query)
+    .orderBy(sql`count(*) DESC`)
+    .limit(limit);
+
+  sendSuccess(res, { terms: rows, days, total: rows.length });
 });
 
 export default router;

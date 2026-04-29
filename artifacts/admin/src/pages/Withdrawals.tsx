@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   BanknoteIcon, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock, Filter, CheckSquare,
+  Wallet, AlertTriangle, PartyPopper, Inbox, Landmark,
 } from "lucide-react";
 import { useWithdrawalRequests, useApproveWithdrawal, useRejectWithdrawal, useBatchApproveWithdrawals, useBatchRejectWithdrawals } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,20 +46,20 @@ function parseDesc(desc: string) {
   return { bank: parts[0] || "—", account: parts[1] || "—", title: parts[2] || "—", note: parts[3] || "" };
 }
 
-function methodIcon(method: string | null) {
-  if (!method) return "🏦";
+function methodLabel(method: string | null) {
+  if (!method) return "Bank";
   const m = method.toLowerCase();
-  if (m.includes("jazzcash"))  return "🔴";
-  if (m.includes("easypaisa")) return "🟢";
-  if (m.includes("bank") || m.includes("hbl") || m.includes("mcb") || m.includes("ubl") || m.includes("meezan") || m.includes("alfalah") || m.includes("nbp") || m.includes("allied")) return "🏦";
-  if (m.includes("wallet"))    return "💰";
-  return "💳";
+  if (m.includes("jazzcash"))  return "JazzCash";
+  if (m.includes("easypaisa")) return "EasyPaisa";
+  if (m.includes("bank") || m.includes("hbl") || m.includes("mcb") || m.includes("ubl") || m.includes("meezan") || m.includes("alfalah") || m.includes("nbp") || m.includes("allied")) return "Bank";
+  if (m.includes("wallet"))    return "Wallet";
+  return "Card";
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "pending")  return <Badge className="bg-amber-100 text-amber-700 border-0 text-xs font-bold">⏳ Pending</Badge>;
-  if (status === "paid")     return <Badge className="bg-green-100 text-green-700 border-0 text-xs font-bold">✅ Paid</Badge>;
-  if (status === "rejected") return <Badge className="bg-red-100 text-red-700 border-0 text-xs font-bold">❌ Rejected</Badge>;
+  if (status === "pending")  return <Badge className="bg-amber-100 text-amber-700 border-0 text-xs font-bold gap-1"><Clock className="w-3 h-3" /> Pending</Badge>;
+  if (status === "paid")     return <Badge className="bg-green-100 text-green-700 border-0 text-xs font-bold gap-1"><CheckCircle className="w-3 h-3" /> Paid</Badge>;
+  if (status === "rejected") return <Badge className="bg-red-100 text-red-700 border-0 text-xs font-bold gap-1"><XCircle className="w-3 h-3" /> Rejected</Badge>;
   return <Badge className="bg-gray-100 text-gray-600 border-0 text-xs">{status}</Badge>;
 }
 
@@ -80,7 +81,7 @@ function ApproveModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
   const handleApprove = () => {
     if (!refNo.trim()) { toast({ title: "Reference number required", variant: "destructive" }); return; }
     approve.mutate({ id: w.id, refNo: refNo.trim(), note: note.trim() || undefined }, {
-      onSuccess: () => { toast({ title: "✅ Withdrawal Approved", description: `${fc(Number(w.amount))} marked as paid — Ref: ${refNo}` }); onClose(); },
+      onSuccess: () => { toast({ title: "Withdrawal approved", description: `${fc(Number(w.amount))} marked as paid — Ref: ${refNo}` }); onClose(); },
       onError:   (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
     });
   };
@@ -89,14 +90,14 @@ function ApproveModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-5">
-          <h2 className="text-lg font-extrabold text-white">✅ Approve Withdrawal</h2>
+          <h2 className="text-lg font-extrabold text-white">Approve Withdrawal</h2>
           <p className="text-green-200 text-sm mt-0.5">Mark as paid and enter proof of transfer</p>
         </div>
         <div className="p-5 space-y-4">
           <div className="bg-green-50 rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm"><span className="text-gray-500">Rider / Vendor</span><span className="font-bold">{w.user?.name}</span></div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Phone</span><span className="font-bold">{w.user?.phone}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-500">{methodIcon(w.paymentMethod ?? null)} Method</span><span className="font-bold">{parsed.bank}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-gray-500 flex items-center gap-1"><Landmark className="w-3.5 h-3.5" /> {methodLabel(w.paymentMethod ?? null)}</span><span className="font-bold">{parsed.bank}</span></div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Account</span><span className="font-bold">{parsed.account}</span></div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Account Name</span><span className="font-bold">{parsed.title}</span></div>
             <div className="flex justify-between items-center pt-1 border-t border-green-200">
@@ -122,7 +123,7 @@ function ApproveModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
             <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
               onClick={handleApprove} disabled={approve.isPending}>
-              {approve.isPending ? T("processing") : "✅ Confirm Payment"}
+              {approve.isPending ? T("processing") : "Confirm Payment"}
             </Button>
           </div>
         </div>
@@ -143,7 +144,7 @@ function RejectModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
     if (!reason.trim()) { toast({ title: "Reason required", variant: "destructive" }); return; }
     reject.mutate({ id: w.id, reason: reason.trim() }, {
       onSuccess: (data: any) => {
-        toast({ title: "Withdrawal Rejected", description: `${fc(data.refunded)} wapas rider wallet mein aa gaya.` });
+        toast({ title: "Withdrawal rejected", description: `${fc(data.refunded)} refunded to the rider's wallet.` });
         onClose();
       },
       onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -154,7 +155,7 @@ function RejectModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-red-600 to-rose-600 p-5">
-          <h2 className="text-lg font-extrabold text-white">❌ Reject Withdrawal</h2>
+          <h2 className="text-lg font-extrabold text-white">Reject Withdrawal</h2>
           <p className="text-red-200 text-sm mt-0.5">Amount will be automatically refunded to rider's wallet</p>
         </div>
         <div className="p-5 space-y-4">
@@ -166,8 +167,9 @@ function RejectModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
               <span className="text-xl font-extrabold text-red-600">{fc(Number(w.amount))}</span>
             </div>
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-            <p className="text-xs text-amber-700 font-semibold">⚠️ {fc(Number(w.amount))} automatically rider ke wallet mein wapas aa jayega aur unhe notification milegi.</p>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700 font-semibold">{fc(Number(w.amount))} will be refunded to the rider's wallet automatically and they will be notified.</p>
           </div>
 
           <div>
@@ -181,7 +183,7 @@ function RejectModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
             <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
               onClick={handleReject} disabled={reject.isPending}>
-              {reject.isPending ? T("processing") : "❌ Reject & Refund"}
+              {reject.isPending ? T("processing") : "Reject & Refund"}
             </Button>
           </div>
         </div>
@@ -227,14 +229,14 @@ export default function Withdrawals() {
   const handleBatchApprove = () => {
     if (selected.size === 0) return;
     batchApprove.mutate([...selected], {
-      onSuccess: (r: BatchResult) => { toast({ title: `✅ Batch Approved ${r.approved?.length || selected.size} withdrawals` }); setSelected(new Set()); },
+      onSuccess: (r: BatchResult) => { toast({ title: `Batch approved ${r.approved?.length || selected.size} withdrawals` }); setSelected(new Set()); },
       onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
     });
   };
   const handleBatchReject = () => {
     if (selected.size === 0) return;
     batchReject.mutate({ ids: [...selected], reason: batchRejectReason || "Batch rejected by admin" }, {
-      onSuccess: (r: BatchResult) => { toast({ title: `❌ Batch Rejected ${r.rejected?.length || selected.size} withdrawals` }); setSelected(new Set()); setBatchRejectReason(""); },
+      onSuccess: (r: BatchResult) => { toast({ title: `Batch rejected ${r.rejected?.length || selected.size} withdrawals` }); setSelected(new Set()); setBatchRejectReason(""); },
       onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
     });
   };
@@ -262,14 +264,14 @@ export default function Withdrawals() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Pending Requests", value: String(pendingCount),      icon: "⏳", color: "text-amber-600", bg: "bg-amber-50" },
-          { label: "Pending Amount",   value: fc(pendingAmt),            icon: "💰", color: "text-red-600",   bg: "bg-red-50"   },
-          { label: "Paid Today",       value: String(paidCount),         icon: "✅", color: "text-green-600", bg: "bg-green-50" },
-          { label: "Rejected",         value: String(rejectedCount),     icon: "❌", color: "text-gray-600",  bg: "bg-gray-50"  },
+          { label: "Pending Requests", value: String(pendingCount),      Icon: Clock,       color: "text-amber-600", bg: "bg-amber-50" },
+          { label: "Pending Amount",   value: fc(pendingAmt),            Icon: Wallet,      color: "text-red-600",   bg: "bg-red-50"   },
+          { label: "Paid Today",       value: String(paidCount),         Icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
+          { label: "Rejected",         value: String(rejectedCount),     Icon: XCircle,     color: "text-gray-600",  bg: "bg-gray-50"  },
         ].map(c => (
           <Card key={c.label} className={`border-0 shadow-sm ${c.bg}`}>
             <CardContent className="p-4">
-              <span className="text-2xl">{c.icon}</span>
+              <c.Icon className={`w-6 h-6 ${c.color}`} />
               <p className={`text-lg font-extrabold ${c.color} mt-1`}>{c.value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{c.label}</p>
             </CardContent>
@@ -291,7 +293,7 @@ export default function Withdrawals() {
       {/* Pending banner for manual processing */}
       {pendingCount > 0 && statusFilter !== "paid" && statusFilter !== "rejected" && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
-          <span className="text-xl flex-shrink-0">⚠️</span>
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-bold text-amber-800">Manual Transfer Required</p>
             <p className="text-xs text-amber-700 mt-0.5">{pendingCount} request{pendingCount > 1 ? "s" : ""} pending. Amounts already deducted from wallets. Transfer manually and click Approve with reference number.</p>
@@ -329,7 +331,9 @@ export default function Withdrawals() {
       ) : filtered.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="p-12 text-center">
-            <p className="text-4xl mb-3">{statusFilter === "pending" ? "🎉" : "📋"}</p>
+            {statusFilter === "pending"
+              ? <PartyPopper className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+              : <Inbox className="w-10 h-10 text-gray-400 mx-auto mb-3" />}
             <p className="font-bold text-gray-700">{statusFilter === "pending" ? "No pending requests!" : `No ${statusFilter} requests`}</p>
             <p className="text-sm text-gray-400 mt-1">{statusFilter === "pending" ? "All withdrawal requests have been processed." : "Nothing to show."}</p>
           </CardContent>

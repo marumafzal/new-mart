@@ -6,6 +6,7 @@ import {
   ToggleRight, ToggleLeft, RefreshCw, CheckCircle2,
   AlertTriangle, WrenchIcon, Eye, EyeOff, ScrollText, CalendarDays, ChevronLeft, ChevronRight,
   Zap, Activity, Download, Smartphone, FileText, List, LogOut, Globe,
+  ShoppingCart, UtensilsCrossed, Bus, LayoutDashboard, Rocket, type LucideIcon,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -88,9 +89,23 @@ const ADMIN_ROLES = [
 
 const PERMISSIONS = ["users","orders","rides","pharmacy","parcel","products","transactions","settings","broadcast","flash-deals"];
 
-const SERVICE_MAP = [
-  ...ADMIN_SERVICE_LIST,
-  { key: "wallet", label: "Wallet", description: "Digital wallet for payments & transfers", icon: "💰", setting: "feature_wallet", color: "#1A56DB", colorLight: "#E5EDFF" },
+const SERVICE_ICON_MAP: Record<string, LucideIcon> = {
+  mart: ShoppingCart,
+  food: UtensilsCrossed,
+  rides: Car,
+  pharmacy: Pill,
+  parcel: Package,
+  van: Bus,
+  wallet: Wallet,
+};
+
+const SERVICE_MAP: Array<{ key: string; label: string; description: string; setting: string; color: string; colorLight: string; Icon: LucideIcon }> = [
+  ...ADMIN_SERVICE_LIST.map(s => ({
+    key: s.key, label: s.label, description: s.description, setting: s.setting,
+    color: s.color, colorLight: s.colorLight,
+    Icon: SERVICE_ICON_MAP[s.key] ?? Activity,
+  })),
+  { key: "wallet", label: "Wallet", description: "Digital wallet for payments & transfers", setting: "feature_wallet", color: "#1A56DB", colorLight: "#E5EDFF", Icon: Wallet },
 ];
 
 const EMPTY_ADMIN = { name: "", email: "", secret: "", role: "manager", permissions: PERMISSIONS.join(","), isActive: true };
@@ -423,7 +438,7 @@ export default function AppManagement() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-release-notes"] });
       setRnDialog(false); setEditingRn(null); setRnForm({ version: "", releaseDate: new Date().toISOString().split("T")[0], notes: "", sortOrder: "0" });
-      toast({ title: editingRn ? "Release note updated ✅" : "Release note created ✅" });
+      toast({ title: editingRn ? "Release note updated" : "Release note created" });
     },
 
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -471,7 +486,7 @@ export default function AppManagement() {
       ].filter(p => p.value !== "");
       await fetcher("/platform-settings", { method: "PUT", body: JSON.stringify({ settings: pairs }) });
       qc.invalidateQueries({ queryKey: ["admin-platform-settings"] });
-      toast({ title: "Compliance settings saved ✅" });
+      toast({ title: "Compliance settings saved" });
     } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
     setComplianceSaving(false);
   };
@@ -486,7 +501,7 @@ export default function AppManagement() {
       qc.invalidateQueries({ queryKey: ["admin-accounts"] });
       qc.invalidateQueries({ queryKey: ["admin-app-overview"] });
       setAdminDialog(false); setEditingAdmin(null); setAdminForm({ ...EMPTY_ADMIN });
-      toast({ title: editingAdmin ? "Admin updated ✅" : "Admin account created ✅" });
+      toast({ title: editingAdmin ? "Admin updated" : "Admin account created" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -558,7 +573,7 @@ export default function AppManagement() {
       await fetcher("/platform-settings", { method: "PUT", body: JSON.stringify({ settings: [{ key: "app_status", value: newStatus }] }) });
       qc.invalidateQueries({ queryKey: ["admin-platform-settings"] });
       qc.invalidateQueries({ queryKey: ["admin-app-overview"] });
-      toast({ title: newStatus === "maintenance" ? "🔧 Maintenance mode ON" : "✅ App is now Live", description: newStatus === "maintenance" ? "Users will see the maintenance screen." : "App is back to normal." });
+      toast({ title: newStatus === "maintenance" ? "Maintenance mode ON" : "App is now Live", description: newStatus === "maintenance" ? "Users will see the maintenance screen." : "App is back to normal." });
     } catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
     setSavingMaintenance(false);
   };
@@ -644,7 +659,7 @@ export default function AppManagement() {
         <div className="bg-amber-50 border border-amber-300 rounded-2xl px-5 py-4 flex items-center gap-3">
           <WrenchIcon className="w-6 h-6 text-amber-600 flex-shrink-0"/>
           <div className="flex-1">
-            <p className="font-bold text-amber-800">🔧 Maintenance Mode is ON</p>
+            <p className="font-bold text-amber-800">Maintenance Mode is ON</p>
             <p className="text-sm text-amber-700">The app is currently in maintenance — users cannot access it.</p>
           </div>
           <Button size="sm" onClick={handleMaintenanceSave} className="bg-green-600 hover:bg-green-700 rounded-xl text-xs">Go Live</Button>
@@ -655,19 +670,19 @@ export default function AppManagement() {
       <div className="overflow-x-auto -mx-1 px-1">
         <div className="flex gap-1 bg-muted p-1 rounded-xl w-max min-w-full">
           {([
-            { id: "overview",       label: "📊 Overview" },
-            { id: "admins",         label: "👥 Admin Accounts" },
-            { id: "maintenance",    label: "🔧 Services & Maintenance" },
-            { id: "release-notes",  label: "🚀 Release Notes" },
-            { id: "sessions",       label: "🌐 Active Sessions" },
-            { id: "audit-log",      label: "📋 Audit Log" },
-          ] as { id: AppManagementTab; label: string }[]).map(t => (
+            { id: "overview",       label: "Overview",                 Icon: LayoutDashboard },
+            { id: "admins",         label: "Admin Accounts",           Icon: Users },
+            { id: "maintenance",    label: "Services & Maintenance",   Icon: WrenchIcon },
+            { id: "release-notes",  label: "Release Notes",            Icon: Rocket },
+            { id: "sessions",       label: "Active Sessions",          Icon: Globe },
+            { id: "audit-log",      label: "Audit Log",                Icon: List },
+          ] as { id: AppManagementTab; label: string; Icon: LucideIcon }[]).map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${tab === t.id ? "bg-white shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 inline-flex items-center gap-1.5 ${tab === t.id ? "bg-white shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
             >
-              {t.label}
+              <t.Icon className="w-4 h-4" /> {t.label}
             </button>
           ))}
         </div>
@@ -706,8 +721,8 @@ export default function AppManagement() {
                       return (
                         <div key={svc.key} className={`relative overflow-hidden rounded-xl border p-4 transition-all ${isOn ? "bg-gradient-to-br from-green-50 to-emerald-50 border-green-200" : "bg-gradient-to-br from-red-50 to-rose-50 border-red-200"}`}>
                           <div className="flex items-start gap-3">
-                            <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${isOn ? "bg-green-100" : "bg-red-100"}`}>
-                              {svc.icon}
+                            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isOn ? "bg-green-100 text-green-600" : "bg-red-100 text-red-500"}`}>
+                              <svc.Icon className="w-5 h-5" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-bold truncate">{svc.label}</p>
@@ -836,7 +851,7 @@ export default function AppManagement() {
                     ? <WrenchIcon className="w-6 h-6 text-amber-600"/>
                     : <CheckCircle2 className="w-6 h-6 text-green-600"/>}
                   <div>
-                    <p className="font-bold">{appStatus === "maintenance" ? "🔧 App is in Maintenance" : "✅ App is Live"}</p>
+                    <p className="font-bold">{appStatus === "maintenance" ? "App is in Maintenance" : "App is Live"}</p>
                     <p className="text-sm text-muted-foreground">{appStatus === "maintenance" ? "Users see the maintenance screen and cannot use the app." : "All services are running normally."}</p>
                   </div>
                 </div>

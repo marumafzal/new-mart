@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useState, type ComponentType, type SVGProps } from "react";
 import {
   AlertTriangle, ExternalLink, Loader2, CheckCircle2, XCircle, Wifi,
   Settings, KeyRound, Phone, Building2, Banknote, Wallet,
   Gift, Star, Percent, CreditCard, ToggleRight, Shield,
+  Smartphone, Zap, ClipboardList, Camera, Eye, FileText, Clock,
+  Smartphone as Phone2, Landmark, Bike, Banknote as Cash,
+  ShoppingCart, UtensilsCrossed, Pill, Package, Car,
+  Ban, Gem, Calendar, PartyPopper, Tag, Circle, CheckCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher, apiAbsoluteFetchRaw } from "@/lib/api";
@@ -12,23 +16,42 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Toggle, Field, SecretInput, SLabel, ModeBtn } from "@/components/AdminShared";
 
+type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
+
 type PayTab = "jazzcash" | "easypaisa" | "bank" | "cod" | "wallet" | "rules";
 
-const PAY_TABS: { id: PayTab; label: string; icon: string; color: string; activeBg: string }[] = [
-  { id: "jazzcash",  label: "JazzCash",    icon: "🔴", color: "text-red-600",     activeBg: "bg-red-500" },
-  { id: "easypaisa", label: "EasyPaisa",   icon: "🟢", color: "text-green-600",   activeBg: "bg-green-600" },
-  { id: "bank",      label: "Bank Transfer",icon:"🏦", color: "text-blue-600",    activeBg: "bg-blue-600" },
-  { id: "cod",       label: "Cash on Delivery", icon:"💵", color: "text-amber-600", activeBg: "bg-amber-600" },
-  { id: "wallet",    label: "AJK Wallet",  icon: "💰", color: "text-purple-600",  activeBg: "bg-purple-600" },
-  { id: "rules",     label: "Payment Rules", icon:"⚙️", color: "text-gray-600",  activeBg: "bg-gray-700" },
+const PAY_TABS: { id: PayTab; label: string; Icon: LucideIcon; color: string; activeBg: string }[] = [
+  { id: "jazzcash",  label: "JazzCash",         Icon: Smartphone, color: "text-red-600",    activeBg: "bg-red-500" },
+  { id: "easypaisa", label: "EasyPaisa",        Icon: Smartphone, color: "text-green-600",  activeBg: "bg-green-600" },
+  { id: "bank",      label: "Bank Transfer",    Icon: Landmark,   color: "text-blue-600",   activeBg: "bg-blue-600" },
+  { id: "cod",       label: "Cash on Delivery", Icon: Banknote,   color: "text-amber-600",  activeBg: "bg-amber-600" },
+  { id: "wallet",    label: "AJK Wallet",       Icon: Wallet,     color: "text-purple-600", activeBg: "bg-purple-600" },
+  { id: "rules",     label: "Payment Rules",    Icon: Settings,   color: "text-gray-600",   activeBg: "bg-gray-700" },
 ];
+
+const SERVICE_ICONS: Record<string, LucideIcon> = {
+  mart: ShoppingCart,
+  food: UtensilsCrossed,
+  pharmacy: Pill,
+  parcel: Package,
+  rides: Car,
+};
+function getServiceIcon(key: string): LucideIcon {
+  if (key.includes("mart")) return SERVICE_ICONS.mart;
+  if (key.includes("food")) return SERVICE_ICONS.food;
+  if (key.includes("pharmacy")) return SERVICE_ICONS.pharmacy;
+  if (key.includes("parcel")) return SERVICE_ICONS.parcel;
+  if (key.includes("rides")) return SERVICE_ICONS.rides;
+  if (key.includes("orders")) return ShoppingCart;
+  return Package;
+}
 
 /* ─── JazzCash & EasyPaisa unified gateway card ─────────────────────────── */
 function GatewayCard({
-  prefix, name, logo, accentColor, accentBg, accentBorder, accentBtn,
+  prefix, name, Logo, accentColor, accentBg, accentBorder, accentBtn,
   localValues, dirtyKeys, handleChange, handleToggle,
 }: {
-  prefix: "jazzcash" | "easypaisa"; name: string; logo: string;
+  prefix: "jazzcash" | "easypaisa"; name: string; Logo: LucideIcon;
   accentColor: string; accentBg: string; accentBorder: string; accentBtn: string;
   localValues: Record<string,string>; dirtyKeys: Set<string>;
   handleChange: (k: string, v: string) => void;
@@ -68,7 +91,7 @@ function GatewayCard({
       const message = payload?.message || raw?.message || (ok ? "Connection succeeded" : "Connection failed");
       setTestResult({ ok, message });
       toast({
-        title: ok ? `${name} Connected ✅` : `${name} Failed`,
+        title: ok ? `${name} connected` : `${name} failed`,
         description: message,
         variant: ok ? "default" : "destructive",
       });
@@ -88,8 +111,8 @@ function GatewayCard({
   };
 
   const shortDesc = prefix === "jazzcash"
-    ? "Jazz/Warid mobile wallet · Pakistan's #1 digital wallet"
-    : "Telenor Microfinance · Telenor subscribers' mobile wallet";
+    ? "Jazz/Warid mobile wallet · Pakistan's leading digital wallet"
+    : "Telenor Microfinance · mobile wallet for Telenor subscribers";
 
   return (
     <div className={`rounded-2xl border-2 ${accentBorder} overflow-hidden bg-white shadow-sm`}>
@@ -97,7 +120,7 @@ function GatewayCard({
       {/* ── Header ── */}
       <div className={`${accentBg} px-5 py-4 flex items-center justify-between gap-3`}>
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-4xl flex-shrink-0">{logo}</span>
+          <span className={`flex-shrink-0 ${accentColor}`}><Logo className="w-9 h-9" /></span>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className={`font-bold text-base ${accentColor}`}>{name}</h3>
@@ -107,7 +130,7 @@ function GatewayCard({
                   ? apiEnv === "live" ? "bg-green-50 text-green-700 border-green-300" : "bg-yellow-50 text-yellow-700 border-yellow-300"
                   : "bg-blue-50 text-blue-700 border-blue-300"
               }`}>
-                {!enabled ? "○ Off" : modeType === "api" ? (apiEnv === "live" ? "🟢 API Live" : "🟡 API Sandbox") : "🔵 Manual"}
+                {!enabled ? "Off" : modeType === "api" ? (apiEnv === "live" ? "API Live" : "API Sandbox") : "Manual"}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">{shortDesc}</p>
@@ -140,18 +163,18 @@ function GatewayCard({
             <button onClick={() => handleChange(`${prefix}_type`, "manual")}
               className={`relative py-3 px-4 rounded-xl border-2 text-left transition-all ${modeType === "manual" ? "bg-blue-600 border-blue-700 text-white shadow-md" : "bg-white border-border text-foreground hover:border-blue-300 hover:bg-blue-50/30"}`}
             >
-              <p className="text-xs font-bold leading-tight">📱 Manual Transfer</p>
+              <p className="text-xs font-bold leading-tight inline-flex items-center gap-1.5"><Smartphone className="w-3.5 h-3.5" /> Manual Transfer</p>
               <p className={`text-[10px] mt-0.5 ${modeType === "manual" ? "text-blue-100" : "text-muted-foreground"}`}>
-                Admin ke number par send karein
+                Customer sends to your account
               </p>
               {modeType === "manual" && <CheckCircle2 className="w-3.5 h-3.5 absolute top-2.5 right-2.5 text-blue-200" />}
             </button>
             <button onClick={() => handleChange(`${prefix}_type`, "api")}
               className={`relative py-3 px-4 rounded-xl border-2 text-left transition-all ${modeType === "api" ? `${accentBtn} border-transparent text-white shadow-md` : "bg-white border-border text-foreground hover:border-primary/40 hover:bg-primary/5"}`}
             >
-              <p className="text-xs font-bold leading-tight">⚡ API Integration</p>
+              <p className="text-xs font-bold leading-tight inline-flex items-center gap-1.5"><Zap className="w-3.5 h-3.5" /> API Integration</p>
               <p className={`text-[10px] mt-0.5 ${modeType === "api" ? "text-white/70" : "text-muted-foreground"}`}>
-                {name} portal se direct
+                Direct from {name} portal
               </p>
               {modeType === "api" && <CheckCircle2 className="w-3.5 h-3.5 absolute top-2.5 right-2.5 text-white/60" />}
             </button>
@@ -162,18 +185,18 @@ function GatewayCard({
         {modeType === "manual" && (
           <div className="space-y-4">
             <div className="bg-blue-50 rounded-xl px-4 py-3 border border-blue-200 flex gap-3">
-              <div className="text-xl flex-shrink-0">📋</div>
+              <ClipboardList className="w-5 h-5 flex-shrink-0 text-blue-700" />
               <div>
-                <p className="text-xs text-blue-800 font-semibold">Manual Transfer Mode Active</p>
+                <p className="text-xs text-blue-800 font-semibold">Manual transfer mode active</p>
                 <p className="text-xs text-blue-700 mt-0.5">
-                  Customer apke {name} number par paise transfer karega. App mein aapka naam aur number dikh'ga. Admin manually payment verify karega.
+                  The customer sends payment directly to your {name} number. Your name and number are shown in the app, and an admin verifies each payment manually.
                 </p>
               </div>
             </div>
 
             {/* Account details */}
             <div>
-              <SLabel icon={Phone}>Aapka {name} Account</SLabel>
+              <SLabel icon={Phone}>Your {name} Account</SLabel>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Field
                   label="Account Holder Name"
@@ -181,7 +204,7 @@ function GatewayCard({
                   onChange={set("manual_name")}
                   placeholder="e.g. Muhammad Ali Khan"
                   isDirty={d("manual_name")}
-                  hint="Customer ko yeh naam dikhega"
+                  hint="This name is shown to the customer"
                 />
                 <Field
                   label={`${name} Number`}
@@ -189,7 +212,7 @@ function GatewayCard({
                   onChange={set("manual_number")}
                   placeholder="03XX-XXXXXXX"
                   isDirty={d("manual_number")}
-                  hint="Customer is number par paise bhejega"
+                  hint="Customer sends payment to this number"
                   mono
                 />
               </div>
@@ -202,9 +225,9 @@ function GatewayCard({
                 ${d("proof_required") ? "ring-2 ring-amber-300" : ""}`}
             >
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">📸 Payment Screenshot Required</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Customer ko payment screenshot ya transaction ID submit karna hoga</p>
-                <p className={`text-xs font-bold mt-0.5 ${proofReq ? "text-orange-600" : "text-muted-foreground"}`}>{proofReq ? "● Zaruri hai" : "○ Optional"}</p>
+                <p className="text-sm font-semibold text-foreground inline-flex items-center gap-1.5"><Camera className="w-4 h-4" /> Payment Screenshot Required</p>
+                <p className="text-xs text-muted-foreground mt-0.5">The customer must submit a payment screenshot or transaction ID</p>
+                <p className={`text-xs font-bold mt-0.5 ${proofReq ? "text-orange-600" : "text-muted-foreground"}`}>{proofReq ? "Required" : "Optional"}</p>
               </div>
               <div className={`w-11 h-6 rounded-full relative transition-colors flex-shrink-0 ml-3 ${proofReq ? "bg-orange-500" : "bg-gray-300"}`}>
                 <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${proofReq ? "translate-x-5" : "translate-x-0.5"}`} />
@@ -221,10 +244,10 @@ function GatewayCard({
                 value={localValues[`${prefix}_manual_instructions`] ?? ""}
                 onChange={e => handleChange(`${prefix}_manual_instructions`, e.target.value)}
                 rows={3}
-                placeholder="Customer ko kya karna hoga..."
+                placeholder="What the customer should do..."
                 className={`w-full rounded-lg border text-sm p-3 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${d("manual_instructions") ? "border-amber-300 bg-amber-50/50" : "border-border"}`}
               />
-              <p className="text-[11px] text-muted-foreground">Yeh message customer ko payment method select karne ke baad dikhega</p>
+              <p className="text-[11px] text-muted-foreground">Shown to the customer after they select this payment method</p>
             </div>
 
             {/* Payment limits */}
@@ -238,23 +261,23 @@ function GatewayCard({
 
             {/* Customer preview */}
             <div className="rounded-xl border border-dashed border-blue-300 bg-blue-50/30 p-4">
-              <p className="text-[11px] font-bold text-blue-700 mb-2.5">👁 Customer App Preview</p>
+              <p className="text-[11px] font-bold text-blue-700 mb-2.5 inline-flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Customer App Preview</p>
               <div className="bg-white rounded-xl border border-blue-200 p-3 shadow-sm max-w-sm mx-auto">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">{logo}</span>
+                  <span className={accentColor}><Logo className="w-5 h-5" /></span>
                   <div>
                     <p className="text-xs font-bold text-foreground">{name} — Manual Transfer</p>
-                    <p className="text-[10px] text-muted-foreground">Haath se transfer karein</p>
+                    <p className="text-[10px] text-muted-foreground">Manual money transfer</p>
                   </div>
                 </div>
                 {v("manual_name") || v("manual_number") ? (
                   <div className="bg-muted/40 rounded-lg p-2.5 space-y-1">
-                    {v("manual_name") && <p className="text-[11px]"><span className="font-semibold">Naam:</span> {v("manual_name")}</p>}
+                    {v("manual_name") && <p className="text-[11px]"><span className="font-semibold">Name:</span> {v("manual_name")}</p>}
                     {v("manual_number") && <p className="text-[11px] font-mono"><span className="font-semibold font-sans">Number:</span> {v("manual_number")}</p>}
-                    {proofReq && <p className="text-[10px] text-orange-600 font-semibold">📸 Screenshot required</p>}
+                    {proofReq && <p className="text-[10px] text-orange-600 font-semibold inline-flex items-center gap-1"><Camera className="w-3 h-3" /> Screenshot required</p>}
                   </div>
                 ) : (
-                  <p className="text-[10px] text-muted-foreground italic">Account details set karein — customer ko yahan dikheinge</p>
+                  <p className="text-[10px] text-muted-foreground italic">Set account details — they will appear here for the customer</p>
                 )}
               </div>
             </div>
@@ -269,8 +292,8 @@ function GatewayCard({
               <SLabel>API Environment</SLabel>
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { id: "sandbox", label: "🟡 Sandbox", sub: "Test mode — real paisa nahi katega", cls: "bg-yellow-100 text-yellow-800 border-yellow-300" },
-                  { id: "live",    label: "🟢 Live",    sub: "Production — real transactions",       cls: "bg-green-500 text-white border-green-600" },
+                  { id: "sandbox", label: "Sandbox", sub: "Test mode — no real money charged", cls: "bg-yellow-100 text-yellow-800 border-yellow-300" },
+                  { id: "live",    label: "Live",    sub: "Production — real transactions",     cls: "bg-green-500 text-white border-green-600" },
                 ].map(env => (
                   <button key={env.id} onClick={() => handleChange(`${prefix}_mode`, env.id)}
                     className={`py-2.5 px-3 rounded-xl text-sm font-semibold border-2 transition-all text-left ${
@@ -285,7 +308,7 @@ function GatewayCard({
               {apiEnv === "live" && (
                 <div className="flex items-start gap-2 mt-2 text-xs text-amber-800 bg-amber-50 rounded-xl px-3 py-2.5 border border-amber-200">
                   <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                  <span><strong>Live Mode:</strong> Real paise kat'te hain. Sab credentials achi tarah check karein pehle.</span>
+                  <span><strong>Live Mode:</strong> Real charges apply. Double-check all credentials before going live.</span>
                 </div>
               )}
             </div>
@@ -300,7 +323,7 @@ function GatewayCard({
                   <SecretInput label="Integrity Salt (Hash Key)" value={v("salt")} onChange={set("salt")} placeholder="Your JazzCash salt" isDirty={d("salt")} />
                   <Field label="Currency" value={v("currency")} onChange={set("currency")} placeholder="PKR" isDirty={d("currency")} />
                   <div className="sm:col-span-2">
-                    <Field label="Return / Callback URL" value={v("return_url")} onChange={set("return_url")} placeholder="https://yourdomain.com/api/payments/callback/jazzcash" isDirty={d("return_url")} hint="JazzCash portal mein yahi URL enter karein" />
+                    <Field label="Return / Callback URL" value={v("return_url")} onChange={set("return_url")} placeholder="https://yourdomain.com/api/payments/callback/jazzcash" isDirty={d("return_url")} hint="Enter this URL in the JazzCash portal" />
                   </div>
                 </div>
               ) : (
@@ -343,15 +366,17 @@ function GatewayCard({
 
         {/* Service availability */}
         <div>
-          <SLabel>Kaun Si Services Mein Available Hai</SLabel>
+          <SLabel>Available In Which Services</SLabel>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {[
-              { key: `${prefix}_allowed_mart`,     label: "Mart / Grocery",  icon: "🛒", on: (localValues[`${prefix}_allowed_mart`]     ?? "on") === "on" },
-              { key: `${prefix}_allowed_food`,     label: "Food Delivery",   icon: "🍔", on: (localValues[`${prefix}_allowed_food`]     ?? "on") === "on" },
-              { key: `${prefix}_allowed_pharmacy`, label: "Pharmacy",        icon: "💊", on: (localValues[`${prefix}_allowed_pharmacy`] ?? "on") === "on" },
-              { key: `${prefix}_allowed_parcel`,   label: "Parcel Delivery", icon: "📦", on: (localValues[`${prefix}_allowed_parcel`]   ?? "on") === "on" },
-              { key: `${prefix}_allowed_rides`,    label: "Rides",           icon: "🚗", on: (localValues[`${prefix}_allowed_rides`]    ?? "on") === "on" },
-            ].map(s => (
+              { key: `${prefix}_allowed_mart`,     label: "Mart / Grocery",  on: (localValues[`${prefix}_allowed_mart`]     ?? "on") === "on" },
+              { key: `${prefix}_allowed_food`,     label: "Food Delivery",   on: (localValues[`${prefix}_allowed_food`]     ?? "on") === "on" },
+              { key: `${prefix}_allowed_pharmacy`, label: "Pharmacy",        on: (localValues[`${prefix}_allowed_pharmacy`] ?? "on") === "on" },
+              { key: `${prefix}_allowed_parcel`,   label: "Parcel Delivery", on: (localValues[`${prefix}_allowed_parcel`]   ?? "on") === "on" },
+              { key: `${prefix}_allowed_rides`,    label: "Rides",           on: (localValues[`${prefix}_allowed_rides`]    ?? "on") === "on" },
+            ].map(s => {
+              const Icon = getServiceIcon(s.key);
+              return (
               <button key={s.key} onClick={() => handleToggle(s.key, !s.on)}
                 className={`relative py-3 px-3 rounded-xl border-2 text-left transition-all ${
                   s.on
@@ -359,14 +384,16 @@ function GatewayCard({
                     : "bg-muted/20 border-border/60 opacity-70 hover:opacity-100"
                 } ${dirtyKeys.has(s.key) ? "ring-2 ring-amber-300" : ""}`}
               >
-                <div className="text-2xl mb-1">{s.icon}</div>
+                <Icon className={`w-6 h-6 mb-1 ${s.on ? "text-green-700" : "text-muted-foreground"}`} />
                 <p className="text-[11px] font-bold text-foreground leading-tight">{s.label}</p>
-                <p className={`text-[10px] font-bold mt-0.5 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>{s.on ? "✓ On" : "✗ Off"}</p>
+                <p className={`text-[10px] font-bold mt-0.5 inline-flex items-center gap-1 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>
+                  {s.on ? <><CheckCircle className="w-2.5 h-2.5" /> On</> : <><XCircle className="w-2.5 h-2.5" /> Off</>}
+                </p>
                 <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${s.on ? "bg-green-500" : "bg-gray-300"}`} />
               </button>
-            ))}
+            );})}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">{name} band karne ke liye service card tap karein</p>
+          <p className="text-[11px] text-muted-foreground mt-1.5">Tap a service card to disable {name} for that service</p>
         </div>
       </div>
     </div>
@@ -390,15 +417,15 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
       {/* Header */}
       <div className="bg-blue-50 px-5 py-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-4xl flex-shrink-0">🏦</span>
+          <Landmark className="w-9 h-9 flex-shrink-0 text-blue-700" />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-bold text-base text-blue-700">Bank Transfer</h3>
               <Badge variant="outline" className={`text-[10px] font-bold border flex-shrink-0 ${enabled ? "bg-blue-50 text-blue-700 border-blue-300" : "bg-muted text-muted-foreground border-border"}`}>
-                {enabled ? "● Active" : "○ Disabled"}
+                {enabled ? "Active" : "Disabled"}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">Direct bank account transfer · Large amount orders</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Direct bank account transfer · best for large orders</p>
           </div>
         </div>
         <div onClick={() => handleToggle("bank_enabled", !enabled)}
@@ -413,15 +440,15 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
 
       <div className="p-5 space-y-5">
         <div className="bg-blue-50 rounded-xl px-4 py-3 border border-blue-100 flex gap-3">
-          <span className="text-xl flex-shrink-0">🏦</span>
+          <Landmark className="w-5 h-5 flex-shrink-0 text-blue-700" />
           <p className="text-xs text-blue-800">
-            Customer directly apke bank account mein transfer karega. Aap payment slip verify karke order confirm karenge. Bara transactions ke liye best option.
+            The customer transfers funds directly to your bank account. You verify the deposit slip and confirm the order. Best option for large transactions.
           </p>
         </div>
 
         {/* Bank name select */}
         <div>
-          <SLabel icon={Building2}>Bank Select Karein</SLabel>
+          <SLabel icon={Building2}>Choose Bank</SLabel>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
             {BANKS.map(b => (
               <button key={b} onClick={() => handleChange("bank_name", b)}
@@ -433,7 +460,7 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
           </div>
           {v("bank_name") === "Other" && (
             <Input value={v("bank_name")} onChange={e => handleChange("bank_name", e.target.value)}
-              placeholder="Bank ka naam likhein" className={`h-9 rounded-lg text-sm mt-2 ${d("bank_name") ? "border-amber-300 bg-amber-50/50" : ""}`} />
+              placeholder="Enter bank name" className={`h-9 rounded-lg text-sm mt-2 ${d("bank_name") ? "border-amber-300 bg-amber-50/50" : ""}`} />
           )}
         </div>
 
@@ -441,13 +468,13 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
         <div>
           <SLabel icon={Banknote}>Account Details</SLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Account Title / Holder Name" value={v("bank_account_title")} onChange={v2 => handleChange("bank_account_title", v2)} placeholder="e.g. Muhammad Ali Khan" isDirty={d("bank_account_title")} hint="Bank account mein jo naam hai bilkul waisi spelling" />
+            <Field label="Account Title / Holder Name" value={v("bank_account_title")} onChange={v2 => handleChange("bank_account_title", v2)} placeholder="e.g. Muhammad Ali Khan" isDirty={d("bank_account_title")} hint="Spelling must match the bank account exactly" />
             <Field label="Account Number" value={v("bank_account_number")} onChange={v2 => handleChange("bank_account_number", v2)} placeholder="0123-4567890-01" isDirty={d("bank_account_number")} mono />
             <div className="sm:col-span-2">
-              <Field label="IBAN (International Bank Account Number)" value={v("bank_iban")} onChange={v2 => handleChange("bank_iban", v2)} placeholder="PK00XXXX0000000000000000" isDirty={d("bank_iban")} mono hint="24 characters — PK se shuru hota hai" />
+              <Field label="IBAN (International Bank Account Number)" value={v("bank_iban")} onChange={v2 => handleChange("bank_iban", v2)} placeholder="PK00XXXX0000000000000000" isDirty={d("bank_iban")} mono hint="24 characters — starts with PK" />
             </div>
             <Field label="Branch Code" value={v("bank_branch_code")} onChange={v2 => handleChange("bank_branch_code", v2)} placeholder="0001" isDirty={d("bank_branch_code")} mono hint="4-digit branch code" />
-            <Field label="SWIFT / BIC Code" value={v("bank_swift_code")} onChange={v2 => handleChange("bank_swift_code", v2)} placeholder="HABBPKKA" isDirty={d("bank_swift_code")} mono hint="International wire transfers ke liye" />
+            <Field label="SWIFT / BIC Code" value={v("bank_swift_code")} onChange={v2 => handleChange("bank_swift_code", v2)} placeholder="HABBPKKA" isDirty={d("bank_swift_code")} mono hint="For international wire transfers" />
           </div>
         </div>
 
@@ -455,8 +482,8 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
         <div>
           <SLabel>Transfer Settings</SLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Minimum Bank Transfer (Rs.)" value={v("bank_min_amount")} onChange={v2 => handleChange("bank_min_amount", v2)} placeholder="500" isDirty={d("bank_min_amount")} type="number" hint="Is se kum order bank se nahi hogi" />
-            <Field label="Processing Time (hours)" value={v("bank_processing_hours")} onChange={v2 => handleChange("bank_processing_hours", v2)} placeholder="24" isDirty={d("bank_processing_hours")} type="number" hint="Payment verify hone mein kitna time lagta hai" suffix="hrs" />
+            <Field label="Minimum Bank Transfer (Rs.)" value={v("bank_min_amount")} onChange={v2 => handleChange("bank_min_amount", v2)} placeholder="500" isDirty={d("bank_min_amount")} type="number" hint="Orders below this amount cannot use bank transfer" />
+            <Field label="Processing Time (hours)" value={v("bank_processing_hours")} onChange={v2 => handleChange("bank_processing_hours", v2)} placeholder="24" isDirty={d("bank_processing_hours")} type="number" hint="Time to verify a payment" suffix="hrs" />
           </div>
         </div>
 
@@ -467,9 +494,9 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
             ${d("bank_proof_required") ? "ring-2 ring-amber-300" : ""}`}
         >
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">📄 Bank Slip / Screenshot Required</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Customer ko payment screenshot ya transaction reference submit karna hoga</p>
-            <p className={`text-xs font-bold mt-0.5 ${proofReq ? "text-orange-600" : "text-muted-foreground"}`}>{proofReq ? "● Zaruri hai" : "○ Optional"}</p>
+            <p className="text-sm font-semibold text-foreground inline-flex items-center gap-1.5"><FileText className="w-4 h-4" /> Bank Slip / Screenshot Required</p>
+            <p className="text-xs text-muted-foreground mt-0.5">The customer must submit a payment screenshot or transaction reference</p>
+            <p className={`text-xs font-bold mt-0.5 ${proofReq ? "text-orange-600" : "text-muted-foreground"}`}>{proofReq ? "Required" : "Optional"}</p>
           </div>
           <div className={`w-11 h-6 rounded-full relative transition-colors flex-shrink-0 ml-3 ${proofReq ? "bg-orange-500" : "bg-gray-300"}`}>
             <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${proofReq ? "translate-x-5" : "translate-x-0.5"}`} />
@@ -483,23 +510,25 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
             {d("bank_instructions") && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold">CHANGED</Badge>}
           </div>
           <textarea value={v("bank_instructions")} onChange={e => handleChange("bank_instructions", e.target.value)}
-            rows={3} placeholder="Customer ko kya karna hoga — transfer ke baad kya steps hain..."
+            rows={3} placeholder="What the customer should do — steps after the transfer..."
             className={`w-full rounded-lg border text-sm p-3 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${d("bank_instructions") ? "border-amber-300 bg-amber-50/50" : "border-border"}`}
           />
-          <p className="text-[11px] text-muted-foreground">Yeh message customer ko bank transfer select karne ke baad dikhega</p>
+          <p className="text-[11px] text-muted-foreground">Shown to the customer after they select bank transfer</p>
         </div>
 
         {/* Service availability */}
         <div>
-          <SLabel>Kaun Si Services Mein Available Hai</SLabel>
+          <SLabel>Available In Which Services</SLabel>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {[
-              { key: "bank_allowed_mart",     label: "Mart / Grocery",  icon: "🛒", on: (v("bank_allowed_mart")     || "on") === "on" },
-              { key: "bank_allowed_food",     label: "Food Delivery",   icon: "🍔", on: (v("bank_allowed_food")     || "on") === "on" },
-              { key: "bank_allowed_pharmacy", label: "Pharmacy",        icon: "💊", on: (v("bank_allowed_pharmacy") || "on") === "on" },
-              { key: "bank_allowed_parcel",   label: "Parcel Delivery", icon: "📦", on: (v("bank_allowed_parcel")   || "on") === "on" },
-              { key: "bank_allowed_rides",    label: "Rides",           icon: "🚗", on: (v("bank_allowed_rides")    || "on") === "on" },
-            ].map(s => (
+              { key: "bank_allowed_mart",     label: "Mart / Grocery",  on: (v("bank_allowed_mart")     || "on") === "on" },
+              { key: "bank_allowed_food",     label: "Food Delivery",   on: (v("bank_allowed_food")     || "on") === "on" },
+              { key: "bank_allowed_pharmacy", label: "Pharmacy",        on: (v("bank_allowed_pharmacy") || "on") === "on" },
+              { key: "bank_allowed_parcel",   label: "Parcel Delivery", on: (v("bank_allowed_parcel")   || "on") === "on" },
+              { key: "bank_allowed_rides",    label: "Rides",           on: (v("bank_allowed_rides")    || "on") === "on" },
+            ].map(s => {
+              const Icon = getServiceIcon(s.key);
+              return (
               <button key={s.key} onClick={() => handleToggle(s.key, !s.on)}
                 className={`relative py-3 px-3 rounded-xl border-2 text-left transition-all ${
                   s.on
@@ -507,30 +536,32 @@ function BankSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
                     : "bg-muted/20 border-border/60 opacity-70 hover:opacity-100"
                 } ${dirtyKeys.has(s.key) ? "ring-2 ring-amber-300" : ""}`}
               >
-                <div className="text-2xl mb-1">{s.icon}</div>
+                <Icon className={`w-6 h-6 mb-1 ${s.on ? "text-green-700" : "text-muted-foreground"}`} />
                 <p className="text-[11px] font-bold text-foreground leading-tight">{s.label}</p>
-                <p className={`text-[10px] font-bold mt-0.5 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>{s.on ? "✓ On" : "✗ Off"}</p>
+                <p className={`text-[10px] font-bold mt-0.5 inline-flex items-center gap-1 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>
+                  {s.on ? <><CheckCircle className="w-2.5 h-2.5" /> On</> : <><XCircle className="w-2.5 h-2.5" /> Off</>}
+                </p>
                 <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${s.on ? "bg-green-500" : "bg-gray-300"}`} />
               </button>
-            ))}
+            );})}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">Bank Transfer band karne ke liye service card tap karein</p>
+          <p className="text-[11px] text-muted-foreground mt-1.5">Tap a service card to disable Bank Transfer for that service</p>
         </div>
 
         {/* Preview */}
         {(v("bank_account_title") || v("bank_account_number") || v("bank_iban")) && (
           <div className="rounded-xl border border-dashed border-blue-300 bg-blue-50/30 p-4">
-            <p className="text-[11px] font-bold text-blue-700 mb-2.5">👁 Customer App Preview</p>
+            <p className="text-[11px] font-bold text-blue-700 mb-2.5 inline-flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Customer App Preview</p>
             <div className="bg-white rounded-xl border border-blue-200 p-3 shadow-sm max-w-sm mx-auto space-y-1.5">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xl">🏦</span>
+                <Landmark className="w-5 h-5 text-blue-700" />
                 <p className="text-xs font-bold">{v("bank_name") || "Bank Transfer"}</p>
               </div>
               {v("bank_account_title") && <p className="text-[11px]"><span className="font-semibold">Account:</span> {v("bank_account_title")}</p>}
               {v("bank_account_number") && <p className="text-[11px] font-mono"><span className="font-semibold font-sans">No.:</span> {v("bank_account_number")}</p>}
               {v("bank_iban") && <p className="text-[11px] font-mono"><span className="font-semibold font-sans">IBAN:</span> {v("bank_iban")}</p>}
-              {proofReq && <p className="text-[10px] text-orange-600 font-semibold">📄 Slip screenshot required</p>}
-              {v("bank_processing_hours") && <p className="text-[10px] text-muted-foreground">⏱ {v("bank_processing_hours")} hours mein confirm hogi</p>}
+              {proofReq && <p className="text-[10px] text-orange-600 font-semibold inline-flex items-center gap-1"><FileText className="w-3 h-3" /> Slip screenshot required</p>}
+              {v("bank_processing_hours") && <p className="text-[10px] text-muted-foreground inline-flex items-center gap-1"><Clock className="w-3 h-3" /> Confirms within {v("bank_processing_hours")} hours</p>}
             </div>
           </div>
         )}
@@ -555,11 +586,11 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
   const d = (k: string) => dirtyKeys.has(k);
 
   const services = [
-    { key: "cod_allowed_mart",     label: "Mart / Grocery",  icon: "🛒", on: martOn     },
-    { key: "cod_allowed_food",     label: "Food Delivery",   icon: "🍔", on: foodOn     },
-    { key: "cod_allowed_pharmacy", label: "Pharmacy",        icon: "💊", on: pharmacyOn },
-    { key: "cod_allowed_parcel",   label: "Parcel Delivery", icon: "📦", on: parcelOn   },
-    { key: "cod_allowed_rides",    label: "Rides",           icon: "🚗", on: ridesOn    },
+    { key: "cod_allowed_mart",     label: "Mart / Grocery",  on: martOn     },
+    { key: "cod_allowed_food",     label: "Food Delivery",   on: foodOn     },
+    { key: "cod_allowed_pharmacy", label: "Pharmacy",        on: pharmacyOn },
+    { key: "cod_allowed_parcel",   label: "Parcel Delivery", on: parcelOn   },
+    { key: "cod_allowed_rides",    label: "Rides",           on: ridesOn    },
   ];
 
   return (
@@ -567,15 +598,15 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
       {/* Header */}
       <div className="bg-amber-50 px-5 py-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-4xl flex-shrink-0">💵</span>
+          <Banknote className="w-9 h-9 flex-shrink-0 text-amber-700" />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-bold text-base text-amber-700">Cash on Delivery (COD)</h3>
               <Badge variant="outline" className={`text-[10px] font-bold border flex-shrink-0 ${enabled ? "bg-green-50 text-green-700 border-green-300" : "bg-muted text-muted-foreground border-border"}`}>
-                {enabled ? "● Active" : "○ Disabled"}
+                {enabled ? "Active" : "Disabled"}
               </Badge>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">Rider delivery par cash wapas leta hai</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Rider collects cash on delivery</p>
           </div>
         </div>
         <div onClick={() => handleToggle("cod_enabled", !enabled)}
@@ -592,13 +623,13 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
         {/* Quick stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "Max Order",   value: `Rs. ${v("cod_max_amount") || "5000"}`, icon: "📦" },
-            { label: "COD Fee",     value: !v("cod_fee") || v("cod_fee") === "0" ? "Free" : `Rs. ${v("cod_fee")}`, icon: "🏷️" },
-            { label: "Free Above",  value: `Rs. ${v("cod_free_above") || "2000"}`, icon: "🎁" },
-            { label: "Services",    value: `${[martOn,foodOn,pharmacyOn,parcelOn,ridesOn].filter(Boolean).length}/5 on`, icon: "✅" },
+            { label: "Max Order",   value: `Rs. ${v("cod_max_amount") || "5000"}`, Icon: Package },
+            { label: "COD Fee",     value: !v("cod_fee") || v("cod_fee") === "0" ? "Free" : `Rs. ${v("cod_fee")}`, Icon: Tag },
+            { label: "Free Above",  value: `Rs. ${v("cod_free_above") || "2000"}`, Icon: Gift },
+            { label: "Services",    value: `${[martOn,foodOn,pharmacyOn,parcelOn,ridesOn].filter(Boolean).length}/5 on`, Icon: CheckCircle2 },
           ].map(s => (
             <div key={s.label} className="bg-amber-50/50 rounded-xl p-3 text-center border border-amber-100">
-              <div className="text-xl mb-1">{s.icon}</div>
+              <s.Icon className="w-5 h-5 mb-1 mx-auto text-amber-700" />
               <p className="text-xs font-bold text-foreground">{s.value}</p>
               <p className="text-[10px] text-muted-foreground">{s.label}</p>
             </div>
@@ -607,9 +638,11 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
 
         {/* Service availability */}
         <div>
-          <SLabel>COD Kaun Si Services Mein Available Hai</SLabel>
+          <SLabel>COD Available In Which Services</SLabel>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {services.map(s => (
+            {services.map(s => {
+              const Icon = getServiceIcon(s.key);
+              return (
               <button key={s.key} onClick={() => handleToggle(s.key, !s.on)}
                 className={`relative py-3 px-3 rounded-xl border-2 text-left transition-all ${
                   s.on
@@ -617,32 +650,34 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
                     : "bg-muted/20 border-border/60 opacity-70 hover:opacity-100"
                 } ${dirtyKeys.has(s.key) ? "ring-2 ring-amber-300" : ""}`}
               >
-                <div className="text-2xl mb-1">{s.icon}</div>
+                <Icon className={`w-6 h-6 mb-1 ${s.on ? "text-green-700" : "text-muted-foreground"}`} />
                 <p className="text-[11px] font-bold text-foreground leading-tight">{s.label}</p>
-                <p className={`text-[10px] font-bold mt-0.5 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>{s.on ? "✓ On" : "✗ Off"}</p>
+                <p className={`text-[10px] font-bold mt-0.5 inline-flex items-center gap-1 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>
+                  {s.on ? <><CheckCircle className="w-2.5 h-2.5" /> On</> : <><XCircle className="w-2.5 h-2.5" /> Off</>}
+                </p>
                 <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${s.on ? "bg-green-500" : "bg-gray-300"}`} />
               </button>
-            ))}
+            );})}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">COD band karne ke liye service card tap karein</p>
+          <p className="text-[11px] text-muted-foreground mt-1.5">Tap a service card to disable COD for that service</p>
         </div>
 
         {/* Fees & Limits */}
         <div>
           <SLabel icon={Banknote}>Fees & Limits</SLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Maximum COD Order (Rs.)" value={v("cod_max_amount")} onChange={v2 => handleChange("cod_max_amount", v2)} placeholder="5000" isDirty={d("cod_max_amount")} type="number" hint="Is se zyada order COD se nahi hogi" />
+            <Field label="Maximum COD Order (Rs.)" value={v("cod_max_amount")} onChange={v2 => handleChange("cod_max_amount", v2)} placeholder="5000" isDirty={d("cod_max_amount")} type="number" hint="Orders above this amount cannot use COD" />
             <Field label="COD Service Fee (Rs.)" value={v("cod_fee")} onChange={v2 => handleChange("cod_fee", v2)} placeholder="0" isDirty={d("cod_fee")} type="number" hint="0 = free COD" />
-            <Field label="Free COD Above (Rs.)" value={v("cod_free_above")} onChange={v2 => handleChange("cod_free_above", v2)} placeholder="2000" isDirty={d("cod_free_above")} type="number" hint="Is se zyada order mein COD fee nahi" />
-            <Field label="COD Advance Deposit (%)" value={v("cod_advance_pct")} onChange={v2 => handleChange("cod_advance_pct", v2)} placeholder="0" isDirty={d("cod_advance_pct")} type="number" hint="0 = advance nahi, 100 = puri raqam pehle" suffix="%" />
+            <Field label="Free COD Above (Rs.)" value={v("cod_free_above")} onChange={v2 => handleChange("cod_free_above", v2)} placeholder="2000" isDirty={d("cod_free_above")} type="number" hint="Orders above this amount have no COD fee" />
+            <Field label="COD Advance Deposit (%)" value={v("cod_advance_pct")} onChange={v2 => handleChange("cod_advance_pct", v2)} placeholder="0" isDirty={d("cod_advance_pct")} type="number" hint="0 = no advance, 100 = full amount upfront" suffix="%" />
           </div>
         </div>
 
         {/* High-value verification */}
         <div>
           <SLabel icon={Shield}>High-Value Order Verification</SLabel>
-          <Field label="Photo Verification Required Above (Rs.)" value={v("cod_verification_threshold")} onChange={v2 => handleChange("cod_verification_threshold", v2)} placeholder="3000" isDirty={d("cod_verification_threshold")} type="number" hint="Is se zyada COD order mein rider cash photo lega" />
-          <p className="text-[11px] text-muted-foreground mt-1">Rider ko high-value COD delivery par cash ki photo leni hogi — fraud se bachane ke liye</p>
+          <Field label="Photo Verification Required Above (Rs.)" value={v("cod_verification_threshold")} onChange={v2 => handleChange("cod_verification_threshold", v2)} placeholder="3000" isDirty={d("cod_verification_threshold")} type="number" hint="For COD orders above this amount the rider photographs the cash" />
+          <p className="text-[11px] text-muted-foreground mt-1">The rider must take a photo of the cash for high-value COD deliveries — to prevent fraud</p>
         </div>
 
         {/* Fake order penalty */}
@@ -652,9 +687,9 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
             ${d("cod_fake_penalty") ? "ring-2 ring-amber-300" : ""}`}
         >
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">🚫 Repeat Fake COD Customers Block Karein</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Baar baar COD order cancel karne wale customers ko automatically block karein</p>
-            <p className={`text-xs font-bold mt-0.5 ${fakePenalty ? "text-red-600" : "text-muted-foreground"}`}>{fakePenalty ? "● Active — Fraud protection ON" : "○ Disabled"}</p>
+            <p className="text-sm font-semibold text-foreground inline-flex items-center gap-1.5"><Ban className="w-4 h-4" /> Block Repeat Fake COD Customers</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Automatically block customers who repeatedly cancel COD orders</p>
+            <p className={`text-xs font-bold mt-0.5 ${fakePenalty ? "text-red-600" : "text-muted-foreground"}`}>{fakePenalty ? "Active — Fraud protection ON" : "Disabled"}</p>
           </div>
           <div className={`w-11 h-6 rounded-full relative transition-colors flex-shrink-0 ml-3 ${fakePenalty ? "bg-red-500" : "bg-gray-300"}`}>
             <div className={`w-5 h-5 bg-white rounded-full shadow absolute top-0.5 transition-transform ${fakePenalty ? "translate-x-5" : "translate-x-0.5"}`} />
@@ -664,14 +699,14 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
         {/* Restricted areas */}
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-foreground">Restricted Areas (comma se alag karein)</label>
+            <label className="text-xs font-semibold text-foreground">Restricted Areas (comma separated)</label>
             {d("cod_restricted_areas") && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold">CHANGED</Badge>}
           </div>
           <Input value={v("cod_restricted_areas")} onChange={e => handleChange("cod_restricted_areas", e.target.value)}
-            placeholder="e.g. Rawalpindi, Islamabad — khaali chhorein agar sab jagah COD available hai"
+            placeholder="e.g. Rawalpindi, Islamabad — leave empty if COD is available everywhere"
             className={`h-9 rounded-lg text-sm ${d("cod_restricted_areas") ? "border-amber-300 bg-amber-50/50" : "border-dashed"}`}
           />
-          <p className="text-[11px] text-muted-foreground">Jin areas mein COD available NAHI hogi. Empty = sab jagah available</p>
+          <p className="text-[11px] text-muted-foreground">Areas where COD is NOT available. Empty = available everywhere</p>
         </div>
 
         {/* Customer instructions */}
@@ -681,7 +716,7 @@ function CODSection({ localValues, dirtyKeys, handleChange, handleToggle }: {
             {d("cod_notes") && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 font-bold">CHANGED</Badge>}
           </div>
           <textarea value={v("cod_notes")} onChange={e => handleChange("cod_notes", e.target.value)}
-            rows={2} placeholder="COD select karne ke baad customer ko kya message dikhana hai..."
+            rows={2} placeholder="Message shown to the customer after they select COD..."
             className={`w-full rounded-lg border text-sm p-3 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 ${d("cod_notes") ? "border-amber-300 bg-amber-50/50" : "border-border"}`}
           />
         </div>
@@ -711,12 +746,12 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
     handleChange("wallet_topup_methods", current.join(","));
   };
 
-  const TOPUP_METHODS = [
-    { id: "jazzcash",  label: "JazzCash",     icon: "🔴" },
-    { id: "easypaisa", label: "EasyPaisa",    icon: "🟢" },
-    { id: "bank",      label: "Bank Transfer",icon: "🏦" },
-    { id: "cash",      label: "Cash Deposit", icon: "💵" },
-    { id: "rider",     label: "Via Rider",    icon: "🛵" },
+  const TOPUP_METHODS: { id: string; label: string; Icon: LucideIcon }[] = [
+    { id: "jazzcash",  label: "JazzCash",      Icon: Smartphone },
+    { id: "easypaisa", label: "EasyPaisa",     Icon: Smartphone },
+    { id: "bank",      label: "Bank Transfer", Icon: Landmark },
+    { id: "cash",      label: "Cash Deposit",  Icon: Banknote },
+    { id: "rider",     label: "Via Rider",     Icon: Bike },
   ];
 
   return (
@@ -724,12 +759,12 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
       {/* Header */}
       <div className="bg-purple-50 px-5 py-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <span className="text-4xl flex-shrink-0">💰</span>
+          <Wallet className="w-9 h-9 flex-shrink-0 text-purple-700" />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-bold text-base text-purple-700">AJK Wallet</h3>
               <Badge variant="outline" className={`text-[10px] font-bold border flex-shrink-0 ${enabled ? "bg-green-50 text-green-700 border-green-300" : "bg-muted text-muted-foreground border-border"}`}>
-                {enabled ? "● Active" : "○ Disabled"}
+                {enabled ? "Active" : "Disabled"}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">In-app digital wallet · instant payments · P2P transfer</p>
@@ -737,11 +772,11 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
         </div>
         <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
           <Badge variant="outline" className={`text-[11px] font-bold border px-2.5 py-1 ${enabled ? "bg-green-50 text-green-700 border-green-300" : "bg-red-50 text-red-600 border-red-300"}`}>
-            {enabled ? "● Enabled" : "○ Disabled"}
+            {enabled ? "Enabled" : "Disabled"}
           </Badge>
           {onNavigateFeatures ? (
-            <button onClick={onNavigateFeatures} className="text-[10px] text-blue-600 hover:underline flex items-center gap-0.5">
-              Change in Feature Toggles ↗
+            <button onClick={onNavigateFeatures} className="text-[10px] text-blue-600 hover:underline inline-flex items-center gap-0.5">
+              Change in Feature Toggles <ExternalLink className="w-3 h-3" />
             </button>
           ) : (
             <p className="text-[10px] text-muted-foreground/70">Toggle in Features tab</p>
@@ -753,13 +788,13 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
         {/* Quick stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "Max Balance", value: `Rs. ${v("wallet_max_balance") || "50000"}`, icon: "💎" },
-            { label: "Daily Limit", value: `Rs. ${v("wallet_daily_limit") || "20000"}`, icon: "📅" },
-            { label: "Cashback",    value: `${v("wallet_cashback_pct") || "0"}%`, icon: "🎁" },
-            { label: "Signup Bonus",value: v("customer_signup_bonus") && v("customer_signup_bonus") !== "0" ? `Rs. ${v("customer_signup_bonus")}` : "None", icon: "🎊" },
+            { label: "Max Balance", value: `Rs. ${v("wallet_max_balance") || "50000"}`, Icon: Gem },
+            { label: "Daily Limit", value: `Rs. ${v("wallet_daily_limit") || "20000"}`, Icon: Calendar },
+            { label: "Cashback",    value: `${v("wallet_cashback_pct") || "0"}%`, Icon: Gift },
+            { label: "Signup Bonus",value: v("customer_signup_bonus") && v("customer_signup_bonus") !== "0" ? `Rs. ${v("customer_signup_bonus")}` : "None", Icon: PartyPopper },
           ].map(s => (
             <div key={s.label} className="bg-purple-50/60 rounded-xl p-3 text-center border border-purple-100">
-              <div className="text-xl mb-1">{s.icon}</div>
+              <s.Icon className="w-5 h-5 mb-1 mx-auto text-purple-700" />
               <p className="text-xs font-bold text-foreground">{s.value}</p>
               <p className="text-[10px] text-muted-foreground">{s.label}</p>
             </div>
@@ -771,8 +806,8 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
           <SLabel icon={ToggleRight}>Wallet Features</SLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {[
-              { key: "wallet_p2p_enabled",  label: "P2P Money Transfer",    sub: "Customer dusre ko paise bhej sake", on: p2pEnabled,  toggle: () => handleToggle("wallet_p2p_enabled",  !p2pEnabled)  },
-              { key: "wallet_kyc_required", label: "KYC Before Activation", sub: "Wallet chalane se pehle ID verify", on: kycRequired, toggle: () => handleToggle("wallet_kyc_required", !kycRequired) },
+              { key: "wallet_p2p_enabled",  label: "P2P Money Transfer",    sub: "Customers can send money to each other", on: p2pEnabled,  toggle: () => handleToggle("wallet_p2p_enabled",  !p2pEnabled)  },
+              { key: "wallet_kyc_required", label: "KYC Before Activation", sub: "Verify ID before activating wallet",     on: kycRequired, toggle: () => handleToggle("wallet_kyc_required", !kycRequired) },
             ].map(f => (
               <div key={f.key} onClick={f.toggle}
                 className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all select-none
@@ -795,8 +830,8 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
         <div>
           <SLabel icon={Banknote}>Balance & Transaction Limits</SLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Max Wallet Balance (Rs.)" value={v("wallet_max_balance")} onChange={v2 => handleChange("wallet_max_balance", v2)} placeholder="50000" isDirty={d("wallet_max_balance")} type="number" hint="Ek customer itna hold kar sakta hai" />
-            <Field label="Daily Transaction Limit (Rs.)" value={v("wallet_daily_limit")} onChange={v2 => handleChange("wallet_daily_limit", v2)} placeholder="20000" isDirty={d("wallet_daily_limit")} type="number" hint="Roz ka total in + out" />
+            <Field label="Max Wallet Balance (Rs.)" value={v("wallet_max_balance")} onChange={v2 => handleChange("wallet_max_balance", v2)} placeholder="50000" isDirty={d("wallet_max_balance")} type="number" hint="Maximum balance a customer can hold" />
+            <Field label="Daily Transaction Limit (Rs.)" value={v("wallet_daily_limit")} onChange={v2 => handleChange("wallet_daily_limit", v2)} placeholder="20000" isDirty={d("wallet_daily_limit")} type="number" hint="Combined daily in + out total" />
           </div>
         </div>
 
@@ -824,8 +859,8 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
           <div>
             <SLabel>P2P Transfer Settings</SLabel>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field label="P2P Daily Send Limit (Rs.)" value={v("wallet_p2p_daily_limit")} onChange={v2 => handleChange("wallet_p2p_daily_limit", v2)} placeholder="10000" isDirty={d("wallet_p2p_daily_limit")} type="number" hint="Customer roz kitna transfer kar sakta hai" />
-              <Field label="P2P Fee (%)" value={v("wallet_p2p_fee_pct")} onChange={v2 => handleChange("wallet_p2p_fee_pct", v2)} placeholder="0" isDirty={d("wallet_p2p_fee_pct")} type="number" suffix="%" hint="Har P2P transfer par platform fee (0 = no fee)" />
+              <Field label="P2P Daily Send Limit (Rs.)" value={v("wallet_p2p_daily_limit")} onChange={v2 => handleChange("wallet_p2p_daily_limit", v2)} placeholder="10000" isDirty={d("wallet_p2p_daily_limit")} type="number" hint="How much a customer can transfer per day" />
+              <Field label="P2P Fee (%)" value={v("wallet_p2p_fee_pct")} onChange={v2 => handleChange("wallet_p2p_fee_pct", v2)} placeholder="0" isDirty={d("wallet_p2p_fee_pct")} type="number" suffix="%" hint="Platform fee per P2P transfer (0 = no fee)" />
             </div>
           </div>
         )}
@@ -833,53 +868,57 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
         {/* Deposit Auto-Approve */}
         <div>
           <SLabel>Deposit Auto-Approval</SLabel>
-          <Field label="Auto-Approve Threshold (Rs.)" value={v("wallet_deposit_auto_approve")} onChange={v2 => handleChange("wallet_deposit_auto_approve", v2)} placeholder="0" isDirty={d("wallet_deposit_auto_approve")} type="number" hint="Is amount tak ke deposits auto-approve honge (0 = sab manual review)" suffix="Rs." />
+          <Field label="Auto-Approve Threshold (Rs.)" value={v("wallet_deposit_auto_approve")} onChange={v2 => handleChange("wallet_deposit_auto_approve", v2)} placeholder="0" isDirty={d("wallet_deposit_auto_approve")} type="number" hint="Deposits up to this amount are auto-approved (0 = all manual review)" suffix="Rs." />
         </div>
 
         {/* Rewards & Bonuses */}
         <div>
           <SLabel>Rewards & Bonuses</SLabel>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Wallet Cashback (%)" value={v("wallet_cashback_pct")} onChange={v2 => handleChange("wallet_cashback_pct", v2)} placeholder="0" isDirty={d("wallet_cashback_pct")} type="number" hint="Wallet se payment par % cashback" suffix="%" />
-            <Field label="Referral Bonus (Rs.)" value={v("customer_referral_bonus")} onChange={v2 => handleChange("customer_referral_bonus", v2)} placeholder="100" isDirty={d("customer_referral_bonus")} type="number" hint="Naye referral join karne par milta hai (Customer settings ke saath sync)" />
-            <Field label="New User Signup Bonus (Rs.)" value={v("customer_signup_bonus")} onChange={v2 => handleChange("customer_signup_bonus", v2)} placeholder="0" isDirty={d("customer_signup_bonus")} type="number" hint="Account banane par wallet mein milega (Customer settings ke saath sync)" />
-            <Field label="Balance Expiry (days, 0=never)" value={v("wallet_expiry_days")} onChange={v2 => handleChange("wallet_expiry_days", v2)} placeholder="0" isDirty={d("wallet_expiry_days")} type="number" hint="0 = kabhi expire nahi hoga" suffix="days" />
+            <Field label="Wallet Cashback (%)" value={v("wallet_cashback_pct")} onChange={v2 => handleChange("wallet_cashback_pct", v2)} placeholder="0" isDirty={d("wallet_cashback_pct")} type="number" hint="% cashback for wallet payments" suffix="%" />
+            <Field label="Referral Bonus (Rs.)" value={v("customer_referral_bonus")} onChange={v2 => handleChange("customer_referral_bonus", v2)} placeholder="100" isDirty={d("customer_referral_bonus")} type="number" hint="Awarded when a new referral joins (synced with Customer settings)" />
+            <Field label="New User Signup Bonus (Rs.)" value={v("customer_signup_bonus")} onChange={v2 => handleChange("customer_signup_bonus", v2)} placeholder="0" isDirty={d("customer_signup_bonus")} type="number" hint="Credited on account creation (synced with Customer settings)" />
+            <Field label="Balance Expiry (days, 0=never)" value={v("wallet_expiry_days")} onChange={v2 => handleChange("wallet_expiry_days", v2)} placeholder="0" isDirty={d("wallet_expiry_days")} type="number" hint="0 = never expires" suffix="days" />
           </div>
         </div>
 
         {/* Cashback on which services */}
         <div>
-          <SLabel>Cashback Kaun Si Services Mein Milega</SLabel>
+          <SLabel>Cashback Earned In Which Services</SLabel>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { key: "wallet_cashback_on_orders",   label: "Orders",   icon: "🛒", on: cbOrders   },
-              { key: "wallet_cashback_on_rides",    label: "Rides",    icon: "🚗", on: cbRides    },
-              { key: "wallet_cashback_on_pharmacy", label: "Pharmacy", icon: "💊", on: cbPharmacy },
-            ].map(cb => (
+              { key: "wallet_cashback_on_orders",   label: "Orders",   on: cbOrders   },
+              { key: "wallet_cashback_on_rides",    label: "Rides",    on: cbRides    },
+              { key: "wallet_cashback_on_pharmacy", label: "Pharmacy", on: cbPharmacy },
+            ].map(cb => {
+              const Icon = getServiceIcon(cb.key);
+              return (
               <button key={cb.key} onClick={() => handleToggle(cb.key, !cb.on)}
                 className={`py-2.5 px-3 rounded-xl border-2 text-center transition-all ${
                   cb.on ? "bg-purple-600 text-white border-purple-700 shadow-sm" : "bg-muted/30 border-border text-foreground hover:bg-muted/60"
                 } ${d(cb.key) ? "ring-2 ring-amber-300" : ""}`}
               >
-                <div className="text-xl mb-1">{cb.icon}</div>
+                <Icon className={`w-5 h-5 mb-1 mx-auto ${cb.on ? "text-white" : "text-muted-foreground"}`} />
                 <p className="text-[11px] font-bold">{cb.label}</p>
                 <p className={`text-[10px] font-bold ${cb.on ? "text-purple-100" : "text-muted-foreground"}`}>{cb.on ? "ON" : "Off"}</p>
               </button>
-            ))}
+            );})}
           </div>
         </div>
 
         {/* Service availability */}
         <div>
-          <SLabel>Kaun Si Services Mein Available Hai</SLabel>
+          <SLabel>Available In Which Services</SLabel>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {[
-              { key: "wallet_allowed_mart",     label: "Mart / Grocery",  icon: "🛒", on: (v("wallet_allowed_mart")     || "on") === "on" },
-              { key: "wallet_allowed_food",     label: "Food Delivery",   icon: "🍔", on: (v("wallet_allowed_food")     || "on") === "on" },
-              { key: "wallet_allowed_pharmacy", label: "Pharmacy",        icon: "💊", on: (v("wallet_allowed_pharmacy") || "on") === "on" },
-              { key: "wallet_allowed_parcel",   label: "Parcel Delivery", icon: "📦", on: (v("wallet_allowed_parcel")   || "on") === "on" },
-              { key: "wallet_allowed_rides",    label: "Rides",           icon: "🚗", on: (v("wallet_allowed_rides")    || "on") === "on" },
-            ].map(s => (
+              { key: "wallet_allowed_mart",     label: "Mart / Grocery",  on: (v("wallet_allowed_mart")     || "on") === "on" },
+              { key: "wallet_allowed_food",     label: "Food Delivery",   on: (v("wallet_allowed_food")     || "on") === "on" },
+              { key: "wallet_allowed_pharmacy", label: "Pharmacy",        on: (v("wallet_allowed_pharmacy") || "on") === "on" },
+              { key: "wallet_allowed_parcel",   label: "Parcel Delivery", on: (v("wallet_allowed_parcel")   || "on") === "on" },
+              { key: "wallet_allowed_rides",    label: "Rides",           on: (v("wallet_allowed_rides")    || "on") === "on" },
+            ].map(s => {
+              const Icon = getServiceIcon(s.key);
+              return (
               <button key={s.key} onClick={() => handleToggle(s.key, !s.on)}
                 className={`relative py-3 px-3 rounded-xl border-2 text-left transition-all ${
                   s.on
@@ -887,14 +926,16 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
                     : "bg-muted/20 border-border/60 opacity-70 hover:opacity-100"
                 } ${dirtyKeys.has(s.key) ? "ring-2 ring-amber-300" : ""}`}
               >
-                <div className="text-2xl mb-1">{s.icon}</div>
+                <Icon className={`w-6 h-6 mb-1 ${s.on ? "text-green-700" : "text-muted-foreground"}`} />
                 <p className="text-[11px] font-bold text-foreground leading-tight">{s.label}</p>
-                <p className={`text-[10px] font-bold mt-0.5 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>{s.on ? "✓ On" : "✗ Off"}</p>
+                <p className={`text-[10px] font-bold mt-0.5 inline-flex items-center gap-1 ${s.on ? "text-green-600" : "text-muted-foreground"}`}>
+                  {s.on ? <><CheckCircle className="w-2.5 h-2.5" /> On</> : <><XCircle className="w-2.5 h-2.5" /> Off</>}
+                </p>
                 <div className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full ${s.on ? "bg-green-500" : "bg-gray-300"}`} />
               </button>
-            ))}
+            );})}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">Wallet payment band karne ke liye service card tap karein</p>
+          <p className="text-[11px] text-muted-foreground mt-1.5">Tap a service card to disable wallet payments for that service</p>
         </div>
 
         {/* Top-Up methods */}
@@ -903,15 +944,15 @@ function WalletSection({ localValues, dirtyKeys, handleChange, handleToggle, onN
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {TOPUP_METHODS.map(m => (
               <button key={m.id} onClick={() => toggleMethod(m.id)}
-                className={`py-2.5 px-3 text-xs font-semibold rounded-xl border-2 transition-all text-left ${
+                className={`py-2.5 px-3 text-xs font-semibold rounded-xl border-2 transition-all text-left inline-flex items-center gap-2 ${
                   methods.includes(m.id) ? "bg-purple-600 text-white border-purple-700 shadow-sm" : "bg-muted/30 border-border text-foreground hover:bg-muted/60"
                 } ${dirtyKeys.has("wallet_topup_methods") ? "ring-1 ring-amber-300" : ""}`}
               >
-                <span className="text-lg mr-1.5">{m.icon}</span> {m.label}
+                <m.Icon className="w-4 h-4" /> {m.label}
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">Tap to toggle — customer in methods se wallet mein paise daal sakta hai</p>
+          <p className="text-[11px] text-muted-foreground mt-1.5">Tap to toggle — the customer can top up the wallet using these methods</p>
         </div>
       </div>
     </div>
@@ -931,8 +972,8 @@ function PaymentRules({ localValues, dirtyKeys, handleChange, handleToggle }: {
   return (
     <div className="space-y-5">
       <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 flex gap-3">
-        <span className="text-xl flex-shrink-0">⚙️</span>
-        <p className="text-xs text-slate-700">Yeh rules sab payment methods par apply hote hain — platform-wide global settings.</p>
+        <Settings className="w-5 h-5 flex-shrink-0 text-slate-700" />
+        <p className="text-xs text-slate-700">These rules apply to all payment methods — platform-wide global settings.</p>
       </div>
 
       <div>
@@ -942,14 +983,14 @@ function PaymentRules({ localValues, dirtyKeys, handleChange, handleToggle }: {
             checked={autoCancelOn}
             onChange={v2 => handleToggle("payment_auto_cancel", v2)}
             label="Auto-Cancel Unpaid Orders"
-            sub="Online payment timeout ke baad order automatically cancel hoga"
+            sub="Orders are automatically cancelled when the online payment times out"
             isDirty={d("payment_auto_cancel")}
           />
           <Toggle
             checked={receiptReq}
             onChange={v2 => handleToggle("payment_receipt_required", v2)}
             label="Manual Payment Receipt Required"
-            sub="JazzCash/EasyPaisa/Bank manual payment mein proof submit karna hoga"
+            sub="Customers must submit proof for JazzCash / EasyPaisa / bank manual payments"
             isDirty={d("payment_receipt_required")}
           />
         </div>
@@ -958,10 +999,10 @@ function PaymentRules({ localValues, dirtyKeys, handleChange, handleToggle }: {
       <div>
         <SLabel>Timing & Limits</SLabel>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Online Payment Timeout (min)" value={v("payment_timeout_mins")} onChange={v2 => handleChange("payment_timeout_mins", v2)} placeholder="15" isDirty={d("payment_timeout_mins")} type="number" suffix="min" hint="Kitne time mein payment complete ho" />
-          <Field label="Manual Verify Window (hrs)" value={v("payment_verify_window_hours")} onChange={v2 => handleChange("payment_verify_window_hours", v2)} placeholder="4" isDirty={d("payment_verify_window_hours")} type="number" suffix="hrs" hint="Manual payment verify karne ka time" />
-          <Field label="Minimum Online Payment (Rs.)" value={v("payment_min_online")} onChange={v2 => handleChange("payment_min_online", v2)} placeholder="50" isDirty={d("payment_min_online")} type="number" hint="Is se kum = sirf COD ya wallet" />
-          <Field label="Maximum Online Payment (Rs.)" value={v("payment_max_online")} onChange={v2 => handleChange("payment_max_online", v2)} placeholder="100000" isDirty={d("payment_max_online")} type="number" hint="Is se zyada = support se contact" />
+          <Field label="Online Payment Timeout (min)" value={v("payment_timeout_mins")} onChange={v2 => handleChange("payment_timeout_mins", v2)} placeholder="15" isDirty={d("payment_timeout_mins")} type="number" suffix="min" hint="Time allowed to complete the payment" />
+          <Field label="Manual Verify Window (hrs)" value={v("payment_verify_window_hours")} onChange={v2 => handleChange("payment_verify_window_hours", v2)} placeholder="4" isDirty={d("payment_verify_window_hours")} type="number" suffix="hrs" hint="Time allowed to verify a manual payment" />
+          <Field label="Minimum Online Payment (Rs.)" value={v("payment_min_online")} onChange={v2 => handleChange("payment_min_online", v2)} placeholder="50" isDirty={d("payment_min_online")} type="number" hint="Below this amount = COD or wallet only" />
+          <Field label="Maximum Online Payment (Rs.)" value={v("payment_max_online")} onChange={v2 => handleChange("payment_max_online", v2)} placeholder="100000" isDirty={d("payment_max_online")} type="number" hint="Above this amount = customer must contact support" />
         </div>
       </div>
     </div>
@@ -1009,7 +1050,7 @@ export function PaymentSection({ localValues, dirtyKeys, handleChange, handleTog
                   : isOn ? "bg-white border-green-200 hover:border-green-300" : "bg-muted/20 border-border/50 opacity-60 hover:opacity-80"
               }`}
             >
-              <div className="text-xl mb-1">{t.icon}</div>
+              <t.Icon className={`w-5 h-5 mb-1 mx-auto ${payTab === t.id ? "text-white" : t.color}`} />
               <p className={`text-[10px] font-bold leading-tight ${payTab === t.id ? "text-white" : "text-foreground"}`}>{t.label}</p>
               {(PAY_DIRTY[t.id] ?? 0) > 0 && (
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold mt-1 inline-block ${payTab === t.id ? "bg-white/25 text-white" : "bg-amber-100 text-amber-700"}`}>
@@ -1017,7 +1058,7 @@ export function PaymentSection({ localValues, dirtyKeys, handleChange, handleTog
                 </span>
               )}
               {isOn && payTab !== t.id && !(PAY_DIRTY[t.id] ?? 0) && (
-                <p className="text-[9px] text-green-600 font-bold mt-0.5">● ON</p>
+                <p className="text-[9px] text-green-600 font-bold mt-0.5 inline-flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" /> On</p>
               )}
             </button>
           );
@@ -1027,11 +1068,11 @@ export function PaymentSection({ localValues, dirtyKeys, handleChange, handleTog
       {/* Content */}
       <div>
         {payTab === "jazzcash" && (
-          <GatewayCard prefix="jazzcash" name="JazzCash" logo="🔴" accentColor="text-red-700" accentBg="bg-red-50" accentBorder="border-red-200" accentBtn="bg-red-600"
+          <GatewayCard prefix="jazzcash" name="JazzCash" Logo={Smartphone} accentColor="text-red-700" accentBg="bg-red-50" accentBorder="border-red-200" accentBtn="bg-red-600"
             localValues={localValues} dirtyKeys={dirtyKeys} handleChange={handleChange} handleToggle={handleToggle} />
         )}
         {payTab === "easypaisa" && (
-          <GatewayCard prefix="easypaisa" name="EasyPaisa" logo="🟢" accentColor="text-green-700" accentBg="bg-green-50" accentBorder="border-green-200" accentBtn="bg-green-600"
+          <GatewayCard prefix="easypaisa" name="EasyPaisa" Logo={Smartphone} accentColor="text-green-700" accentBg="bg-green-50" accentBorder="border-green-200" accentBtn="bg-green-600"
             localValues={localValues} dirtyKeys={dirtyKeys} handleChange={handleChange} handleToggle={handleToggle} />
         )}
         {payTab === "bank" && (

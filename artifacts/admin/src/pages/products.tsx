@@ -39,8 +39,8 @@ function RejectModal({ product, onClose }: { product: ProductRow; onClose: () =>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-red-600 to-rose-600 p-5">
-          <h2 className="text-lg font-extrabold text-white">❌ Reject Product</h2>
-          <p className="text-red-200 text-sm mt-0.5">Product reject ho jayega aur vendor ko notify kar diya jayega</p>
+          <h2 className="text-lg font-extrabold text-white">Reject Product</h2>
+          <p className="text-red-200 text-sm mt-0.5">Product will be rejected and the vendor notified</p>
         </div>
         <div className="p-5 space-y-4">
           <div className="bg-red-50 rounded-xl p-4 space-y-1">
@@ -56,7 +56,7 @@ function RejectModal({ product, onClose }: { product: ProductRow; onClose: () =>
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
             <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold" onClick={handleReject} disabled={reject.isPending}>
-              {reject.isPending ? "Rejecting..." : "❌ Reject"}
+              {reject.isPending ? "Rejecting..." : "Reject"}
             </Button>
           </div>
         </div>
@@ -127,7 +127,7 @@ export default function Products() {
     try {
       const url = await uploadAdminImageWithProgress(file, (pct) => setUploadPercent(pct));
       setFormData(prev => ({ ...prev, image: url }));
-      toast({ title: "Image uploaded ✅" });
+      toast({ title: "Image uploaded" });
     } catch (err: unknown) {
       toast({ title: "Upload failed", description: errMsg(err), variant: "destructive" });
       setImagePreview(formData.image || "");
@@ -175,12 +175,12 @@ export default function Products() {
 
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...payload }, {
-        onSuccess: () => { toast({ title: "Product updated ✅" }); setIsFormOpen(false); },
+        onSuccess: () => { toast({ title: "Product updated" }); setIsFormOpen(false); },
         onError: err => toast({ title: "Update failed", description: err.message, variant: "destructive" })
       });
     } else {
       createMutation.mutate(payload, {
-        onSuccess: () => { toast({ title: "Product created ✅" }); setIsFormOpen(false); },
+        onSuccess: () => { toast({ title: "Product created" }); setIsFormOpen(false); },
         onError: err => toast({ title: "Create failed", description: err.message, variant: "destructive" })
       });
     }
@@ -196,14 +196,14 @@ export default function Products() {
 
   const handleApprove = (prod: ProductRow) => {
     approveMutation.mutate({ id: prod.id }, {
-      onSuccess: () => toast({ title: "Product approved ✅", description: `${prod.name} is now live in the store` }),
+      onSuccess: () => toast({ title: "Product approved", description: `${prod.name} is now live in the store` }),
       onError: (err: unknown) => toast({ title: "Error", description: errMsg(err), variant: "destructive" }),
     });
   };
 
   const toggleStock = (prod: ProductRow) => {
     updateMutation.mutate({ id: prod.id, inStock: !prod.inStock }, {
-      onSuccess: () => toast({ title: prod.inStock ? "Marked out of stock" : "Marked in stock ✅" }),
+      onSuccess: () => toast({ title: prod.inStock ? "Marked out of stock" : "Marked in stock" }),
       onError: err => toast({ title: "Failed", description: err.message, variant: "destructive" }),
     });
   };
@@ -400,8 +400,8 @@ export default function Products() {
                   className="w-full h-11 rounded-xl border border-input bg-background px-3 text-sm"
                   value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}
                 >
-                  <option value="mart">🛒 Mart</option>
-                  <option value="food">🍔 Food</option>
+                  <option value="mart">Mart</option>
+                  <option value="food">Food</option>
                 </select>
               </div>
               <div className="space-y-2">
@@ -670,11 +670,11 @@ export default function Products() {
                     typeFilter === t ? "bg-primary text-white border-primary" : "bg-muted/30 border-border/50 hover:border-primary text-muted-foreground"
                   }`}
                 >
-                  {t === "mart" ? "🛒 " : t === "food" ? "🍔 " : ""}{t}
+                  {t}
                 </button>
               ))}
               <div className="w-px bg-border/60 mx-1" />
-              {[{ v: "all", l: "All Stock" }, { v: "in", l: "✓ In Stock" }, { v: "out", l: "✗ Out of Stock" }].map(s => (
+              {[{ v: "all", l: "All Stock" }, { v: "in", l: "In Stock" }, { v: "out", l: "Out of Stock" }].map(s => (
                 <button
                   key={s.v}
                   onClick={() => setStockFilter(s.v)}

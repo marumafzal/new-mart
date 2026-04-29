@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Store, Search, RefreshCw, Wallet, TrendingUp, ShoppingBag,
-  CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard,
+  CheckCircle2, XCircle, Ban, CircleDollarSign, CreditCard, Clock, ClipboardList,
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
   Download, CalendarDays, Percent, Truck, Gavel,
 } from "lucide-react";
@@ -38,7 +38,7 @@ function SuspendModal({ vendor, onClose }: { vendor: any; onClose: () => void })
       isBanned: action === "banned",
       banReason: action === "banned" ? reason : null,
     }, {
-      onSuccess: () => { toast({ title: "Vendor status updated ✅" }); onClose(); },
+      onSuccess: () => { toast({ title: "Vendor status updated" }); onClose(); },
       onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
   };
@@ -51,9 +51,9 @@ function SuspendModal({ vendor, onClose }: { vendor: any; onClose: () => void })
         </DialogHeader>
         <div className="space-y-3 mt-2">
           {[
-            { key: "active",  label: "✅ Active",             desc: "Vendor can accept orders", color: "green" },
-            { key: "blocked", label: "⊘ Temporarily Blocked", desc: "Suspend without ban",       color: "amber" },
-            { key: "banned",  label: "🚫 Permanently Banned", desc: "Ban with reason",           color: "red" },
+            { key: "active",  label: "Active",                desc: "Vendor can accept orders", color: "green" },
+            { key: "blocked", label: "Temporarily Blocked",   desc: "Suspend without ban",       color: "amber" },
+            { key: "banned",  label: "Permanently Banned",    desc: "Ban with reason",           color: "red" },
           ].map(opt => (
             <div key={opt.key} onClick={() => setAction(opt.key as any)}
               className={`p-3 rounded-xl border cursor-pointer transition-all ${action === opt.key
@@ -90,7 +90,7 @@ function CommissionModal({ vendor, defaultPct, onClose }: { vendor: any; default
     const v = parseFloat(pct);
     if (isNaN(v) || v < 0 || v > 100) { toast({ title: "Invalid %", variant: "destructive" }); return; }
     overrideMutation.mutate({ id: vendor.id, commissionPct: v }, {
-      onSuccess: () => { toast({ title: "Commission override saved ✅" }); onClose(); },
+      onSuccess: () => { toast({ title: "Commission override saved" }); onClose(); },
       onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
   };
@@ -288,10 +288,10 @@ export default function Vendors() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="active">✅ Active</SelectItem>
-              <SelectItem value="pending">⏳ Pending Approval</SelectItem>
-              <SelectItem value="blocked">⊘ Blocked</SelectItem>
-              <SelectItem value="banned">🚫 Banned</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="pending">Pending Approval</SelectItem>
+              <SelectItem value="blocked">Blocked</SelectItem>
+              <SelectItem value="banned">Banned</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -343,7 +343,7 @@ export default function Vendors() {
                                     onError: (err: any) => toast({ title: "Failed", description: err.message, variant: "destructive" }),
                                   });
                                 }}
-                              ><Truck className="w-2.5 h-2.5" /> Delivery ✓</Badge>
+                              ><Truck className="w-2.5 h-2.5" /> Delivery</Badge>
                             : <Badge
                                 className="bg-gray-100 text-gray-500 border-gray-200 text-[10px] gap-1 cursor-pointer hover:bg-gray-200"
                                 onClick={(e: React.MouseEvent) => {
@@ -370,7 +370,7 @@ export default function Vendors() {
                                 });
                               });
                             }}
-                          >📋 {vendorPendingReqs.get(v.id)!.length} Request{vendorPendingReqs.get(v.id)!.length > 1 ? "s" : ""} — Approve</Badge>
+                          ><ClipboardList className="w-2.5 h-2.5 mr-1 inline" />{vendorPendingReqs.get(v.id)!.length} Request{vendorPendingReqs.get(v.id)!.length > 1 ? "s" : ""} — Approve</Badge>
                         )}
                         {v.storeCategory && (
                           <Badge variant="outline" className="text-[10px] capitalize">{v.storeCategory}</Badge>
@@ -430,7 +430,7 @@ export default function Vendors() {
                     {v.autoSuspendedAt && !v.adminOverrideSuspension && (
                       <Button size="sm" variant="outline" onClick={() => {
                         overrideSuspM.mutate(v.id, {
-                          onSuccess: () => toast({ title: "Suspension overridden ✅", description: "Vendor is now active again." }),
+                          onSuccess: () => toast({ title: "Suspension overridden", description: "Vendor is now active again." }),
                           onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
                         });
                       }} disabled={overrideSuspM.isPending}

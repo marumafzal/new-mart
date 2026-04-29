@@ -6,6 +6,7 @@ import {
   BarChart3, Sparkles, Tag, Target, Calendar, TrendingUp,
   Gift, Truck, ShoppingBag, ToggleLeft, ToggleRight, X,
   Star, Award, Package, AlertCircle, Send,
+  Lightbulb, Wallet, ClipboardList,
 } from "lucide-react";
 import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -90,7 +91,7 @@ function CampaignModal({ campaign, onClose }: { campaign?: Campaign; onClose: ()
       : fetcher("/promotions/campaigns", { method: "POST", body: JSON.stringify(body) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
-      toast({ title: isEdit ? "Campaign updated ✅" : "Campaign created ✅" });
+      toast({ title: isEdit ? "Campaign updated" : "Campaign created" });
       onClose();
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -286,7 +287,7 @@ function OfferModal({ offer, campaigns, onClose }: { offer?: Offer; campaigns: C
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-offers"] });
       qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
-      toast({ title: isEdit ? "Offer updated ✅" : "Offer created ✅" });
+      toast({ title: isEdit ? "Offer updated" : "Offer created" });
       onClose();
     },
     onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -606,7 +607,7 @@ function AIRecommendationsPanel() {
               </div>
               <p className="text-xs text-muted-foreground">{rec.description}</p>
               {rec.suggestedDiscount && (
-                <p className="text-xs text-violet-700 font-semibold mt-1">💡 Suggested: {rec.suggestedDiscount}% discount</p>
+                <p className="text-xs text-violet-700 font-semibold mt-1 inline-flex items-center gap-1"><Lightbulb className="w-3 h-3" /> Suggested: {rec.suggestedDiscount}% discount</p>
               )}
             </div>
           </div>
@@ -728,7 +729,7 @@ export default function PromotionsHub() {
 
   const cloneOffer = useMutation({
     mutationFn: (id: string) => fetcher(`/promotions/offers/${id}/clone`, { method: "POST" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-offers"] }); toast({ title: "Offer cloned ✅" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-offers"] }); toast({ title: "Offer cloned" }); },
     onError: (e: Error) => toast({ title: "Clone failed", description: e.message, variant: "destructive" }),
   });
 
@@ -737,7 +738,7 @@ export default function PromotionsHub() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-offers"] });
       qc.invalidateQueries({ queryKey: ["admin-offers-pending"] });
-      toast({ title: "Offer approved ✅" });
+      toast({ title: "Offer approved" });
     },
     onError: (e: Error) => toast({ title: "Approval failed", description: e.message, variant: "destructive" }),
   });
@@ -769,7 +770,7 @@ export default function PromotionsHub() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-offers"] });
       setSelectedOffers(new Set());
-      toast({ title: "Bulk action completed ✅" });
+      toast({ title: "Bulk action completed" });
     },
   });
 
@@ -988,10 +989,10 @@ export default function PromotionsHub() {
                           </div>
                           {offer.description && <p className="text-xs text-muted-foreground mb-1">{offer.description}</p>}
                           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                            {offer.discountPct  && <span className="text-green-700 font-semibold">🏷️ {offer.discountPct}% off</span>}
-                            {offer.discountFlat && <span className="text-green-700 font-semibold">🏷️ Rs.{offer.discountFlat} off</span>}
-                            {offer.cashbackPct  && <span className="text-amber-700 font-semibold">💰 {offer.cashbackPct}% cashback</span>}
-                            {offer.freeDelivery && <span className="text-teal-700 font-semibold">🚚 Free Delivery</span>}
+                            {offer.discountPct  && <span className="text-green-700 font-semibold inline-flex items-center gap-1"><Tag className="w-3 h-3" /> {offer.discountPct}% off</span>}
+                            {offer.discountFlat && <span className="text-green-700 font-semibold inline-flex items-center gap-1"><Tag className="w-3 h-3" /> Rs.{offer.discountFlat} off</span>}
+                            {offer.cashbackPct  && <span className="text-amber-700 font-semibold inline-flex items-center gap-1"><Wallet className="w-3 h-3" /> {offer.cashbackPct}% cashback</span>}
+                            {offer.freeDelivery && <span className="text-teal-700 font-semibold inline-flex items-center gap-1"><Truck className="w-3 h-3" /> Free Delivery</span>}
                             {offer.buyQty       && <span>Buy {offer.buyQty} Get {offer.getQty}</span>}
                             {offer.minOrderAmount > 0 && <span>Min: Rs.{offer.minOrderAmount}</span>}
                             <span>Used: {offer.usedCount}{offer.usageLimit ? `/${offer.usageLimit}` : ""}</span>
@@ -1065,9 +1066,9 @@ export default function PromotionsHub() {
                         </div>
                         {c.description && <p className="text-xs text-muted-foreground mb-1">{c.description}</p>}
                         <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                          <span>📋 {c.offerCount} offers</span>
-                          <span>🎯 Priority {c.priority}</span>
-                          {c.budgetCap && <span>💰 Budget: Rs.{c.budgetCap}</span>}
+                          <span className="inline-flex items-center gap-1"><ClipboardList className="w-3 h-3" /> {c.offerCount} offers</span>
+                          <span className="inline-flex items-center gap-1"><Target className="w-3 h-3" /> Priority {c.priority}</span>
+                          {c.budgetCap && <span className="inline-flex items-center gap-1"><Wallet className="w-3 h-3" /> Budget: Rs.{c.budgetCap}</span>}
                           <span>{formatDate(c.startDate)} → {formatDate(c.endDate)}</span>
                         </div>
                       </div>

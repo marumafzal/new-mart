@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import {
   ArrowDownToLine, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock,
+  Wallet, AlertTriangle, PartyPopper, Inbox,
 } from "lucide-react";
 import { useDepositRequests, useApproveDeposit, useRejectDeposit, useBulkApproveDeposits, useBulkRejectDeposits } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,13 +42,13 @@ interface BulkResult {
   rejected?: string[];
 }
 
-function methodIcon(method: string | null) {
-  if (!method) return "💳";
+function methodLabel(method: string | null) {
+  if (!method) return "Card";
   const m = method.toLowerCase();
-  if (m.includes("jazzcash"))  return "🔴";
-  if (m.includes("easypaisa")) return "🟢";
-  if (m.includes("bank"))      return "🏦";
-  return "💳";
+  if (m.includes("jazzcash"))  return "JazzCash";
+  if (m.includes("easypaisa")) return "EasyPaisa";
+  if (m.includes("bank"))      return "Bank";
+  return "Card";
 }
 
 function parseDesc(desc: string) {
@@ -68,9 +69,9 @@ function parseDesc(desc: string) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "pending")  return <Badge className="bg-amber-100 text-amber-700 border-0 text-xs font-bold">⏳ Pending</Badge>;
-  if (status === "approved") return <Badge className="bg-green-100 text-green-700 border-0 text-xs font-bold">✅ Approved</Badge>;
-  if (status === "rejected") return <Badge className="bg-red-100 text-red-700 border-0 text-xs font-bold">❌ Rejected</Badge>;
+  if (status === "pending")  return <Badge className="bg-amber-100 text-amber-700 border-0 text-xs font-bold gap-1"><Clock className="w-3 h-3" /> Pending</Badge>;
+  if (status === "approved") return <Badge className="bg-green-100 text-green-700 border-0 text-xs font-bold gap-1"><CheckCircle className="w-3 h-3" /> Approved</Badge>;
+  if (status === "rejected") return <Badge className="bg-red-100 text-red-700 border-0 text-xs font-bold gap-1"><XCircle className="w-3 h-3" /> Rejected</Badge>;
   return <Badge className="bg-gray-100 text-gray-600 border-0 text-xs">{status}</Badge>;
 }
 
@@ -92,7 +93,7 @@ function ApproveModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
   const handleApprove = () => {
     approve.mutate({ id: d.id, refNo: refNo.trim() || undefined, note: note.trim() || undefined }, {
       onSuccess: () => {
-        toast({ title: "✅ Deposit Approved", description: `${fc(Number(d.amount))} wallet mein credit ho gaya.` });
+        toast({ title: "Deposit approved", description: `${fc(Number(d.amount))} credited to wallet.` });
         onClose();
       },
       onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -103,14 +104,14 @@ function ApproveModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-5">
-          <h2 className="text-lg font-extrabold text-white">✅ Approve Deposit</h2>
-          <p className="text-green-200 text-sm mt-0.5">Wallet credit ho jayega aur user ko notification milegi</p>
+          <h2 className="text-lg font-extrabold text-white">Approve Deposit</h2>
+          <p className="text-green-200 text-sm mt-0.5">Wallet will be credited and the user notified</p>
         </div>
         <div className="p-5 space-y-4">
           <div className="bg-green-50 rounded-xl p-4 space-y-2">
             <div className="flex justify-between text-sm"><span className="text-gray-500">User</span><span className="font-bold">{d.user?.name}</span></div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Phone</span><span className="font-bold">{d.user?.phone}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-gray-500">Method</span><span className="font-bold">{methodIcon(d.paymentMethod ?? null)} {parsed.method}</span></div>
+            <div className="flex justify-between text-sm"><span className="text-gray-500">Method</span><span className="font-bold">{methodLabel(d.paymentMethod ?? null)} · {parsed.method}</span></div>
             <div className="flex justify-between text-sm"><span className="text-gray-500">Transaction ID</span><span className="font-bold font-mono">{parsed.txId}</span></div>
             {parsed.sender !== "—" && (
               <div className="flex justify-between text-sm"><span className="text-gray-500">Sender Account</span><span className="font-bold">{parsed.sender}</span></div>
@@ -138,7 +139,7 @@ function ApproveModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
             <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
               onClick={handleApprove} disabled={approve.isPending}>
-              {approve.isPending ? T("processing") : "✅ Approve & Credit"}
+              {approve.isPending ? T("processing") : "Approve & Credit"}
             </Button>
           </div>
         </div>
@@ -158,7 +159,7 @@ function RejectModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
     if (!reason.trim()) { toast({ title: "Reason required", variant: "destructive" }); return; }
     reject.mutate({ id: d.id, reason: reason.trim() }, {
       onSuccess: () => {
-        toast({ title: "Deposit Rejected", description: "User ko notification bhej di gayi." });
+        toast({ title: "Deposit rejected", description: "User has been notified." });
         onClose();
       },
       onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -169,8 +170,8 @@ function RejectModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-red-600 to-rose-600 p-5">
-          <h2 className="text-lg font-extrabold text-white">❌ Reject Deposit</h2>
-          <p className="text-red-200 text-sm mt-0.5">Deposit reject ho jaye gi — wallet credit nahi hoga</p>
+          <h2 className="text-lg font-extrabold text-white">Reject Deposit</h2>
+          <p className="text-red-200 text-sm mt-0.5">Deposit will be rejected — wallet will not be credited</p>
         </div>
         <div className="p-5 space-y-4">
           <div className="bg-red-50 rounded-xl p-4 space-y-2">
@@ -193,7 +194,7 @@ function RejectModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
             <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
               onClick={handleReject} disabled={reject.isPending}>
-              {reject.isPending ? T("processing") : "❌ Reject Request"}
+              {reject.isPending ? T("processing") : "Reject Request"}
             </Button>
           </div>
         </div>
@@ -213,8 +214,8 @@ function BulkApproveModal({ count, totalAmount, onConfirm, onClose, isPending }:
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-green-600 to-emerald-600 p-5">
-          <h2 className="text-lg font-extrabold text-white">✅ Bulk Approve Deposits</h2>
-          <p className="text-green-200 text-sm mt-0.5">{count} deposits ko ek saath approve karein</p>
+          <h2 className="text-lg font-extrabold text-white">Bulk Approve Deposits</h2>
+          <p className="text-green-200 text-sm mt-0.5">Approve {count} deposits at once</p>
         </div>
         <div className="p-5 space-y-4">
           <div className="bg-green-50 rounded-xl p-4 space-y-2">
@@ -236,7 +237,7 @@ function BulkApproveModal({ count, totalAmount, onConfirm, onClose, isPending }:
             <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
               onClick={() => onConfirm(refNo.trim() || undefined)} disabled={isPending}>
-              {isPending ? T("processing") : `✅ Approve ${count} Deposits`}
+              {isPending ? T("processing") : `Approve ${count} Deposits`}
             </Button>
           </div>
         </div>
@@ -257,8 +258,8 @@ function BulkRejectModal({ count, totalAmount, onConfirm, onClose, isPending }: 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="bg-gradient-to-r from-red-600 to-rose-600 p-5">
-          <h2 className="text-lg font-extrabold text-white">❌ Bulk Reject Deposits</h2>
-          <p className="text-red-200 text-sm mt-0.5">{count} deposits ko ek saath reject karein</p>
+          <h2 className="text-lg font-extrabold text-white">Bulk Reject Deposits</h2>
+          <p className="text-red-200 text-sm mt-0.5">Reject {count} deposits at once</p>
         </div>
         <div className="p-5 space-y-4">
           <div className="bg-red-50 rounded-xl p-4 space-y-2">
@@ -283,7 +284,7 @@ function BulkRejectModal({ count, totalAmount, onConfirm, onClose, isPending }: 
                 if (!reason.trim()) { toast({ title: "Reason required", variant: "destructive" }); return; }
                 onConfirm(reason.trim());
               }} disabled={isPending}>
-              {isPending ? T("processing") : `❌ Reject ${count} Deposits`}
+              {isPending ? T("processing") : `Reject ${count} Deposits`}
             </Button>
           </div>
         </div>
@@ -362,7 +363,7 @@ export default function DepositRequests() {
     const ids = Array.from(selectedIds).filter(id => deposits.find(d => d.id === id && d.status === "pending" && d.user?.role === "customer"));
     bulkApprove.mutate({ ids, refNo }, {
       onSuccess: (data: BulkResult) => {
-        toast({ title: `✅ ${data.approved?.length ?? 0} deposits approved` });
+        toast({ title: `${data.approved?.length ?? 0} deposits approved` });
         setSelectedIds(new Set());
         setShowBulkApprove(false);
       },
@@ -374,7 +375,7 @@ export default function DepositRequests() {
     const ids = Array.from(selectedIds).filter(id => deposits.find(d => d.id === id && d.status === "pending" && d.user?.role === "customer"));
     bulkReject.mutate({ ids, reason }, {
       onSuccess: (data: BulkResult) => {
-        toast({ title: `❌ ${data.rejected?.length ?? 0} deposits rejected` });
+        toast({ title: `${data.rejected?.length ?? 0} deposits rejected` });
         setSelectedIds(new Set());
         setShowBulkReject(false);
       },
@@ -405,14 +406,14 @@ export default function DepositRequests() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "Pending Requests", value: String(pendingCount), icon: "⏳", color: "text-amber-600", bg: "bg-amber-50" },
-          { label: "Pending Amount",   value: fc(pendingAmt),       icon: "💰", color: "text-blue-600",  bg: "bg-blue-50"  },
-          { label: "Approved",         value: String(approvedCount),icon: "✅", color: "text-green-600", bg: "bg-green-50" },
-          { label: "Rejected",         value: String(rejectedCount),icon: "❌", color: "text-gray-600",  bg: "bg-gray-50"  },
+          { label: "Pending Requests", value: String(pendingCount), Icon: Clock,        color: "text-amber-600", bg: "bg-amber-50" },
+          { label: "Pending Amount",   value: fc(pendingAmt),       Icon: Wallet,       color: "text-blue-600",  bg: "bg-blue-50"  },
+          { label: "Approved",         value: String(approvedCount),Icon: CheckCircle,  color: "text-green-600", bg: "bg-green-50" },
+          { label: "Rejected",         value: String(rejectedCount),Icon: XCircle,      color: "text-gray-600",  bg: "bg-gray-50"  },
         ].map(c => (
           <Card key={c.label} className={`border-0 shadow-sm ${c.bg}`}>
             <CardContent className="p-4">
-              <span className="text-2xl">{c.icon}</span>
+              <c.Icon className={`w-6 h-6 ${c.color}`} />
               <p className={`text-lg font-extrabold ${c.color} mt-1`}>{c.value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{c.label}</p>
             </CardContent>
@@ -456,10 +457,10 @@ export default function DepositRequests() {
       {/* Pending banner */}
       {pendingCount > 0 && statusFilter !== "approved" && statusFilter !== "rejected" && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
-          <span className="text-xl flex-shrink-0">⚠️</span>
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-bold text-amber-800">Manual Verification Required</p>
-            <p className="text-xs text-amber-700 mt-0.5">{pendingCount} deposit request{pendingCount > 1 ? "s" : ""} pending. Transaction IDs verify karein aur approve ya reject karein.</p>
+            <p className="text-xs text-amber-700 mt-0.5">{pendingCount} deposit request{pendingCount > 1 ? "s" : ""} pending. Verify the transaction IDs and approve or reject.</p>
           </div>
         </div>
       )}
@@ -470,7 +471,9 @@ export default function DepositRequests() {
       ) : filtered.length === 0 ? (
         <Card className="border-0 shadow-sm">
           <CardContent className="p-12 text-center">
-            <p className="text-4xl mb-3">{statusFilter === "pending" ? "🎉" : "📋"}</p>
+            {statusFilter === "pending"
+              ? <PartyPopper className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+              : <Inbox className="w-10 h-10 text-gray-400 mx-auto mb-3" />}
             <p className="font-bold text-gray-700">{statusFilter === "pending" ? "No pending requests!" : `No ${statusFilter} requests`}</p>
             <p className="text-sm text-gray-400 mt-1">{statusFilter === "pending" ? "All deposit requests have been processed." : "Nothing to show."}</p>
           </CardContent>
@@ -516,7 +519,7 @@ export default function DepositRequests() {
                               <StatusBadge status={d.status}/>
                               {duplicateTxIds.has(parseDesc(d.description || "").txId) && (
                                 <Badge className="text-[10px] font-bold bg-red-100 text-red-700 border-red-300 px-1.5" variant="outline">
-                                  ⚠ Duplicate TxID
+                                  Duplicate TxID
                                 </Badge>
                               )}
                             </div>

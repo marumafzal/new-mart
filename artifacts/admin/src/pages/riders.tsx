@@ -2,9 +2,9 @@ import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Bike, Search, RefreshCw, Wallet, CircleDollarSign, Gift,
+  Bike, Search, RefreshCw, Wallet, CircleDollarSign, Gift, Circle,
   CheckCircle2, Ban, AlertTriangle, Star, Phone, Download, CalendarDays,
-  WifiOff, Wifi, ShieldAlert, ShieldCheck, Eye, XCircle, SkipForward, Gavel,
+  WifiOff, Wifi, ShieldAlert, ShieldCheck, Eye, XCircle, SkipForward, Gavel, Clock,
 } from "lucide-react";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
@@ -38,7 +38,7 @@ function RiderSuspendModal({ rider, onClose }: { rider: any; onClose: () => void
       isBanned: action === "banned",
       banReason: action === "banned" ? reason : null,
     }, {
-      onSuccess: () => { toast({ title: "Rider status updated ✅" }); onClose(); },
+      onSuccess: () => { toast({ title: "Rider status updated" }); onClose(); },
       onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
   };
@@ -51,9 +51,9 @@ function RiderSuspendModal({ rider, onClose }: { rider: any; onClose: () => void
         </DialogHeader>
         <div className="space-y-3 mt-2">
           {[
-            { key: "active",  label: "✅ Active",             desc: "Rider can accept deliveries", color: "green" },
-            { key: "blocked", label: "⊘ Temporarily Blocked", desc: "Suspend without ban",          color: "amber" },
-            { key: "banned",  label: "🚫 Permanently Banned", desc: "Full ban with reason",          color: "red" },
+            { key: "active",  label: "Active",                desc: "Rider can accept deliveries", color: "green" },
+            { key: "blocked", label: "Temporarily Blocked",   desc: "Suspend without ban",          color: "amber" },
+            { key: "banned",  label: "Permanently Banned",    desc: "Full ban with reason",          color: "red" },
           ].map(opt => (
             <div key={opt.key} onClick={() => setAction(opt.key as any)}
               className={`p-3 rounded-xl border cursor-pointer transition-all ${action === opt.key
@@ -227,7 +227,7 @@ export default function Riders() {
 
   const handleToggleOnline = (r: any) => {
     toggleOnlineMutation.mutate({ id: r.id, isOnline: !r.isOnline }, {
-      onSuccess: () => toast({ title: r.isOnline ? "Rider set offline" : "Rider set online ✅" }),
+      onSuccess: () => toast({ title: r.isOnline ? "Rider set offline" : "Rider set online" }),
       onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
   };
@@ -253,11 +253,11 @@ export default function Riders() {
   const totalWallet    = riders.reduce((s: number, r: any) => s + r.walletBalance, 0);
 
   const getStatusBadge = (r: any) => {
-    if (r.approvalStatus === "pending") return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 text-[10px]">⏳ Pending Approval</Badge>;
+    if (r.approvalStatus === "pending") return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 text-[10px] gap-1"><Clock className="w-2.5 h-2.5" /> Pending Approval</Badge>;
     if (r.isBanned)      return <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px]">Banned</Badge>;
     if (r.isRestricted)  return <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-[10px]">Restricted</Badge>;
     if (!r.isActive)     return <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">Blocked</Badge>;
-    if (r.isOnline)      return <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px]">🟢 Online</Badge>;
+    if (r.isOnline)      return <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] gap-1"><Circle className="w-2 h-2 fill-green-600 text-green-600" /> Online</Badge>;
     return                      <Badge className="bg-gray-100 text-gray-600 border-gray-200 text-[10px]">Offline</Badge>;
   };
 
@@ -266,7 +266,7 @@ export default function Riders() {
 
   const handleApprove = (r: any) => {
     approveM.mutate({ id: r.id }, {
-      onSuccess: () => { toast({ title: "Rider approved ✅" }); refetch(); },
+      onSuccess: () => { toast({ title: "Rider approved" }); refetch(); },
       onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
   };
@@ -347,11 +347,11 @@ export default function Riders() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Riders</SelectItem>
-              <SelectItem value="pending">⏳ Pending Approval</SelectItem>
-              <SelectItem value="online">🟢 Online</SelectItem>
-              <SelectItem value="offline">⚫ Offline</SelectItem>
-              <SelectItem value="blocked">⊘ Blocked</SelectItem>
-              <SelectItem value="banned">🚫 Banned</SelectItem>
+              <SelectItem value="pending">Pending Approval</SelectItem>
+              <SelectItem value="online">Online</SelectItem>
+              <SelectItem value="offline">Offline</SelectItem>
+              <SelectItem value="blocked">Blocked</SelectItem>
+              <SelectItem value="banned">Banned</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -476,7 +476,7 @@ export default function Riders() {
                     {r.autoSuspendedAt && !r.adminOverrideSuspension && (
                       <Button size="sm" variant="outline" onClick={() => {
                         overrideSuspM.mutate(r.id, {
-                          onSuccess: () => toast({ title: "Suspension overridden ✅", description: "Rider is now active again." }),
+                          onSuccess: () => toast({ title: "Suspension overridden", description: "Rider is now active again." }),
                           onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
                         });
                       }} disabled={overrideSuspM.isPending}

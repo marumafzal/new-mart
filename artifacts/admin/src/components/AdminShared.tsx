@@ -42,7 +42,6 @@ export function Toggle({ checked, onChange, label, icon, isDirty, danger, sub }:
       aria-checked={checked}
       aria-label={label}
       onClick={() => onChange(!checked)}
-      onKeyDown={e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); onChange(!checked); } }}
       className={`w-full flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition-all select-none text-left
         ${checked ? danger ? "bg-red-50 border-red-300" : "bg-green-50 border-green-200" : "bg-white border-border hover:bg-muted/30"}
         ${isDirty ? "ring-2 ring-amber-300" : ""}`}

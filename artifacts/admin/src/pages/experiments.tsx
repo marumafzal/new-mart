@@ -8,10 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import {
-  FlaskConical, Plus, Loader2, Trash2, BarChart3, Play, Pause, CheckCircle2,
+  FlaskConical, Plus, Loader2, Trash2, BarChart3, Play, Pause, CheckCircle2, MoreHorizontal,
 } from "lucide-react";
 
 type Variant = { name: string; weight: number };
@@ -147,31 +148,39 @@ export default function ExperimentsPage() {
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t border-border/50">
                       <span className="text-xs text-muted-foreground">{new Date(exp.createdAt).toLocaleDateString()}</span>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setShowResults(exp.id)} aria-label="View results">
-                          <BarChart3 className="w-3.5 h-3.5" aria-hidden="true" />
-                        </Button>
-                        {exp.status === "active" && (
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => statusMutation.mutate({ id: exp.id, status: "paused" })} aria-label="Pause experiment">
-                            <Pause className="w-3.5 h-3.5" aria-hidden="true" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" aria-label="Open actions menu">
+                            <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
                           </Button>
-                        )}
-                        {exp.status === "paused" && (
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => statusMutation.mutate({ id: exp.id, status: "active" })} aria-label="Resume experiment">
-                            <Play className="w-3.5 h-3.5" aria-hidden="true" />
-                          </Button>
-                        )}
-                        {(exp.status === "active" || exp.status === "paused") && (
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => statusMutation.mutate({ id: exp.id, status: "completed" })} aria-label="Complete experiment">
-                            <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
-                          </Button>
-                        )}
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                          onClick={() => { if (confirm("Delete this experiment?")) deleteMutation.mutate(exp.id); }}
-                          aria-label="Delete experiment">
-                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                        </Button>
-                      </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setShowResults(exp.id)}>
+                            <BarChart3 className="w-4 h-4 mr-2" aria-hidden="true" /> View Results
+                          </DropdownMenuItem>
+                          {exp.status === "active" && (
+                            <DropdownMenuItem onClick={() => statusMutation.mutate({ id: exp.id, status: "paused" })}>
+                              <Pause className="w-4 h-4 mr-2" aria-hidden="true" /> Pause
+                            </DropdownMenuItem>
+                          )}
+                          {exp.status === "paused" && (
+                            <DropdownMenuItem onClick={() => statusMutation.mutate({ id: exp.id, status: "active" })}>
+                              <Play className="w-4 h-4 mr-2" aria-hidden="true" /> Resume
+                            </DropdownMenuItem>
+                          )}
+                          {(exp.status === "active" || exp.status === "paused") && (
+                            <DropdownMenuItem onClick={() => statusMutation.mutate({ id: exp.id, status: "completed" })}>
+                              <CheckCircle2 className="w-4 h-4 mr-2" aria-hidden="true" /> Mark Complete
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600"
+                            onClick={() => { if (confirm("Delete this experiment?")) deleteMutation.mutate(exp.id); }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </CardContent>
                 </Card>

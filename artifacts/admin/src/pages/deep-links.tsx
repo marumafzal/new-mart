@@ -8,10 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import {
-  Link2, Plus, Loader2, Trash2, Copy, MousePointerClick,
+  Link2, Plus, Loader2, Trash2, Copy, MousePointerClick, MoreHorizontal,
 } from "lucide-react";
 
 const TARGET_SCREENS = [
@@ -152,16 +153,24 @@ export default function DeepLinksPage() {
                         <p className="font-medium text-sm truncate">{link.label || link.shortCode}</p>
                         <p className="text-xs font-mono text-muted-foreground truncate">{getFullUrl(link.shortCode)}</p>
                       </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyLink(link.shortCode)} aria-label="Copy link">
-                          <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
-                          onClick={() => { if (confirm("Delete this deep link?")) deleteMutation.mutate(link.id); }}
-                          aria-label="Delete link">
-                          <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                        </Button>
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 shrink-0" aria-label="Open actions menu">
+                            <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => copyLink(link.shortCode)}>
+                            <Copy className="w-4 h-4 mr-2" aria-hidden="true" /> Copy Link
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-red-600 focus:text-red-600"
+                            onClick={() => { if (confirm("Delete this deep link?")) deleteMutation.mutate(link.id); }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline">{link.targetScreen}</Badge>

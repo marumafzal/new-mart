@@ -4,6 +4,7 @@ import {
   Zap, Plus, Pencil, Trash2, Save,
   Clock, Package, ToggleLeft, ToggleRight,
 } from "lucide-react";
+import { PageHeader } from "@/components/shared";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -135,25 +136,19 @@ export default function FlashDealsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
-            <Zap className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">{T("flashDeals")}</h1>
-            <p className="text-muted-foreground text-sm">{liveDeals} live deal{liveDeals!==1?"s":""}</p>
-          </div>
-        </div>
-        <Button
-          onClick={openNewDeal}
-          className="h-10 rounded-xl gap-2 shadow-md"
-        >
-          <Plus className="w-4 h-4" />
-          {T("newFlashDeal")}
-        </Button>
-      </div>
+      <PageHeader
+        icon={Zap}
+        title={T("flashDeals")}
+        subtitle={`${liveDeals} live deal${liveDeals !== 1 ? "s" : ""}`}
+        iconBgClass="bg-amber-100"
+        iconColorClass="text-amber-600"
+        actions={
+          <Button onClick={openNewDeal} className="h-10 rounded-xl gap-2 shadow-md">
+            <Plus className="w-4 h-4" />
+            {T("newFlashDeal")}
+          </Button>
+        }
+      />
 
       {/* ══ Flash Deals ══ */}
       <div className="space-y-4">

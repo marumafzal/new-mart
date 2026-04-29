@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { Package } from "lucide-react";
+import { PageHeader } from "@/components/shared";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -98,15 +100,13 @@ export default function VendorInventorySettingsPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {t(ADMIN_I18N_KEYS.vendor.inventoryTitle, "Vendor Inventory Settings")}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Global defaults for stock thresholds and back-in-stock
-          notifications. Vendors can override per product.
-        </p>
-      </header>
+      <PageHeader
+        icon={Package}
+        title={t(ADMIN_I18N_KEYS.vendor.inventoryTitle, "Vendor Inventory Settings")}
+        subtitle="Global defaults for stock thresholds and back-in-stock notifications. Vendors can override per product."
+        iconBgClass="bg-amber-100"
+        iconColorClass="text-amber-600"
+      />
 
       {q.isError && (
         <ErrorState

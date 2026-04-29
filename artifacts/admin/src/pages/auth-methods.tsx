@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   KeyRound,
   Phone,
@@ -297,48 +298,41 @@ export default function AuthMethodsPage() {
         {/* ───────── Header ───────── */}
         <div className="border-b border-slate-200 bg-white/80 backdrop-blur sticky top-0 z-20">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20">
-                  <KeyRound className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            <PageHeader
+              icon={KeyRound}
+              title="Auth Methods"
+              subtitle="Per-role login & security controls — Customer, Rider, Vendor"
+              iconBgClass="bg-indigo-100"
+              iconColorClass="text-indigo-600"
+              actions={
+                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                  {dirtyKeys.size > 0 && (
+                    <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-semibold">
+                      {dirtyKeys.size} unsaved
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetAll}
+                    disabled={dirtyKeys.size === 0 || saving}
+                    className="hidden sm:inline-flex"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-1.5" />
+                    Reset
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={dirtyKeys.size === 0 || saving}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
+                    Save changes
+                  </Button>
                 </div>
-                <div className="min-w-0">
-                  <h1 className="text-lg sm:text-2xl font-bold text-slate-900 leading-tight">
-                    Auth Methods
-                  </h1>
-                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                    Per-role login &amp; security controls — Customer, Rider, Vendor
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                {dirtyKeys.size > 0 && (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-semibold">
-                    {dirtyKeys.size} unsaved
-                  </Badge>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={resetAll}
-                  disabled={dirtyKeys.size === 0 || saving}
-                  className="hidden sm:inline-flex"
-                >
-                  <RotateCcw className="w-4 h-4 mr-1.5" />
-                  Reset
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={dirtyKeys.size === 0 || saving}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
-                  Save changes
-                </Button>
-              </div>
-            </div>
+              }
+            />
 
             {/* Role summary chips */}
             <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-4">

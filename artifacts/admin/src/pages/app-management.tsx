@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -617,28 +618,25 @@ export default function AppManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-slate-100 text-slate-600 rounded-xl flex items-center justify-center">
-            <AppWindow className="w-6 h-6"/>
-          </div>
-          <div>
-            <h1 className="text-3xl font-display font-bold">App Management</h1>
-            <p className="text-sm text-muted-foreground">Control the entire app — status, admins, services</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          {tab === "admins" && (
-            <Button onClick={openNewAdmin} className="h-10 rounded-xl gap-2">
-              <Plus className="w-4 h-4"/> New Admin
+      <PageHeader
+        icon={AppWindow}
+        title="App Management"
+        subtitle="Control the entire app — status, admins, services"
+        iconBgClass="bg-slate-100"
+        iconColorClass="text-slate-600"
+        actions={
+          <div className="flex gap-2">
+            {tab === "admins" && (
+              <Button onClick={openNewAdmin} className="h-10 rounded-xl gap-2">
+                <Plus className="w-4 h-4"/> New Admin
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => { refetchOverview(); refetchAdmins(); }} className="h-10 rounded-xl gap-2">
+              <RefreshCw className="w-4 h-4"/> Refresh
             </Button>
-          )}
-          <Button variant="outline" onClick={() => { refetchOverview(); refetchAdmins(); }} className="h-10 rounded-xl gap-2">
-            <RefreshCw className="w-4 h-4"/> Refresh
-          </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/*
         App Status Banner — read-only awareness only. Editing of

@@ -2,13 +2,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   MessageCircle, Send, CheckCircle2, Clock, User, RefreshCw,
-  ChevronLeft, Search, Circle, CheckCheck, AlertCircle,
+  ChevronLeft, Search, Circle, CheckCheck, AlertCircle, Headphones,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { io, type Socket } from "socket.io-client";
+import { PageHeader } from "@/components/shared";
 
 import { apiAbsoluteFetch } from "@/lib/api";
 
@@ -148,7 +149,15 @@ export default function SupportChatPage() {
   const totalUnread = conversations.reduce((s, c) => s + (c.unreadCount || 0), 0);
 
   return (
-    <div className="flex h-[calc(100vh-56px)] bg-gray-50">
+    <div className="flex flex-col h-[calc(100vh-56px)]">
+      <PageHeader
+        icon={Headphones}
+        title="Support Chat"
+        subtitle="Manage live customer conversations"
+        iconBgClass="bg-blue-100"
+        iconColorClass="text-blue-600"
+      />
+      <div className="flex flex-1 min-h-0 bg-gray-50">
       {/* Sidebar */}
       <div className={cn(
         "flex flex-col border-r bg-white",
@@ -341,6 +350,7 @@ export default function SupportChatPage() {
           <p className="text-sm">Choose from the list to view and reply</p>
         </div>
       )}
+      </div>
     </div>
   );
 }

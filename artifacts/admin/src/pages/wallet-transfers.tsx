@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   Wallet, Search, RefreshCw, Flag, FlagOff, AlertTriangle,
   TrendingUp, DollarSign, ShieldOff, ShieldCheck, Filter,
@@ -45,15 +46,13 @@ type WalletStats = {
 export default function WalletTransfersPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Wallet className="h-6 w-6 text-green-500" />
-          Wallet P2P Transfers
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Monitor user-to-user transfers, flag suspicious activity, and manage P2P limits
-        </p>
-      </div>
+      <PageHeader
+        icon={Wallet}
+        title="Wallet P2P Transfers"
+        subtitle="Monitor user-to-user transfers, flag suspicious activity, and manage P2P limits"
+        iconBgClass="bg-green-100"
+        iconColorClass="text-green-600"
+      />
 
       <Tabs defaultValue="transactions">
         <TabsList className="mb-2">

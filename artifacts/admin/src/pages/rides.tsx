@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { PageHeader, StatCard } from "@/components/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { io } from "socket.io-client";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
@@ -761,22 +762,10 @@ function DispatchMonitor() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-4 rounded-2xl text-center bg-amber-50/60 border-amber-200/60">
-          <p className="text-2xl font-bold text-amber-700">{searching.length}</p>
-          <p className="text-xs text-muted-foreground">Searching</p>
-        </Card>
-        <Card className="p-4 rounded-2xl text-center bg-orange-50/60 border-orange-200/60">
-          <p className="text-2xl font-bold text-orange-700">{bargaining.length}</p>
-          <p className="text-xs text-muted-foreground">Bargaining</p>
-        </Card>
-        <Card className="p-4 rounded-2xl text-center bg-blue-50/60 border-blue-200/60">
-          <p className="text-2xl font-bold text-blue-700">{rides.reduce((s, r) => s + r.notifiedRiders, 0)}</p>
-          <p className="text-xs text-muted-foreground">Riders Notified</p>
-        </Card>
-        <Card className="p-4 rounded-2xl text-center bg-green-50/60 border-green-200/60">
-          <p className="text-2xl font-bold text-green-700">{rides.reduce((s, r) => s + r.totalBids, 0)}</p>
-          <p className="text-xs text-muted-foreground">Total Bids</p>
-        </Card>
+        <StatCard icon={Search} label="Searching" value={searching.length} iconBgClass="bg-amber-100" iconColorClass="text-amber-600" />
+        <StatCard icon={MessageCircle} label="Bargaining" value={bargaining.length} iconBgClass="bg-orange-100" iconColorClass="text-orange-600" />
+        <StatCard icon={Users} label="Riders Notified" value={rides.reduce((s, r) => s + r.notifiedRiders, 0)} iconBgClass="bg-blue-100" iconColorClass="text-blue-600" />
+        <StatCard icon={TrendingUp} label="Total Bids" value={rides.reduce((s, r) => s + r.totalBids, 0)} iconBgClass="bg-green-100" iconColorClass="text-green-600" />
       </div>
 
       {/* Live Dispatch Map */}
@@ -1573,24 +1562,19 @@ export default function Rides() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-green-100 text-green-600 rounded-xl flex items-center justify-center shrink-0">
-            <Car className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("ridesTitle")}</h1>
-            <p className="text-muted-foreground text-xs">{rides.length} total · {activeCount} active · {completed.length} completed</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+      <PageHeader
+        icon={Car}
+        title={T("ridesTitle")}
+        subtitle={`${rides.length} total · ${activeCount} active · ${completed.length} completed`}
+        iconBgClass="bg-green-100"
+        iconColorClass="text-green-600"
+        actions={
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500 animate-pulse" : "bg-amber-400"}`} />
             {isLoading ? "Refreshing..." : `${secAgo}s ago`}
           </span>
-        </div>
-      </div>
+        }
+      />
 
       {/* Urgent Alerts */}
       {(bargaining.length > 0 || searching.length > 0) && (

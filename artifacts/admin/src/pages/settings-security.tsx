@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiAbsoluteFetchRaw } from "@/lib/api";
 import { splitCsv } from "@/lib/validation";
 import { Button } from "@/components/ui/button";
+import { ManageInSettingsLink } from "@/components/shared";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Toggle, Field, SecretInput, SLabel } from "@/components/AdminShared";
@@ -222,16 +223,25 @@ export function SecuritySection({ localValues, dirtyKeys, handleChange, handleTo
       {/* ─── Auth & Sessions ─── */}
       {secTab === "auth" && (
         <div className="space-y-4">
-          {/* DANGER ZONE */}
-          <div className="rounded-2xl border-2 border-red-300 bg-red-50 p-5 space-y-3">
-            <div className="flex items-center gap-2 text-red-700 mb-1">
-              <AlertTriangle className="w-4 h-4" />
-              <span className="text-sm font-bold">DANGER ZONE</span>
-            </div>
-            <p className="text-xs text-red-700">
-              OTP suspension and per-user bypass are managed exclusively in <strong>OTP Control</strong> (sidebar). No duplicate OTP toggles exist here.
-            </p>
-          </div>
+          {/* Per-role auth methods (phone OTP, email, magic link, biometric, etc.) are
+              managed exclusively in Auth Methods. No duplicate toggles exist here. */}
+          <ManageInSettingsLink
+            label="Per-Role Auth Methods"
+            value="Managed in Auth Methods"
+            description="Toggle Phone OTP, Email OTP, Magic Link, Google/Facebook OAuth, 2FA and Biometric per role (Customer, Rider, Vendor)."
+            tone="info"
+            to="/auth-methods"
+            linkLabel="Open Auth Methods"
+          />
+          {/* OTP rate limits and per-user bypass are canonical in OTP Control */}
+          <ManageInSettingsLink
+            label="OTP Control"
+            value="Managed in OTP Control"
+            description="Configure OTP rate limits (per phone/IP), OTP window, suspend OTP globally, and grant per-user OTP bypass. These controls are canonical in OTP Control."
+            tone="info"
+            to="/otp-control"
+            linkLabel="Open OTP Control"
+          />
 
           <SecPanel title="Multi-Factor Authentication" icon={Shield} color="text-indigo-700">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

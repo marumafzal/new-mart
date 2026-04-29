@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { Megaphone, Send, Bell, Users, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/shared";
 import { useBroadcast, useBroadcastRecipientCount } from "@/hooks/use-admin";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -91,15 +92,13 @@ export default function Broadcast() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center">
-          <Megaphone className="w-6 h-6" />
-        </div>
-        <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">{T("broadcast")}</h1>
-          <p className="text-muted-foreground text-sm">{T("broadcastSubtitle")}</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Megaphone}
+        title={T("broadcast")}
+        subtitle={T("broadcastSubtitle")}
+        iconBgClass="bg-rose-100"
+        iconColorClass="text-rose-600"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card className="rounded-3xl border-border/50 shadow-lg shadow-black/5">

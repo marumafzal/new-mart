@@ -7,6 +7,7 @@
  * the UI here is gated by `system.roles.manage` for write actions.
  */
 import { useEffect, useMemo, useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { Shield, Plus, Save, Trash2, RefreshCw, Search, Lock, Users, KeyRound } from "lucide-react";
 import { fetchAdmin } from "@/lib/adminFetcher";
 import { Button } from "@/components/ui/button";
@@ -256,28 +257,25 @@ export default function RolesPermissionsPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-indigo-100 p-2 text-indigo-700"><Shield className="h-6 w-6" /></div>
-          <div>
-            <h1 className="text-2xl font-semibold">Roles &amp; Permissions</h1>
-            <p className="text-sm text-muted-foreground">
-              Fine-grained access control for admin users.
-              {!canManage && " (read-only — system.roles.manage required to edit)"}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { void (tab === "roles" ? reload() : loadAdmins()); }} disabled={loading || adminsLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${(loading || adminsLoading) ? "animate-spin" : ""}`} /> Reload
-          </Button>
-          {canManage && tab === "roles" && (
-            <Button onClick={createRoleStep1}>
-              <Plus className="h-4 w-4 mr-2" /> New role
+      <PageHeader
+        icon={Shield}
+        title="Roles & Permissions"
+        subtitle={`Fine-grained access control for admin users.${!canManage ? " (read-only — system.roles.manage required to edit)" : ""}`}
+        iconBgClass="bg-indigo-100"
+        iconColorClass="text-indigo-700"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => { void (tab === "roles" ? reload() : loadAdmins()); }} disabled={loading || adminsLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${(loading || adminsLoading) ? "animate-spin" : ""}`} /> Reload
             </Button>
-          )}
-        </div>
-      </header>
+            {canManage && tab === "roles" && (
+              <Button onClick={createRoleStep1}>
+                <Plus className="h-4 w-4 mr-2" /> New role
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       {/* Tabs */}
       <div className="border-b flex gap-1">

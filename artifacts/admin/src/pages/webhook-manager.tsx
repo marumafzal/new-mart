@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -130,17 +131,18 @@ export default function WebhookManagerPage() {
   return (
     <PullToRefresh onRefresh={async () => { await refetch(); }}>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Webhook className="w-6 h-6 text-orange-600" /> Webhooks
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">Register webhook URLs for platform events</p>
-          </div>
-          <Button className="rounded-xl gap-2" onClick={() => setShowCreate(true)}>
-            <Plus className="w-4 h-4" /> Register Webhook
-          </Button>
-        </div>
+        <PageHeader
+          icon={Webhook}
+          title="Webhooks"
+          subtitle="Register webhook URLs for platform events"
+          iconBgClass="bg-orange-100"
+          iconColorClass="text-orange-600"
+          actions={
+            <Button className="rounded-xl gap-2" onClick={() => setShowCreate(true)}>
+              <Plus className="w-4 h-4" /> Register Webhook
+            </Button>
+          }
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="p-4 rounded-2xl">

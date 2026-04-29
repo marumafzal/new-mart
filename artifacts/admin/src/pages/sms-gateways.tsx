@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   Server, Plus, Trash2, Edit2, RefreshCw, CheckCircle2,
   XCircle, Loader2, ToggleRight, ToggleLeft, Wifi,
@@ -95,16 +96,19 @@ export default function SmsGateways() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Server className="w-6 h-6 text-blue-600" /> SMS Gateways</h1>
-          <p className="text-sm text-muted-foreground mt-1">Configure SMS providers with priority-based automatic failover. AJKMart tries each active gateway in priority order (lowest number first).</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="rounded-xl gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> Refresh</Button>
-          <Button size="sm" onClick={openAdd} className="rounded-xl gap-1.5"><Plus className="w-4 h-4" /> Add Gateway</Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Server}
+        title="SMS Gateways"
+        subtitle="Configure SMS providers with priority-based automatic failover."
+        iconBgClass="bg-blue-100"
+        iconColorClass="text-blue-600"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="rounded-xl gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> Refresh</Button>
+            <Button size="sm" onClick={openAdd} className="rounded-xl gap-1.5"><Plus className="w-4 h-4" /> Add Gateway</Button>
+          </div>
+        }
+      />
 
       {/* Failover explanation */}
       <Card className="p-4 border-blue-200 bg-blue-50">

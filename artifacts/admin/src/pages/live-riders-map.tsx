@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { PageHeader } from "@/components/shared";
 import { useLiveRiders, usePlatformSettings, useRiderRoute, useCustomerLocations, useRiderTrailsBatch, useFleetVendors } from "@/hooks/use-admin";
 import { MapPin, RefreshCw, Users, Navigation, Route, Clock, Eye, EyeOff, AlertTriangle, MessageSquare, BarChart2, Activity, TrendingUp, X, History, Layers, ChevronLeft, ChevronRight, Store, Search, Bike, Zap } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -1076,25 +1077,23 @@ export default function LiveRidersMap() {
   if (activeTab === "analytics") {
     return (
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center">
-              <Navigation className="w-6 h-6" />
+        <PageHeader
+          icon={Navigation}
+          title="Live Fleet Map"
+          subtitle={`${riders.length} riders · ${vendors.length} vendors · ${onlineCount} online`}
+          iconBgClass="bg-green-100"
+          iconColorClass="text-green-600"
+          actions={
+            <div className="flex rounded-xl border border-border overflow-hidden">
+              <button onClick={() => setActiveTab("map")} className="px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 bg-white text-muted-foreground hover:bg-gray-50">
+                <MapPin className="w-3.5 h-3.5" /> Map
+              </button>
+              <button onClick={() => setActiveTab("analytics")} className="px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 bg-blue-600 text-white">
+                <BarChart2 className="w-3.5 h-3.5" /> Analytics
+              </button>
             </div>
-            <div>
-              <h1 className="text-3xl font-display font-bold text-foreground">Live Fleet Map</h1>
-              <p className="text-muted-foreground text-sm">{riders.length} riders · {vendors.length} vendors · {onlineCount} online</p>
-            </div>
-          </div>
-          <div className="flex rounded-xl border border-border overflow-hidden">
-            <button onClick={() => setActiveTab("map")} className="px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 bg-white text-muted-foreground hover:bg-gray-50">
-              <MapPin className="w-3.5 h-3.5" /> Map
-            </button>
-            <button onClick={() => setActiveTab("analytics")} className="px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 bg-blue-600 text-white">
-              <BarChart2 className="w-3.5 h-3.5" /> Analytics
-            </button>
-          </div>
-        </div>
+          }
+        />
         <FleetAnalyticsTab mapConfig={mapConfigData} />
       </div>
     );
@@ -1147,35 +1146,33 @@ export default function LiveRidersMap() {
       )}
 
       {/* Page header */}
-      <div className="flex items-center justify-between mb-3 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-green-100 text-green-600 rounded-xl flex items-center justify-center">
-            <Navigation className="w-5 h-5" />
+      <PageHeader
+        icon={Navigation}
+        title="Live Fleet Map"
+        subtitle={`${riders.length} riders · ${vendors.length} vendors · ${onlineCount} online · ${busyCount} busy`}
+        iconBgClass="bg-green-100"
+        iconColorClass="text-green-600"
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : "bg-amber-400"}`} />
+              {wsConnected ? "Live" : `${secAgo}s ago`}
+            </div>
+            <div className="flex rounded-xl border border-border overflow-hidden">
+              <button onClick={() => setActiveTab("map")} className="px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 bg-green-600 text-white">
+                <MapPin className="w-3.5 h-3.5" /> Map
+              </button>
+              <button onClick={() => setActiveTab("analytics")} className="px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 bg-white text-muted-foreground hover:bg-gray-50">
+                <BarChart2 className="w-3.5 h-3.5" /> Analytics
+              </button>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading} className="h-8 rounded-xl gap-1.5">
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
           </div>
-          <div>
-            <h1 className="text-2xl font-display font-bold text-foreground">Live Fleet Map</h1>
-            <p className="text-muted-foreground text-xs">{riders.length} riders · {vendors.length} vendors · {onlineCount} online · {busyCount} busy</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : "bg-amber-400"}`} />
-            {wsConnected ? "Live" : `${secAgo}s ago`}
-          </div>
-          <div className="flex rounded-xl border border-border overflow-hidden">
-            <button onClick={() => setActiveTab("map")} className="px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 bg-green-600 text-white">
-              <MapPin className="w-3.5 h-3.5" /> Map
-            </button>
-            <button onClick={() => setActiveTab("analytics")} className="px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 bg-white text-muted-foreground hover:bg-gray-50">
-              <BarChart2 className="w-3.5 h-3.5" /> Analytics
-            </button>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading} className="h-8 rounded-xl gap-1.5">
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Main 3-column layout: sidebar | map | detail panel */}
       <div className="flex flex-1 min-h-0 gap-0 rounded-2xl overflow-hidden border border-border/50 shadow-sm">

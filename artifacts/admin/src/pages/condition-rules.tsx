@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { PageHeader } from "@/components/shared";
 import {
   Settings2, Shield, RefreshCw, Plus, Trash2, Edit2, ToggleLeft, ToggleRight,
   Zap, Brain, Sliders, CheckCircle2, Loader2,
@@ -255,22 +256,18 @@ export default function ConditionRules() {
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
-            <Settings2 className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Rules & Settings</h1>
-            <p className="text-sm text-muted-foreground">{rules.length} rules · Mode: {settings.mode?.replace("_", " ")}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        icon={Settings2}
+        title="Rules & Settings"
+        subtitle={`${rules.length} rules · Mode: ${settings.mode?.replace("_", " ")}`}
+        iconBgClass="bg-amber-100"
+        iconColorClass="text-amber-600"
+        actions={
           <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 rounded-xl gap-2">
             <RefreshCw className="w-4 h-4" /> Refresh
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       <Card className="rounded-2xl border-border/50 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-border/50">

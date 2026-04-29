@@ -5,6 +5,7 @@ import {
   Calendar, Link as LinkIcon, ToggleLeft, ToggleRight,
   Eye, Layers, Upload, Loader2,
 } from "lucide-react";
+import { PageHeader } from "@/components/shared";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
@@ -242,23 +243,19 @@ export default function BannersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center">
-            <Layers className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">{T("navBanners")}</h1>
-            <p className="text-muted-foreground text-sm">
-              {activeBanners} active{scheduledBanners > 0 ? ` · ${scheduledBanners} scheduled` : ""} · {banners.length} total
-            </p>
-          </div>
-        </div>
-        <Button onClick={openNew} className="h-10 rounded-xl gap-2 shadow-md">
-          <Plus className="w-4 h-4" />
-          New Banner
-        </Button>
-      </div>
+      <PageHeader
+        icon={Layers}
+        title={T("navBanners")}
+        subtitle={`${activeBanners} active${scheduledBanners > 0 ? ` · ${scheduledBanners} scheduled` : ""} · ${banners.length} total`}
+        iconBgClass="bg-purple-100"
+        iconColorClass="text-purple-600"
+        actions={
+          <Button onClick={openNew} className="h-10 rounded-xl gap-2 shadow-md">
+            <Plus className="w-4 h-4" />
+            New Banner
+          </Button>
+        }
+      />
 
       <div className="space-y-3">
         {isLoading ? (

@@ -5,6 +5,7 @@ import {
   Filter, CalendarDays, ChevronDown, ChevronUp, Eye, EyeOff, Trash2,
   Store, TrendingDown, TrendingUp, BarChart3, ExternalLink
 } from "lucide-react";
+import { PageHeader, StatCard, FilterBar } from "@/components/shared";
 import {
   useAdminReviews, useModerationQueue, useApproveReview,
   useRejectReview, useRunRatingSuspension
@@ -526,17 +527,13 @@ export default function ReviewsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Star className="h-6 w-6 text-amber-400" />
-            {T("reviewManagement")}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {T("moderateCustomerReviews")} · {total} {T("totalInView")}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Star}
+        title={T("reviewManagement")}
+        subtitle={`${T("moderateCustomerReviews")} · ${total} ${T("totalInView")}`}
+        iconBgClass="bg-amber-100"
+        iconColorClass="text-amber-600"
+      />
 
       <Tabs defaultValue="reviews">
         <TabsList className="mb-2">
@@ -585,57 +582,47 @@ export default function ReviewsPage() {
       </div>
 
       <Card className="p-4 space-y-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search by reviewer or comment..."
-              className="pl-8 h-8 text-xs"
-              value={searchQ}
-              onChange={e => handleSearch(e.target.value)}
-            />
-          </div>
-
-          <Select value={typeFilter} onValueChange={handleFilterChange(setType)}>
-            <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder={T("reviewType")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{T("allTypes")}</SelectItem>
-              <SelectItem value="order">{T("orderReviews")}</SelectItem>
-              <SelectItem value="ride">{T("rideReviews")}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={starsFilter} onValueChange={handleFilterChange(setStars)}>
-            <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder={T("starsFilter")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{T("allStars")}</SelectItem>
-              {[5, 4, 3, 2, 1].map(s => <SelectItem key={s} value={String(s)}>{s} ★</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          <Select value={statusFilter} onValueChange={handleFilterChange(setStatus)}>
-            <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder={T("reviewStatus")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{T("allStatus")}</SelectItem>
-              <SelectItem value="visible">{T("visibleLabel")}</SelectItem>
-              <SelectItem value="pending_moderation">Pending</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-              <SelectItem value="hidden">{T("hiddenLabel")}</SelectItem>
-              <SelectItem value="deleted">{T("deletedLabel")}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={subjectFilter} onValueChange={handleFilterChange(setSubject)}>
-            <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder={T("allSubjects")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{T("allSubjects")}</SelectItem>
-              <SelectItem value="vendor">{T("vendorReviews")}</SelectItem>
-              <SelectItem value="rider">{T("riderReviews")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <FilterBar
+          search={searchQ}
+          onSearch={handleSearch}
+          placeholder="Search by reviewer or comment..."
+          filters={<>
+            <Select value={typeFilter} onValueChange={handleFilterChange(setType)}>
+              <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder={T("reviewType")} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{T("allTypes")}</SelectItem>
+                <SelectItem value="order">{T("orderReviews")}</SelectItem>
+                <SelectItem value="ride">{T("rideReviews")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={starsFilter} onValueChange={handleFilterChange(setStars)}>
+              <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder={T("starsFilter")} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{T("allStars")}</SelectItem>
+                {[5, 4, 3, 2, 1].map(s => <SelectItem key={s} value={String(s)}>{s} ★</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={handleFilterChange(setStatus)}>
+              <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder={T("reviewStatus")} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{T("allStatus")}</SelectItem>
+                <SelectItem value="visible">{T("visibleLabel")}</SelectItem>
+                <SelectItem value="pending_moderation">Pending</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="hidden">{T("hiddenLabel")}</SelectItem>
+                <SelectItem value="deleted">{T("deletedLabel")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={subjectFilter} onValueChange={handleFilterChange(setSubject)}>
+              <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder={T("allSubjects")} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{T("allSubjects")}</SelectItem>
+                <SelectItem value="vendor">{T("vendorReviews")}</SelectItem>
+                <SelectItem value="rider">{T("riderReviews")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </>}
+        />
 
         <div className="flex items-center gap-2 flex-wrap">
           <CalendarDays className="h-4 w-4 text-muted-foreground flex-shrink-0" />

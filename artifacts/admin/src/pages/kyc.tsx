@@ -7,6 +7,7 @@ import {
   ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2,
   Car, FileText,
 } from "lucide-react";
+import { PageHeader, StatCard } from "@/components/shared";
 
 import { apiAbsoluteFetchRaw } from "@/lib/api";
 
@@ -480,50 +481,42 @@ export default function KycPage() {
         />
       )}
 
-      {/* Page header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">KYC Verification</h1>
-          <p className="text-gray-500 text-sm mt-1">Review and manage user identity verification requests</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 lg:w-72">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              placeholder="Search name, phone or CNIC…"
-              className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300"
-            />
-            {searchInput && (
-              <button onClick={() => setSearchInput("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                <X size={14} />
-              </button>
-            )}
+      <PageHeader
+        icon={BadgeCheck}
+        title="KYC Verification"
+        subtitle="Review and manage user identity verification requests"
+        iconBgClass="bg-blue-100"
+        iconColorClass="text-blue-600"
+        actions={
+          <div className="flex items-center gap-2">
+            <div className="relative w-72">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                placeholder="Search name, phone or CNIC…"
+                className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300"
+              />
+              {searchInput && (
+                <button onClick={() => setSearchInput("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <button onClick={() => refetch()} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition">
+              <RefreshCw size={14} /> Refresh
+            </button>
           </div>
-          <button onClick={() => refetch()} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-2 rounded-xl hover:bg-gray-50 transition">
-            <RefreshCw size={14} /> Refresh
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Total",    val: records.length,                        color: "bg-gray-100",   text: "text-gray-700",  Icon: Filter },
-          { label: "Pending",  val: counts.pending,  onClick: () => setStatusFilter("pending"),  color: "bg-amber-50",   text: "text-amber-700", Icon: Clock },
-          { label: "Approved", val: counts.approved, onClick: () => setStatusFilter("approved"), color: "bg-green-50",   text: "text-green-700", Icon: BadgeCheck },
-          { label: "Rejected", val: counts.rejected, onClick: () => setStatusFilter("rejected"), color: "bg-red-50",     text: "text-red-700",   Icon: XCircle },
-        ].map(({ label, val, color, text, Icon, onClick }) => (
-          <div key={label} onClick={onClick} className={`${color} rounded-2xl p-4 flex items-center gap-3 ${onClick ? "cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-300 transition" : ""}`}>
-            <Icon size={20} className={text} />
-            <div>
-              <p className={`text-2xl font-bold ${text}`}>{val}</p>
-              <p className="text-xs text-gray-500 font-medium">{label}</p>
-            </div>
-          </div>
-        ))}
+        <StatCard icon={Filter} label="Total" value={records.length} iconBgClass="bg-gray-100" iconColorClass="text-gray-700" />
+        <StatCard icon={Clock} label="Pending" value={counts.pending} iconBgClass="bg-amber-50" iconColorClass="text-amber-700" onClick={() => setStatusFilter("pending")} />
+        <StatCard icon={BadgeCheck} label="Approved" value={counts.approved} iconBgClass="bg-green-50" iconColorClass="text-green-700" onClick={() => setStatusFilter("approved")} />
+        <StatCard icon={XCircle} label="Rejected" value={counts.rejected} iconBgClass="bg-red-50" iconColorClass="text-red-700" onClick={() => setStatusFilter("rejected")} />
       </div>
 
       {/* Filter tabs */}

@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Megaphone, Plus, RefreshCw, Search, Trash2, Pencil, Copy,
@@ -795,34 +796,29 @@ export default function PromotionsHub() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center">
-            <Megaphone className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Promotions Hub</h1>
-            <p className="text-sm text-muted-foreground">
-              {liveCampaigns} live campaigns · {liveOffers} live offers
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => { refetchCampaigns(); refetchOffers(); }} className="h-9 rounded-xl gap-2">
-            <RefreshCw className="w-4 h-4" />
-          </Button>
-          {activeTab === "campaigns" ? (
-            <Button size="sm" onClick={() => setShowCampaignModal(true)} className="h-9 rounded-xl gap-2">
-              <Plus className="w-4 h-4" /> New Campaign
+      <PageHeader
+        icon={Megaphone}
+        title="Promotions Hub"
+        subtitle={`${liveCampaigns} live campaigns · ${liveOffers} live offers`}
+        iconBgClass="bg-violet-100"
+        iconColorClass="text-violet-600"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => { refetchCampaigns(); refetchOffers(); }} className="h-9 rounded-xl gap-2">
+              <RefreshCw className="w-4 h-4" />
             </Button>
-          ) : (
-            <Button size="sm" onClick={() => setShowOfferModal(true)} className="h-9 rounded-xl gap-2">
-              <Plus className="w-4 h-4" /> New Offer
-            </Button>
-          )}
-        </div>
-      </div>
+            {activeTab === "campaigns" ? (
+              <Button size="sm" onClick={() => setShowCampaignModal(true)} className="h-9 rounded-xl gap-2">
+                <Plus className="w-4 h-4" /> New Campaign
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => setShowOfferModal(true)} className="h-9 rounded-xl gap-2">
+                <Plus className="w-4 h-4" /> New Offer
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

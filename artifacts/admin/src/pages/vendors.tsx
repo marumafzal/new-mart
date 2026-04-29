@@ -7,6 +7,7 @@ import {
   Package, Phone, ToggleLeft, ToggleRight, AlertTriangle, X, MessageCircle, Settings2,
   Download, CalendarDays, Percent, Truck, Gavel,
 } from "lucide-react";
+import { PageHeader, StatCard, FilterBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -225,76 +226,60 @@ export default function Vendors() {
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center">
-            <Store className="w-6 h-6" />
+      <PageHeader
+        icon={Store}
+        title="Vendors"
+        subtitle={`${vendors.length} total · ${activeVendors} active${pendingVendors > 0 ? ` · ${pendingVendors} pending` : ""} · ${suspendedVendors} suspended`}
+        iconBgClass="bg-orange-100"
+        iconColorClass="text-orange-600"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportVendorsCSV(filtered)} className="h-9 rounded-xl gap-2">
+              <Download className="w-4 h-4" /> CSV
+            </Button>
+            <button
+              onClick={() => setLocation("/settings?cat=vendor")}
+              className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              Vendor Config
+            </button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
+            </Button>
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Vendors</h1>
-            <p className="text-sm text-muted-foreground">{vendors.length} total · {activeVendors} active{pendingVendors > 0 ? ` · ${pendingVendors} pending` : ""} · {suspendedVendors} suspended</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportVendorsCSV(filtered)} className="h-9 rounded-xl gap-2">
-            <Download className="w-4 h-4" /> CSV
-          </Button>
-          <button
-            onClick={() => setLocation("/settings?cat=vendor")}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-          >
-            <Settings2 className="w-3.5 h-3.5" />
-            Vendor Config
-          </button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: "Total Vendors",   value: String(vendors.length),       icon: Store,          color: "text-orange-600", bg: "bg-orange-100" },
-          { label: "Active Stores",   value: String(activeVendors),        icon: CheckCircle2,   color: "text-green-600",  bg: "bg-green-100" },
-          { label: "Total Earnings",  value: formatCurrency(totalEarnings), icon: TrendingUp,     color: "text-blue-600",   bg: "bg-blue-100" },
-          { label: "Wallet Pending",  value: formatCurrency(totalWallet),   icon: Wallet,         color: "text-amber-600",  bg: "bg-amber-100" },
-        ].map((s, i) => (
-          <Card key={i} className="rounded-2xl border-border/50 shadow-sm">
-            <CardContent className="p-4 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium mb-0.5">{s.label}</p>
-                <p className="text-xl font-bold text-foreground">{s.value}</p>
-              </div>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.bg}`}>
-                <s.icon className={`w-5 h-5 ${s.color}`} />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        <StatCard icon={Store} label="Total Vendors" value={vendors.length} iconBgClass="bg-orange-100" iconColorClass="text-orange-600" />
+        <StatCard icon={CheckCircle2} label="Active Stores" value={activeVendors} iconBgClass="bg-green-100" iconColorClass="text-green-600" />
+        <StatCard icon={TrendingUp} label="Total Earnings" value={formatCurrency(totalEarnings)} iconBgClass="bg-blue-100" iconColorClass="text-blue-600" />
+        <StatCard icon={Wallet} label="Wallet Pending" value={formatCurrency(totalWallet)} iconBgClass="bg-amber-100" iconColorClass="text-amber-600" />
       </div>
 
       {/* Filters */}
       <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search store name, vendor name, phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30" />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-11 rounded-xl bg-muted/30 w-full sm:w-44">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="pending">Pending Approval</SelectItem>
-              <SelectItem value="blocked">Blocked</SelectItem>
-              <SelectItem value="banned">Banned</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <FilterBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search store name, vendor name, phone..."
+          filters={
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-10 rounded-xl bg-muted/30 w-full sm:w-44">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="pending">Pending Approval</SelectItem>
+                <SelectItem value="blocked">Blocked</SelectItem>
+                <SelectItem value="banned">Banned</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
         <div className="flex items-center gap-2">
           <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
           <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 text-xs w-32" />

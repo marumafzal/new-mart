@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -105,17 +106,18 @@ export default function DeepLinksPage() {
   return (
     <PullToRefresh onRefresh={async () => { await refetch(); }}>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Link2 className="w-6 h-6 text-blue-600" /> Deep Links
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">Create marketing deep links to specific app screens</p>
-          </div>
-          <Button className="rounded-xl gap-2" onClick={() => setShowCreate(true)}>
-            <Plus className="w-4 h-4" /> Create Deep Link
-          </Button>
-        </div>
+        <PageHeader
+          icon={Link2}
+          title="Deep Links"
+          subtitle="Create marketing deep links to specific app screens"
+          iconBgClass="bg-blue-100"
+          iconColorClass="text-blue-600"
+          actions={
+            <Button className="rounded-xl gap-2" onClick={() => setShowCreate(true)}>
+              <Plus className="w-4 h-4" /> Create Deep Link
+            </Button>
+          }
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="p-4 rounded-2xl">

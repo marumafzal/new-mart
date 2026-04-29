@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Users, ShoppingBag, Car, Pill, Box, Package, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign } from "lucide-react";
+import { PageHeader, StatCard } from "@/components/shared";
+import { Users, ShoppingBag, Car, Pill, Box, Package, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard } from "lucide-react";
 import { Link } from "wouter";
 import { useStats, useRevenueTrend, useLeaderboard } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -158,21 +159,18 @@ export default function Dashboard() {
 
   return (
     <PullToRefresh onRefresh={handleRefresh} className="space-y-6 sm:space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("overview")}</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {T("welcomeBack")}
-            {lastUpdated && (
-              <span className="ml-2 text-xs text-muted-foreground/60">· Updated {lastUpdated}</span>
-            )}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => exportDashboard(trend, (msg) => toast({ title: "Export failed", description: msg, variant: "destructive" }))} className="h-9 rounded-xl gap-2 shrink-0">
-          <Download className="w-4 h-4" /> {T("export")}
-        </Button>
-      </div>
+      <PageHeader
+        icon={LayoutDashboard}
+        title={T("overview")}
+        subtitle={`${T("welcomeBack")}${lastUpdated ? ` · Updated ${lastUpdated}` : ""}`}
+        iconBgClass="bg-indigo-100"
+        iconColorClass="text-indigo-600"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => exportDashboard(trend, (msg) => toast({ title: "Export failed", description: msg, variant: "destructive" }))} className="h-9 rounded-xl gap-2 shrink-0">
+            <Download className="w-4 h-4" /> {T("export")}
+          </Button>
+        }
+      />
 
       {/* 4 Hero Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -260,18 +258,9 @@ export default function Dashboard() {
               <h3 className="text-xl sm:text-2xl font-bold">{formatCurrency(data?.revenue?.total || 0)}</h3>
             </CardContent>
           </Card>
-          {[
-            { label: "Mart & Food", value: data?.revenue?.orders || 0 },
-            { label: T("ride"), value: data?.revenue?.rides || 0 },
-            { label: T("pharmacy"), value: data?.revenue?.pharmacy || 0 },
-          ].map((rev, i) => (
-            <Card key={i} className="rounded-2xl border-border/50">
-              <CardContent className="p-4 sm:p-6">
-                <p className="text-muted-foreground font-medium text-xs sm:text-sm mb-1">{rev.label}</p>
-                <h3 className="text-lg sm:text-2xl font-bold text-foreground">{formatCurrency(rev.value)}</h3>
-              </CardContent>
-            </Card>
-          ))}
+          <StatCard icon={ShoppingBag} label="Mart & Food" value={formatCurrency(data?.revenue?.orders || 0)} iconBgClass="bg-orange-100" iconColorClass="text-orange-600" />
+          <StatCard icon={Car} label={T("ride")} value={formatCurrency(data?.revenue?.rides || 0)} iconBgClass="bg-blue-100" iconColorClass="text-blue-600" />
+          <StatCard icon={Pill} label={T("pharmacy")} value={formatCurrency(data?.revenue?.pharmacy || 0)} iconBgClass="bg-green-100" iconColorClass="text-green-600" />
         </div>
       </div>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ManageInSettingsLink } from "@/components/shared";
 import {
   loadIntegrationTestHistory,
   recordIntegrationTestResult,
@@ -881,94 +882,16 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
 
       {/* ─── SMS Gateway ─── */}
       {intTab === "sms" && (
-        <IntCard title="SMS Gateway" emoji="📱" description="OTP verification, order & ride notifications via SMS"
-          enableKey="integration_sms" localValues={localValues} dirtyKeys={dirtyKeys} handleToggle={handleToggle} configured={smsConfigured}>
-          <div className="space-y-5">
-            {/* Provider selector */}
-            <div>
-              <SLabel icon={Puzzle}>SMS Provider</SLabel>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-                {[
-                  { id: "console", label: "Console (Dev)", emoji: "🖥️", desc: "Logs to terminal only" },
-                  { id: "twilio",  label: "Twilio",        emoji: "📞", desc: "International & PK" },
-                  { id: "msg91",   label: "MSG91",          emoji: "🇮🇳", desc: "India & Pakistan" },
-                  { id: "zong",    label: "Zong/CM.com",   emoji: "🇵🇰", desc: "AJK / Pakistan" },
-                ].map(p => (
-                  <button key={p.id} type="button" onClick={() => handleChange("sms_provider", p.id)}
-                    className={`p-3 rounded-xl border-2 text-left transition-all ${smsProvider === p.id ? "border-blue-500 bg-blue-50" : "border-border hover:bg-muted/30"} ${dirty("sms_provider") ? "ring-1 ring-amber-300" : ""}`}>
-                    <div className="text-xl mb-1">{p.emoji}</div>
-                    <div className="text-xs font-bold">{p.label}</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">{p.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-            {smsProvider === "console" && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex gap-2">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span><strong>Dev Mode:</strong> SMS messages are logged to the server console only. Choose a real provider above to send actual SMS.</span>
-              </div>
-            )}
-            {smsProvider === "twilio" && (
-              <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex gap-2">
-                  <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>Get credentials at <span className="font-mono bg-white/70 px-1 rounded">console.twilio.com</span> → Account Info</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <F label="Account SID" k="sms_account_sid" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" mono />
-                  <S label="Auth Token" k="sms_api_key" placeholder="your_auth_token" />
-                  <F label="From Phone Number" k="sms_sender_id" placeholder="+12025551234" mono />
-                </div>
-              </div>
-            )}
-            {smsProvider === "msg91" && (
-              <div className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 flex gap-2">
-                  <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>Get credentials at <span className="font-mono bg-white/70 px-1 rounded">msg91.com</span> → API → Auth Key</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <S label="MSG91 Auth Key" k="sms_msg91_key" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxx" />
-                  <F label="Sender ID (6 chars)" k="sms_sender_id" placeholder="AJKMAR" mono />
-                </div>
-              </div>
-            )}
-            {smsProvider === "zong" && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <S label="API Key" k="sms_api_key" placeholder="your_api_key" />
-                  <F label="Sender ID" k="sms_sender_id" placeholder="AJKMart" mono />
-                </div>
-              </div>
-            )}
-            {smsProvider !== "console" && (
-              <div>
-                <SLabel icon={MessageSquare}>SMS Templates</SLabel>
-                <div className="grid grid-cols-1 gap-4 mt-3">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground">OTP Template <span className="text-muted-foreground font-normal">(use &#123;otp&#125; placeholder)</span></label>
-                    <textarea value={val("sms_template_otp")} onChange={e => handleChange("sms_template_otp", e.target.value)}
-                      rows={2} className={`w-full border rounded-lg p-2 text-sm resize-none font-mono ${dirty("sms_template_otp") ? "border-amber-300 bg-amber-50/50" : ""}`} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-foreground">Order Status Template <span className="text-muted-foreground font-normal">(use &#123;id&#125;, &#123;status&#125;)</span></label>
-                    <textarea value={val("sms_template_order")} onChange={e => handleChange("sms_template_order", e.target.value)}
-                      rows={2} className={`w-full border rounded-lg p-2 text-sm resize-none font-mono ${dirty("sms_template_order") ? "border-amber-300 bg-amber-50/50" : ""}`} />
-                  </div>
-                </div>
-              </div>
-            )}
-            {smsConfigured && (
-              <div>
-                <SLabel icon={FlaskConical}>Test Connection</SLabel>
-                <div className="mt-3">
-                  <TestRow type="sms" label="Send test OTP SMS (OTP: 123456)" />
-                </div>
-              </div>
-            )}
-          </div>
-        </IntCard>
+        <div className="space-y-4">
+        <ManageInSettingsLink
+          label="SMS Gateway Configuration"
+          value="Managed in SMS Gateways"
+          description="Configure SMS provider (Twilio, MSG91, Zong), API keys, and sender IDs. The dedicated SMS Gateways page is the canonical location for all SMS settings."
+          tone="info"
+          to="/sms-gateways"
+          linkLabel="Open SMS Gateways"
+        />
+        </div>
       )}
 
       {/* ─── Email SMTP ─── */}
@@ -1079,6 +1002,14 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
                   <p className="text-xs font-mono text-muted-foreground break-all">{whatsappWebhookUrl}</p>
                   <p className="text-xs text-muted-foreground">Subscribe to: <span className="font-mono">messages, message_deliveries, message_reads</span></p>
                 </div>
+                <ManageInSettingsLink
+                  label="Business Event Webhooks"
+                  value="Managed in Webhook Manager"
+                  description="Configure outbound webhook endpoints for business events (order placed, rider assigned, payment confirmed). These are separate from the WhatsApp inbound webhook above."
+                  tone="info"
+                  to="/webhook-manager"
+                  linkLabel="Open Webhook Manager"
+                />
               </div>
             </div>
             <div>
@@ -1194,6 +1125,15 @@ export function IntegrationsSection({ localValues, dirtyKeys, handleChange, hand
                 ))}
               </div>
             </div>
+
+            <ManageInSettingsLink
+              label="Search Analytics"
+              value="Managed in Search Analytics"
+              description="View in-app search query reports, popular search terms, zero-result searches, and tune search ranking weights."
+              tone="info"
+              to="/search-analytics"
+              linkLabel="Open Search Analytics"
+            />
           </div>
         </IntCard>
       )}

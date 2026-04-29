@@ -5,6 +5,7 @@ import {
   ChevronRight, ChevronDown, ArrowUp, ArrowDown,
   ToggleLeft, ToggleRight, Search, GripVertical, Upload, X,
 } from "lucide-react";
+import { PageHeader } from "@/components/shared";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
@@ -240,21 +241,14 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-6">
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
-            <FolderTree className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">{T("navCategories")}</h1>
-            <p className="text-muted-foreground text-sm">
-              {totalActive} active · {totalInactive} inactive
-              {!isSearching && <span className="text-muted-foreground/50"> · Drag rows to reorder</span>}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
+      <PageHeader
+        icon={FolderTree}
+        title={T("navCategories")}
+        subtitle={`${totalActive} active · ${totalInactive} inactive${!isSearching ? " · Drag rows to reorder" : ""}`}
+        iconBgClass="bg-indigo-100"
+        iconColorClass="text-indigo-600"
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
@@ -270,7 +264,8 @@ export default function CategoriesPage() {
             Add Category
           </Button>
         </div>
-      </div>
+        }
+      />
 
       {/* ── Search bar ── */}
       <div className="relative">

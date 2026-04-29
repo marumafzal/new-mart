@@ -1,3 +1,5 @@
+import { Eye } from "lucide-react";
+import { PageHeader } from "@/components/shared";
 import { useAccessibilitySettings, type AdminFontScale, type AdminContrast } from "@/lib/useAccessibilitySettings";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,15 +35,13 @@ export default function AccessibilityPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {t(ADMIN_I18N_KEYS.settings.accessibility, "Accessibility")}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Personalise how the admin renders for low-vision and
-          motion-sensitive users. Settings are saved to this browser only.
-        </p>
-      </header>
+      <PageHeader
+        icon={Eye}
+        title={t(ADMIN_I18N_KEYS.settings.accessibility, "Accessibility")}
+        subtitle="Personalise how the admin renders for low-vision and motion-sensitive users. Settings are saved to this browser only."
+        iconBgClass="bg-slate-100"
+        iconColorClass="text-slate-600"
+      />
 
       <Card className="p-5">
         <div role="radiogroup" aria-labelledby="font-scale-label">

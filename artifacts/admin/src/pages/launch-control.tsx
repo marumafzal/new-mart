@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Rocket, CheckCircle2, AlertTriangle, RefreshCw,
@@ -480,21 +481,18 @@ export default function LaunchControl() {
 
   return (
     <div className="space-y-6 pb-10">
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-            <Rocket className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-display font-bold">Launch Control</h1>
-            <p className="text-sm text-muted-foreground">Platform configuration, plans, and deployment settings</p>
-          </div>
-        </div>
-        <Button variant="outline" onClick={() => refetch()} className="h-10 rounded-xl gap-2">
-          <RefreshCw className="w-4 h-4" /> Refresh
-        </Button>
-      </div>
+      <PageHeader
+        icon={Rocket}
+        title="Launch Control"
+        subtitle="Platform configuration, plans, and deployment settings"
+        iconBgClass="bg-violet-100"
+        iconColorClass="text-violet-600"
+        actions={
+          <Button variant="outline" onClick={() => refetch()} className="h-10 rounded-xl gap-2">
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </Button>
+        }
+      />
 
       {/* ── Demo / Live Mode Banner ── */}
       <div className={`rounded-2xl border-2 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${

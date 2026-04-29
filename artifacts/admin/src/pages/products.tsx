@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { PageHeader } from "@/components/shared";
 import { PackageSearch, Plus, Search, Edit, Trash2, ToggleLeft, ToggleRight, Download, Filter, CheckCircle, XCircle, Clock, Upload, X, ImageIcon } from "lucide-react";
 import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct, usePendingProducts, useApproveProduct, useRejectProduct, useCategories } from "@/hooks/use-admin";
 import { formatCurrency } from "@/lib/format";
@@ -239,25 +240,23 @@ export default function Products() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center">
-            <PackageSearch className="w-6 h-6" />
+      <PageHeader
+        icon={PackageSearch}
+        title={T("products")}
+        subtitle={`${martCount} mart · ${foodCount} food · ${products.length} ${T("total")}${pendingCount > 0 ? ` · ${pendingCount} pending approval` : ""}`}
+        iconBgClass="bg-purple-100"
+        iconColorClass="text-purple-600"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={exportCSV} className="h-11 rounded-xl gap-2">
+              <Download className="w-4 h-4" /> CSV
+            </Button>
+            <Button onClick={openAdd} className="h-11 rounded-xl shadow-md gap-2">
+              <Plus className="w-5 h-5" /> Add Product
+            </Button>
           </div>
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">{T("products")}</h1>
-            <p className="text-muted-foreground text-sm">{martCount} mart · {foodCount} food · {products.length} {T("total")} {pendingCount > 0 && `· ${pendingCount} pending approval`}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCSV} className="h-11 rounded-xl gap-2">
-            <Download className="w-4 h-4" /> CSV
-          </Button>
-          <Button onClick={openAdd} className="h-11 rounded-xl shadow-md gap-2">
-            <Plus className="w-5 h-5" /> Add Product
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Tab switcher */}
       <div className="flex gap-2 border-b border-border/40 pb-0">

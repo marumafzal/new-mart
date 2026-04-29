@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { PageHeader } from "@/components/shared";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { fetcher, fetcherWithMeta } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -1437,10 +1438,13 @@ function AjkIdsTab() {
 export default function Communication() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Communication System</h1>
-        <p className="text-muted-foreground">Manage chat, calls, voice notes, AI features, and moderation</p>
-      </div>
+      <PageHeader
+        icon={MessageCircle}
+        title="Communication System"
+        subtitle="Manage chat, calls, voice notes, AI features, and moderation"
+        iconBgClass="bg-cyan-100"
+        iconColorClass="text-cyan-600"
+      />
 
       <Tabs defaultValue="dashboard">
         <TabsList className="grid grid-cols-4 md:grid-cols-8 w-full">

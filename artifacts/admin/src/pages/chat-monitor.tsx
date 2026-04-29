@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -107,23 +108,26 @@ export default function ChatMonitor() {
   return (
     <PullToRefresh onRefresh={() => qc.invalidateQueries({ queryKey: tab === "conversations" ? ["admin-chat-conversations"] : ["admin-chat-reports"] })}>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><MessageCircle className="w-6 h-6 text-cyan-600" /> P2P Chat Monitor</h1>
-            <p className="text-sm text-muted-foreground mt-1">Monitor user-to-user conversations and abuse reports</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant={tab === "conversations" ? "default" : "outline"} size="sm" className="rounded-lg" onClick={() => setTab("conversations")}>
-              <Users className="w-4 h-4 mr-1" /> Conversations
-            </Button>
-            <Button variant={tab === "reports" ? "default" : "outline"} size="sm" className="rounded-lg" onClick={() => setTab("reports")}>
-              <Flag className="w-4 h-4 mr-1" /> Reports
-              {reports.filter(r => r.status === "pending").length > 0 && (
-                <Badge className="ml-1 bg-red-500 text-white text-[10px] px-1.5">{reports.filter(r => r.status === "pending").length}</Badge>
-              )}
-            </Button>
-          </div>
-        </div>
+        <PageHeader
+          icon={MessageCircle}
+          title="P2P Chat Monitor"
+          subtitle="Monitor user-to-user conversations and abuse reports"
+          iconBgClass="bg-cyan-100"
+          iconColorClass="text-cyan-600"
+          actions={
+            <div className="flex gap-2">
+              <Button variant={tab === "conversations" ? "default" : "outline"} size="sm" className="rounded-lg" onClick={() => setTab("conversations")}>
+                <Users className="w-4 h-4 mr-1" /> Conversations
+              </Button>
+              <Button variant={tab === "reports" ? "default" : "outline"} size="sm" className="rounded-lg" onClick={() => setTab("reports")}>
+                <Flag className="w-4 h-4 mr-1" /> Reports
+                {reports.filter(r => r.status === "pending").length > 0 && (
+                  <Badge className="ml-1 bg-red-500 text-white text-[10px] px-1.5">{reports.filter(r => r.status === "pending").length}</Badge>
+                )}
+              </Button>
+            </div>
+          }
+        />
 
         {tab === "conversations" && (
           <>

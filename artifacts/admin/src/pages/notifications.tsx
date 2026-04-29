@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { Bell, RefreshCw, Filter } from "lucide-react";
 import { useAllNotifications } from "@/hooks/use-admin";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,16 +38,18 @@ export default function Notifications() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{T("systemNotifications")}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">All platform notifications across users, riders, and vendors</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="self-start sm:self-auto">
-          <RefreshCw className="w-4 h-4 mr-2" /> {T("refresh")}
-        </Button>
-      </div>
+      <PageHeader
+        icon={Bell}
+        title={T("systemNotifications")}
+        subtitle="All platform notifications across users, riders, and vendors"
+        iconBgClass="bg-blue-100"
+        iconColorClass="text-blue-600"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="self-start sm:self-auto">
+            <RefreshCw className="w-4 h-4 mr-2" /> {T("refresh")}
+          </Button>
+        }
+      />
 
       {/* Role Filter */}
       <div className="flex items-center gap-2 flex-wrap">

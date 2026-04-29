@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   Settings2, Save, RefreshCw, Truck, Car, BarChart3,
   ShoppingCart, Globe, Users, Bike, Store, Zap, Info,
@@ -647,50 +648,44 @@ export default function SettingsPage() {
       />
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Settings2 className="w-5 h-5 text-slate-600" />
+      <PageHeader
+        icon={Settings2}
+        title="App Settings"
+        subtitle={dirtyKeys.size > 0 ? `${dirtyKeys.size} unsaved change${dirtyKeys.size > 1 ? "s" : ""}` : "All settings saved"}
+        iconBgClass="bg-slate-100"
+        iconColorClass="text-slate-600"
+        actions={
+          <div className="flex flex-wrap gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={handleBackup}
+              disabled={backingUp || loading}
+              title="Download all settings as a JSON backup file"
+              className="h-9 rounded-xl gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+            >
+              {backingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              <span className="hidden sm:inline">Backup</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={restoring || loading}
+              title="Restore settings from a JSON backup file"
+              className="h-9 rounded-xl gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
+            >
+              {restoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              <span className="hidden sm:inline">Restore</span>
+            </Button>
+            <Button variant="outline" onClick={() => { loadSettings(); toast({ title: "Reloaded" }); }} disabled={loading} className="h-9 rounded-xl gap-2">
+              <RefreshCw className="w-4 h-4" /> <span className="hidden xs:inline">Reset</span>
+            </Button>
+            <Button onClick={handleSave} disabled={saving || dirtyKeys.size === 0 || appNameBlank} title={appNameBlank ? "App Name cannot be blank" : undefined} className="h-9 rounded-xl gap-2 shadow-sm">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? "Saving..." : `Save${dirtyKeys.size > 0 ? ` (${dirtyKeys.size})` : ""}`}
+            </Button>
           </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-display font-bold text-foreground">App Settings</h1>
-            <p className="text-sm">
-              {dirtyKeys.size > 0
-                ? <span className="text-amber-600 font-medium">{dirtyKeys.size} unsaved change{dirtyKeys.size > 1 ? "s" : ""}</span>
-                : <span className="text-muted-foreground">All settings saved</span>}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 justify-end">
-          <Button
-            variant="outline"
-            onClick={handleBackup}
-            disabled={backingUp || loading}
-            title="Download all settings as a JSON backup file"
-            className="h-9 rounded-xl gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-          >
-            {backingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span className="hidden sm:inline">Backup</span>
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={restoring || loading}
-            title="Restore settings from a JSON backup file"
-            className="h-9 rounded-xl gap-2 border-amber-200 text-amber-700 hover:bg-amber-50"
-          >
-            {restoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-            <span className="hidden sm:inline">Restore</span>
-          </Button>
-          <Button variant="outline" onClick={() => { loadSettings(); toast({ title: "Reloaded" }); }} disabled={loading} className="h-9 rounded-xl gap-2">
-            <RefreshCw className="w-4 h-4" /> <span className="hidden xs:inline">Reset</span>
-          </Button>
-          <Button onClick={handleSave} disabled={saving || dirtyKeys.size === 0 || appNameBlank} title={appNameBlank ? "App Name cannot be blank" : undefined} className="h-9 rounded-xl gap-2 shadow-sm">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? "Saving..." : `Save${dirtyKeys.size > 0 ? ` (${dirtyKeys.size})` : ""}`}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* ── Mobile: sticky section bar with drawer trigger ── */}
       <div className="md:hidden sticky top-0 z-20 -mx-3 sm:-mx-5 px-3 sm:px-5 py-2 bg-slate-50/95 backdrop-blur-sm border-b border-border/40">

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search, TrendingUp, Eye, Heart, ShoppingCart, Star,
@@ -175,32 +176,31 @@ export default function SearchAnalyticsPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <BarChart2 className="w-5 h-5 text-primary" />
-            <h1 className="text-xl font-bold text-gray-900">Search & Engagement Analytics</h1>
+      <PageHeader
+        icon={BarChart2}
+        title="Search & Engagement Analytics"
+        subtitle="What customers are searching, viewing, and engaging with most"
+        iconBgClass="bg-blue-100"
+        iconColorClass="text-blue-600"
+        actions={
+          <div className="flex items-center gap-2">
+            <Select value={timelineDays} onValueChange={setTimelineDays}>
+              <SelectTrigger className="h-8 w-28 rounded-xl text-xs border-gray-200">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="14">Last 14 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="90">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => refetchTrending()} className="h-8 rounded-xl gap-1">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </Button>
           </div>
-          <p className="text-sm text-gray-500">What customers are searching, viewing, and engaging with most</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={timelineDays} onValueChange={setTimelineDays}>
-            <SelectTrigger className="h-8 w-28 rounded-xl text-xs border-gray-200">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="14">Last 14 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" onClick={() => refetchTrending()} className="h-8 rounded-xl gap-1">
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

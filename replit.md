@@ -151,6 +151,16 @@ credentials through the post-login popup once signed in.
   CSV export with blob URL revocation. Run with
   `pnpm --filter @workspace/admin test` (full suite < 15s).
 ### Recent Polish (Apr 2026)
+- **Admin chrome modernization** — All 40+ admin pages now use `PageHeader`
+  from `artifacts/admin/src/components/shared/` for consistent title/icon/
+  subtitle/actions chrome. Three new shared primitives added:
+  `StatCard` (metric tiles with icon, trend, onClick filtering),
+  `FilterBar` (search + filter controls), `ActionBar` (bulk action row).
+  High-traffic pages (riders, vendors, KYC, account-conditions, FAQ) now
+  use `StatCard` grids. Duplicate settings surfaces in `/app-management`
+  replaced with `ManageInSettingsLink`. Pre-existing `methodIcon` function
+  was missing from `DepositRequests.tsx` and `Withdrawals.tsx` — added.
+  Typecheck and build both pass with zero errors.
 - **Auth Methods page** (`/admin/auth-methods`) — unified per-role login
   toggles for Phone OTP, Email OTP, Username/Password, Magic Link, Google
   OAuth, Facebook OAuth, 2FA (TOTP), and Biometric. 8 methods × 3 roles

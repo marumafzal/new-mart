@@ -8,6 +8,7 @@ import {
   Users as UsersIcon, Loader2, AtSign, Phone, Mail, User as UserIcon,
   Gavel, Lock, Copy, UserPlus, Monitor, ChevronDown,
 } from "lucide-react";
+import { PageHeader, StatCard, FilterBar, ActionBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1441,41 +1442,23 @@ export default function Users() {
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6">
-      <div className="bg-gradient-to-r from-[#1A56DB] to-[#2563EB] rounded-2xl p-6 text-white shadow-lg">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-              <UsersIcon className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Users</h1>
-              <p className="text-sm text-blue-100 mt-0.5">
-                {users.length} total
-                {activeCount > 0 && <span> · {activeCount} active</span>}
-                {bannedCount > 0 && <span className="text-red-200"> · {bannedCount} banned</span>}
-                {blockedCount > 0 && <span className="text-amber-200"> · {blockedCount} blocked</span>}
-              </p>
-            </div>
+      <PageHeader
+        icon={UsersIcon}
+        title="Users"
+        subtitle={`${users.length} total${activeCount > 0 ? ` · ${activeCount} active` : ""}${bannedCount > 0 ? ` · ${bannedCount} banned` : ""}${blockedCount > 0 ? ` · ${blockedCount} blocked` : ""}`}
+        iconBgClass="bg-blue-100"
+        iconColorClass="text-blue-600"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportUsersCSV(filtered)} className="h-9 rounded-xl gap-2">
+              <Download className="w-4 h-4" /> Export CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => exportUsersCSV(filtered)}
-            className="h-9 rounded-xl gap-2 bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white"
-          >
-            <Download className="w-4 h-4" /> Export CSV
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="h-9 rounded-xl gap-2 bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white"
-          >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {pendingUsers.length > 0 && (
         <Card className="p-4 rounded-2xl border-amber-200 bg-amber-50/60 shadow-sm">
@@ -1585,54 +1568,61 @@ export default function Users() {
       )}
 
       <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search by name, phone, or email..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30 border-border/50 focus:ring-[#1A56DB]/30" />
-          </div>
-          <Button
-            size="sm"
-            onClick={() => setCreateUserOpen(true)}
-            className="h-11 rounded-xl gap-2 bg-[#1A56DB] hover:bg-[#1A56DB]/90 text-white font-semibold px-4"
-          >
-            <UserPlus className="w-4 h-4" /> Create User
-          </Button>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-40">
-              <SelectValue placeholder="All Roles" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Roles</SelectItem>
-              <SelectItem value="customer">Customer</SelectItem>
-              <SelectItem value="rider">Rider</SelectItem>
-              <SelectItem value="vendor">Vendor</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-44">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="blocked">Blocked</SelectItem>
-              <SelectItem value="banned">Banned</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={conditionTier} onValueChange={setConditionTier}>
-            <SelectTrigger className="h-11 rounded-xl bg-muted/30 border-border/50 w-full sm:w-48">
-              <SelectValue placeholder="Condition Tier" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Conditions</SelectItem>
-              <SelectItem value="clean">Clean (No Conditions)</SelectItem>
-              <SelectItem value="has_conditions">Has Conditions</SelectItem>
-              <SelectItem value="warnings">Warnings</SelectItem>
-              <SelectItem value="restrictions">Restrictions</SelectItem>
-              <SelectItem value="suspensions">Suspensions</SelectItem>
-              <SelectItem value="bans">Bans</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col gap-2">
+          <ActionBar
+            primary={
+              <Button
+                size="sm"
+                onClick={() => setCreateUserOpen(true)}
+                className="h-10 rounded-xl gap-2 bg-[#1A56DB] hover:bg-[#1A56DB]/90 text-white font-semibold px-4"
+              >
+                <UserPlus className="w-4 h-4" /> Create User
+              </Button>
+            }
+          />
+          <FilterBar
+            search={search}
+            onSearch={setSearch}
+            placeholder="Search by name, phone, or email..."
+            filters={<>
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger className="h-10 rounded-xl bg-muted/30 border-border/50 w-full sm:w-40">
+                  <SelectValue placeholder="All Roles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Roles</SelectItem>
+                  <SelectItem value="customer">Customer</SelectItem>
+                  <SelectItem value="rider">Rider</SelectItem>
+                  <SelectItem value="vendor">Vendor</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-10 rounded-xl bg-muted/30 border-border/50 w-full sm:w-44">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="blocked">Blocked</SelectItem>
+                  <SelectItem value="banned">Banned</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={conditionTier} onValueChange={setConditionTier}>
+                <SelectTrigger className="h-10 rounded-xl bg-muted/30 border-border/50 w-full sm:w-48">
+                  <SelectValue placeholder="Condition Tier" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Conditions</SelectItem>
+                  <SelectItem value="clean">Clean (No Conditions)</SelectItem>
+                  <SelectItem value="has_conditions">Has Conditions</SelectItem>
+                  <SelectItem value="warnings">Warnings</SelectItem>
+                  <SelectItem value="restrictions">Restrictions</SelectItem>
+                  <SelectItem value="suspensions">Suspensions</SelectItem>
+                  <SelectItem value="bans">Bans</SelectItem>
+                </SelectContent>
+              </Select>
+            </>}
+          />
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-3">
           <div className="flex items-center gap-2 flex-1">

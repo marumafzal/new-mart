@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   Truck, Search, RefreshCw, Plus, Trash2, Edit, CheckCircle2,
   XCircle, Clock, Users, Store, Shield, FileText, AlertTriangle,
@@ -281,23 +282,18 @@ export default function DeliveryAccess() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
-            <Truck className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Delivery Access Control</h1>
-            <p className="text-sm text-muted-foreground">
-              Mode: <span className="font-bold capitalize">{mode}</span> · {whitelist.length} whitelist entries
-              {pendingRequests.length > 0 && <> · <span className="text-orange-600 font-bold">{pendingRequests.length} pending requests</span></>}
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-          <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-        </Button>
-      </div>
+      <PageHeader
+        icon={Truck}
+        title="Delivery Access Control"
+        subtitle={`Mode: ${mode} · ${whitelist.length} whitelist entries${pendingRequests.length > 0 ? ` · ${pendingRequests.length} pending requests` : ""}`}
+        iconBgClass="bg-blue-100"
+        iconColorClass="text-blue-600"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+        }
+      />
 
       <div>
         <p className="text-sm font-semibold text-muted-foreground mb-3">Delivery Access Mode</p>

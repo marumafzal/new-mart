@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   ArrowDownToLine, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock,
   Wallet, AlertTriangle, PartyPopper, Inbox,
@@ -52,7 +53,7 @@ function methodLabel(method: string | null) {
   return "Card";
 }
 
-function methodIcon(method: string | null): string {
+function methodIcon(method: string | null | undefined): string {
   if (!method) return "💳";
   const m = method.toLowerCase();
   if (m.includes("jazzcash"))  return "📱";
@@ -402,16 +403,18 @@ export default function DepositRequests() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5 pb-28">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Deposit Requests</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Approve or reject rider & customer wallet deposit requests</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="self-start sm:self-auto">
-          <RefreshCw className="w-4 h-4 mr-2"/> {T("refresh")}
-        </Button>
-      </div>
+      <PageHeader
+        icon={ArrowDownToLine}
+        title="Deposit Requests"
+        subtitle="Approve or reject rider & customer wallet deposit requests"
+        iconBgClass="bg-green-100"
+        iconColorClass="text-green-600"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="w-4 h-4 mr-2"/> {T("refresh")}
+          </Button>
+        }
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

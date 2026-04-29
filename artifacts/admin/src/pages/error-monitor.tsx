@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
 import { safeCopyToClipboard } from "@/lib/safeClipboard";
@@ -1068,21 +1069,13 @@ export default function ErrorMonitor() {
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#F8FAFC", padding: "24px", fontFamily: "Inter, sans-serif" }}>
 
-      {/* ── Header ── */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 20 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
-            <Bug style={{ width: 22, height: 22, color: "#EF4444" }} />
-            Error Monitor
-          </h1>
-          <p style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-            Real-time error tracking across all apps
-            {lastScanAt && <span style={{ marginLeft: 8, color: "#9CA3AF" }}>· Last scan: {formatTimestamp(lastScanAt)}</span>}
-            {isAutoRunning && <span style={{ marginLeft: 8, color: "#16A34A", fontWeight: 600 }}>· Auto-scan ON</span>}
-          </p>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <PageHeader
+        icon={Bug}
+        title="Error Monitor"
+        subtitle={`Real-time error tracking across all apps${lastScanAt ? ` · Last scan: ${formatTimestamp(lastScanAt)}` : ""}${isAutoRunning ? " · Auto-scan ON" : ""}`}
+        iconBgClass="bg-red-100"
+        iconColorClass="text-red-600"
+        actions={<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => setShowAutoResolvePanel(!showAutoResolvePanel)}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: `1px solid ${autoResolveSettings?.enabled ? "#22C55E" : "#D1D5DB"}`, backgroundColor: autoResolveSettings?.enabled ? "#F0FDF4" : "#ffffff", color: autoResolveSettings?.enabled ? "#16A34A" : "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
@@ -1152,8 +1145,8 @@ export default function ErrorMonitor() {
             <RefreshCw style={{ width: 14, height: 14, animation: (isLoading || customerLoading) ? "spin 1s linear infinite" : "none" }} />
             Refresh
           </button>
-        </div>
-      </div>
+        </div>}
+      />
 
       {/* ── Scan Panel ── */}
       {showScanPanel && (

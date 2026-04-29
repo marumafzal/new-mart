@@ -4,6 +4,7 @@ import { useOrdersEnriched, useOrdersStats, fetchOrdersExport, useUpdateOrder, u
 import { formatCurrency } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, Download, RefreshCw, AlertTriangle } from "lucide-react";
+import { PageHeader, ActionBar } from "@/components/shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useLanguage } from "@/lib/useLanguage";
@@ -231,26 +232,27 @@ export default function Orders() {
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-5 sm:space-y-6">
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 sm:w-12 sm:h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shrink-0" aria-hidden="true">
-            <ShoppingBag className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("martFoodOrders")}</h1>
-            <p className="text-muted-foreground text-xs sm:text-sm">{allTotal} {T("total")} · {pendingCount} {T("pending")} · {deliveredCount} {T("delivered")}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={exporting} className="h-9 rounded-xl gap-2" aria-label="Export orders as CSV">
-            <Download className="w-4 h-4" aria-hidden="true" /> {exporting ? "Exporting..." : "CSV"}
-          </Button>
+      <PageHeader
+        icon={ShoppingBag}
+        title={T("martFoodOrders")}
+        subtitle={`${allTotal} ${T("total")} · ${pendingCount} ${T("pending")} · ${deliveredCount} ${T("delivered")}`}
+        iconBgClass="bg-indigo-100"
+        iconColorClass="text-indigo-600"
+        actions={
           <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
             <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500" : "bg-amber-400"} animate-pulse`} aria-hidden="true" />
             {isLoading ? "Refreshing..." : `${secAgo}s ago`}
           </div>
-        </div>
-      </header>
+        }
+      />
+
+      <ActionBar
+        secondary={
+          <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={exporting} className="h-9 rounded-xl gap-2" aria-label="Export orders as CSV">
+            <Download className="w-4 h-4" aria-hidden="true" /> {exporting ? "Exporting..." : "Export CSV"}
+          </Button>
+        }
+      />
 
       {pendingCount > 0 && (
         <div className="flex items-center gap-3 bg-amber-50 border-2 border-amber-400 rounded-2xl px-4 py-3" role="alert">

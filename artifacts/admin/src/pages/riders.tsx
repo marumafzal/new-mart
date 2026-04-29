@@ -6,6 +6,7 @@ import {
   CheckCircle2, Ban, AlertTriangle, Star, Phone, Download, CalendarDays,
   WifiOff, Wifi, ShieldAlert, ShieldCheck, Eye, XCircle, SkipForward, Gavel, Clock,
 } from "lucide-react";
+import { PageHeader, StatCard, FilterBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { PullToRefresh } from "@/components/PullToRefresh";
@@ -291,70 +292,54 @@ export default function Riders() {
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center">
-            <Bike className="w-6 h-6" />
+      <PageHeader
+        icon={Bike}
+        title="Riders"
+        subtitle={`${riders.length} total · ${onlineRiders} online now${pendingRiders > 0 ? ` · ${pendingRiders} pending` : ""}`}
+        iconBgClass="bg-green-100"
+        iconColorClass="text-green-600"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportRidersCSV(filtered)} className="h-9 rounded-xl gap-2">
+              <Download className="w-4 h-4" /> CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
+            </Button>
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Riders</h1>
-            <p className="text-sm text-muted-foreground">{riders.length} total · {onlineRiders} online now{pendingRiders > 0 ? ` · ${pendingRiders} pending` : ""}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportRidersCSV(filtered)} className="h-9 rounded-xl gap-2">
-            <Download className="w-4 h-4" /> CSV
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: "Total Riders",      value: String(riders.length),       icon: Bike,          color: "text-green-600",  bg: "bg-green-100" },
-          { label: "Online Now",        value: String(onlineRiders),        icon: CheckCircle2,  color: "text-emerald-600",bg: "bg-emerald-100"},
-          { label: "Pending Approval",  value: String(pendingRiders),       icon: AlertTriangle, color: "text-yellow-600", bg: "bg-yellow-100" },
-          { label: "Wallet Pending",    value: formatCurrency(totalWallet), icon: Wallet,        color: "text-amber-600",  bg: "bg-amber-100" },
-        ].map((s, i) => (
-          <Card key={i} className="rounded-2xl border-border/50 shadow-sm">
-            <CardContent className="p-4 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium mb-0.5">{s.label}</p>
-                <p className="text-xl font-bold text-foreground">{s.value}</p>
-              </div>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.bg}`}>
-                <s.icon className={`w-5 h-5 ${s.color}`} />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        <StatCard icon={Bike} label="Total Riders" value={riders.length} iconBgClass="bg-green-100" iconColorClass="text-green-600" />
+        <StatCard icon={CheckCircle2} label="Online Now" value={onlineRiders} iconBgClass="bg-emerald-100" iconColorClass="text-emerald-600" />
+        <StatCard icon={AlertTriangle} label="Pending Approval" value={pendingRiders} iconBgClass="bg-yellow-100" iconColorClass="text-yellow-600" />
+        <StatCard icon={Wallet} label="Wallet Pending" value={formatCurrency(totalWallet)} iconBgClass="bg-amber-100" iconColorClass="text-amber-600" />
       </div>
 
       {/* Filters */}
       <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search by name or phone..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl bg-muted/30" />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-11 rounded-xl bg-muted/30 w-full sm:w-44">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Riders</SelectItem>
-              <SelectItem value="pending">Pending Approval</SelectItem>
-              <SelectItem value="online">Online</SelectItem>
-              <SelectItem value="offline">Offline</SelectItem>
-              <SelectItem value="blocked">Blocked</SelectItem>
-              <SelectItem value="banned">Banned</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <FilterBar
+          search={search}
+          onSearch={setSearch}
+          placeholder="Search by name or phone..."
+          filters={
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-10 rounded-xl bg-muted/30 w-full sm:w-44">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Riders</SelectItem>
+                <SelectItem value="pending">Pending Approval</SelectItem>
+                <SelectItem value="online">Online</SelectItem>
+                <SelectItem value="offline">Offline</SelectItem>
+                <SelectItem value="blocked">Blocked</SelectItem>
+                <SelectItem value="banned">Banned</SelectItem>
+              </SelectContent>
+            </Select>
+          }
+        />
         <div className="flex items-center gap-2">
           <CalendarDays className="w-4 h-4 text-muted-foreground shrink-0" />
           <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9 rounded-xl bg-muted/30 text-xs w-32" />

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   Shield, RefreshCw, CheckCircle2, XCircle, Loader2,
   Search, Clock, AlertTriangle, Users, ChevronRight,
@@ -182,18 +183,18 @@ export default function OtpControl() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
-          <Shield className="w-5 h-5 text-indigo-700" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">OTP Global Control</h1>
-          <p className="text-xs text-muted-foreground">Single control panel for all OTP settings — no OTP controls exist elsewhere.</p>
-        </div>
-        <Button size="sm" variant="outline" onClick={() => { loadStatus(); loadAudit(); }} disabled={statusLoading} className="ml-auto gap-1">
-          <RefreshCw className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`} /> Refresh
-        </Button>
-      </div>
+      <PageHeader
+        icon={Shield}
+        title="OTP Global Control"
+        subtitle="Single control panel for all OTP settings — no OTP controls exist elsewhere."
+        iconBgClass="bg-indigo-100"
+        iconColorClass="text-indigo-700"
+        actions={
+          <Button size="sm" variant="outline" onClick={() => { loadStatus(); loadAudit(); }} disabled={statusLoading} className="gap-1">
+            <RefreshCw className={`w-3.5 h-3.5 ${statusLoading ? "animate-spin" : ""}`} /> Refresh
+          </Button>
+        }
+      />
 
       {/* ── 1. GLOBAL SUSPENSION STATUS ── */}
       <Card>

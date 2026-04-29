@@ -9,6 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Toggle, Field, SLabel } from "@/components/AdminShared";
+import { ManageInSettingsLink } from "@/components/shared";
 
 export interface Setting { key: string; value: string; label: string; category: string; }
 export type CatKey = 
@@ -1583,35 +1584,15 @@ export function renderSection(
 
         {/* ── Group 4: Loyalty Program ── */}
         <Group icon={Star} iconCls="bg-amber-100 text-amber-600" title="Loyalty Program" subtitle="Points earned per Rs. 100 spent">
-          <Tog k="customer_loyalty_enabled" label="Loyalty Points Program" sub="Customers earn points with each order" dangerOff />
-          <Field k="customer_loyalty_pts" label="Points Per Rs. 100 Spent" suffix="pts" min={0} disabled={!loyaltyEnabled} />
-          {/* Loyalty Simulation Table */}
-          <div className={loyaltyEnabled ? "" : "opacity-40 pointer-events-none"}>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Loyalty Simulation</p>
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-xs">
-                <thead><tr className="bg-muted/50">
-                  <th className="px-3 py-2 text-left font-bold text-muted-foreground">Order Value</th>
-                  <th className="px-3 py-2 text-right font-bold text-muted-foreground">Points Earned</th>
-                  <th className="px-3 py-2 text-right font-bold text-muted-foreground">Est. Value</th>
-                </tr></thead>
-                <tbody className="divide-y divide-border">
-                  {[100, 500, 1000, 2000, 5000].map(amt => {
-                    const pts = Math.floor(amt / 100 * loyaltyPts);
-                    const val = (pts * 0.1).toFixed(2);
-                    return (
-                      <tr key={amt} className="hover:bg-muted/20">
-                        <td className="px-3 py-2 text-foreground font-medium">Rs. {amt.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right font-bold text-amber-700">{pts} pts</td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">≈ Rs. {val}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1.5">* 1 point ≈ Rs. 0.10 value. Adjust redemption rate in loyalty engine.</p>
-          </div>
+          {/* Full loyalty tier rules, redemption config and point history live in the dedicated Loyalty page */}
+          <ManageInSettingsLink
+            label="Loyalty Engine"
+            value="Managed in Loyalty"
+            description="Configure point multipliers, tier thresholds, redemption rules, and expiry policy in the dedicated Loyalty page."
+            tone="info"
+            to="/loyalty"
+            linkLabel="Open Loyalty"
+          />
         </Group>
 
         {/* ── Group 5: Cashback Settings ── */}

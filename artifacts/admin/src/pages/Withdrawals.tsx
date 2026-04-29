@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   BanknoteIcon, CheckCircle, XCircle, RefreshCw, ChevronDown, ChevronUp, Clock, Filter, CheckSquare,
   Wallet, AlertTriangle, PartyPopper, Inbox, Landmark,
@@ -57,7 +58,7 @@ function methodLabel(method: string | null) {
   return "Card";
 }
 
-function methodIcon(method: string | null): string {
+function methodIcon(method: string | null | undefined): string {
   if (!method) return "🏦";
   const m = method.toLowerCase();
   if (m.includes("jazzcash"))  return "📱";
@@ -261,16 +262,18 @@ export default function Withdrawals() {
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Withdrawal Requests</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Approve or reject rider & vendor withdrawal requests</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="self-start sm:self-auto">
-          <RefreshCw className="w-4 h-4 mr-2"/> {T("refresh")}
-        </Button>
-      </div>
+      <PageHeader
+        icon={BanknoteIcon}
+        title="Withdrawal Requests"
+        subtitle="Approve or reject rider & vendor withdrawal requests"
+        iconBgClass="bg-purple-100"
+        iconColorClass="text-purple-600"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="w-4 h-4 mr-2"/> {T("refresh")}
+          </Button>
+        }
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Receipt, TrendingUp, TrendingDown, DollarSign, Search, RefreshCw, User, Download, CalendarDays } from "lucide-react";
+import { PageHeader, StatCard, FilterBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 
@@ -53,25 +54,23 @@ export default function Transactions() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-sky-100 text-sky-600 rounded-xl flex items-center justify-center">
-            <Receipt className="w-6 h-6" />
+      <PageHeader
+        icon={Receipt}
+        title={T("walletTransactions")}
+        subtitle={T("walletTxnSubtitle")}
+        iconBgClass="bg-sky-100"
+        iconColorClass="text-sky-600"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportTxnCSV(filtered)} className="h-9 rounded-xl gap-2">
+              <Download className="w-4 h-4" /> {T("csvExport")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> {T("refresh")}
+            </Button>
           </div>
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">{T("walletTransactions")}</h1>
-            <p className="text-muted-foreground text-sm">{T("walletTxnSubtitle")}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => exportTxnCSV(filtered)} className="h-9 rounded-xl gap-2 self-start sm:self-auto">
-            <Download className="w-4 h-4" /> {T("csvExport")}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2 self-start sm:self-auto">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} /> {T("refresh")}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -124,15 +123,12 @@ export default function Transactions() {
       {/* Filters */}
       <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by user name, phone, or description..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9 h-11 rounded-xl bg-muted/30 border-border/50"
-            />
-          </div>
+          <FilterBar
+            search={search}
+            onSearch={setSearch}
+            placeholder="Search by user name, phone, or description..."
+            className="flex-1"
+          />
           <div className="flex gap-2">
             {[
               { value: "all", label: T("allTypes") },

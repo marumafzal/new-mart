@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { PageHeader, StatCard } from "@/components/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Shield, Search, RefreshCw, AlertTriangle, Ban, XCircle, CheckCircle2,
@@ -289,46 +290,30 @@ export default function AccountConditions() {
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center">
-            <Shield className="w-6 h-6" />
+      <PageHeader
+        icon={Shield}
+        title="Conditions Hub"
+        subtitle={`${stats.total} active conditions`}
+        iconBgClass="bg-indigo-100"
+        iconColorClass="text-indigo-600"
+        actions={
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => setShowApplyModal(true)} className="h-9 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+              <Shield className="w-4 h-4" /> Apply Condition
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
+              <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+            </Button>
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">Conditions Hub</h1>
-            <p className="text-sm text-muted-foreground">{stats.total} active conditions</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => setShowApplyModal(true)} className="h-9 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
-            <Shield className="w-4 h-4" /> Apply Condition
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
-            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {[
-          { label: "Active", value: String(stats.total), color: "text-indigo-600", bg: "bg-indigo-100", icon: Shield },
-          { label: "Warnings", value: String(stats.severity.warning || 0), color: "text-yellow-600", bg: "bg-yellow-100", icon: AlertTriangle },
-          { label: "Restrictions", value: String((stats.severity.restriction_normal || 0) + (stats.severity.restriction_strict || 0)), color: "text-orange-600", bg: "bg-orange-100", icon: XCircle },
-          { label: "Suspensions", value: String(stats.severity.suspension || 0), color: "text-purple-600", bg: "bg-purple-100", icon: Ban },
-          { label: "Bans", value: String(stats.severity.ban || 0), color: "text-red-600", bg: "bg-red-100", icon: Ban },
-        ].map((s, i) => (
-          <Card key={i} className="rounded-2xl border-border/50 shadow-sm">
-            <CardContent className="p-4 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium mb-0.5">{s.label}</p>
-                <p className="text-xl font-bold text-foreground">{s.value}</p>
-              </div>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.bg}`}>
-                <s.icon className={`w-5 h-5 ${s.color}`} />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        <StatCard icon={Shield} label="Active" value={stats.total} iconBgClass="bg-indigo-100" iconColorClass="text-indigo-600" />
+        <StatCard icon={AlertTriangle} label="Warnings" value={stats.severity.warning || 0} iconBgClass="bg-yellow-100" iconColorClass="text-yellow-600" />
+        <StatCard icon={XCircle} label="Restrictions" value={(stats.severity.restriction_normal || 0) + (stats.severity.restriction_strict || 0)} iconBgClass="bg-orange-100" iconColorClass="text-orange-600" />
+        <StatCard icon={Ban} label="Suspensions" value={stats.severity.suspension || 0} iconBgClass="bg-purple-100" iconColorClass="text-purple-600" />
+        <StatCard icon={Ban} label="Bans" value={stats.severity.ban || 0} iconBgClass="bg-red-100" iconColorClass="text-red-600" />
       </div>
 
       <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">

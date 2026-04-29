@@ -1,4 +1,6 @@
+import { FileText } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { PageHeader } from "@/components/shared";
 import { fetcher } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,15 +54,13 @@ export default function ConsentLogPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Consent &amp; Terms Versions
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          GDPR / privacy audit trail. Bumping a version forces every user
-          to re-accept on next app launch.
-        </p>
-      </header>
+      <PageHeader
+        icon={FileText}
+        title="Consent & Terms Versions"
+        subtitle="GDPR / privacy audit trail. Bumping a version forces every user to re-accept on next app launch."
+        iconBgClass="bg-blue-100"
+        iconColorClass="text-blue-600"
+      />
 
       <Card className="p-5">
         <h2 className="font-semibold mb-3">Current Terms Versions</h2>

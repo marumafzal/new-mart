@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { PageHeader } from "@/components/shared";
 import { fetcher } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,15 +65,13 @@ export default function WishlistInsights() {
   return (
     <PullToRefresh onRefresh={async () => { await refetch(); }}>
       <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Heart className="w-6 h-6 text-pink-500" /> Wishlist Insights
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Products ranked by customer demand — see what users want most
-          </p>
-        </div>
+        <PageHeader
+          icon={Heart}
+          title="Wishlist Insights"
+          subtitle="Products ranked by customer demand — see what users want most"
+          iconBgClass="bg-pink-100"
+          iconColorClass="text-pink-600"
+        />
 
         {/* Stat cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

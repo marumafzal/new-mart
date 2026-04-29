@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Megaphone, Plus, Pencil, Trash2, Eye, Copy, Pause, Play,
@@ -482,25 +483,19 @@ export default function PopupsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center">
-            <Megaphone className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Popups & Announcements</h1>
-            <p className="text-muted-foreground text-sm">
-              {liveCampaigns} live{scheduledCampaigns > 0 ? ` · ${scheduledCampaigns} scheduled` : ""} · {campaigns.length} total
-            </p>
-          </div>
-        </div>
-        {canWrite && (
+      <PageHeader
+        icon={Megaphone}
+        title="Popups & Announcements"
+        subtitle={`${liveCampaigns} live${scheduledCampaigns > 0 ? ` · ${scheduledCampaigns} scheduled` : ""} · ${campaigns.length} total`}
+        iconBgClass="bg-purple-100"
+        iconColorClass="text-purple-600"
+        actions={canWrite ? (
           <Button onClick={openNew} className="h-10 rounded-xl gap-2 shadow-md">
             <Plus className="w-4 h-4" />
             New Campaign
           </Button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border/50">

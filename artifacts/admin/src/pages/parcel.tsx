@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { PageHeader } from "@/components/shared";
 import { useParcelBookings, useUpdateParcelBooking } from "@/hooks/use-admin";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -99,22 +100,19 @@ export default function Parcel() {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 sm:w-12 sm:h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center shrink-0">
-            <Box className="w-5 h-5 sm:w-6 sm:h-6" />
+      <PageHeader
+        icon={Box}
+        title={T("parcelBookings")}
+        subtitle={`${totalCount} ${T("total")} · ${pendingCount} ${T("pending")} · ${activeCount} ${T("active")}`}
+        iconBgClass="bg-orange-100"
+        iconColorClass="text-orange-600"
+        actions={
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500" : "bg-amber-400"} animate-pulse`} />
+            {isLoading ? "Refreshing..." : `Refreshed ${secAgo}s ago`}
           </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("parcelBookings")}</h1>
-            <p className="text-muted-foreground text-xs sm:text-sm">{totalCount} {T("total")} · {pendingCount} {T("pending")} · {activeCount} {T("active")}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-          <span className={`w-2 h-2 rounded-full ${secAgo < 35 ? "bg-green-500" : "bg-amber-400"} animate-pulse`} />
-          {isLoading ? "Refreshing..." : `Refreshed ${secAgo}s ago`}
-        </div>
-      </div>
+        }
+      />
 
       {/* Pending parcel bookings alert */}
       {pendingCount > 0 && (

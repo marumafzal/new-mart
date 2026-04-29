@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1414,15 +1415,13 @@ function RulesTab() {
 export default function VanServicePage() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
-          <Bus className="w-5 h-5 text-indigo-600" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Van Service Management</h1>
-          <p className="text-sm text-muted-foreground">Manage commercial van routes, schedules, vehicles, drivers and seat bookings</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Bus}
+        title="Van Service Management"
+        subtitle="Manage commercial van routes, schedules, vehicles, drivers and seat bookings"
+        iconBgClass="bg-indigo-100"
+        iconColorClass="text-indigo-600"
+      />
 
       <Tabs defaultValue="routes">
         <TabsList className="mb-2">

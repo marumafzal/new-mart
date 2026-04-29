@@ -3,6 +3,7 @@ import {
   Ticket, Plus, RefreshCw, Search, Trash2, Pencil,
   CheckCircle2, XCircle, Clock, Zap, ToggleLeft, ToggleRight,
 } from "lucide-react";
+import { PageHeader } from "@/components/shared";
 import { usePromoCodes, useCreatePromoCode, useUpdatePromoCode, useDeletePromoCode } from "@/hooks/use-admin";
 import { formatDate } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
@@ -231,18 +232,14 @@ export default function PromoCodes() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center">
-            <Ticket className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{T("promoCodes")}</h1>
-            <p className="text-sm text-muted-foreground">{codes.length} total · {activeCodes} active · {expiredCodes} expired</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader
+        icon={Ticket}
+        title={T("promoCodes")}
+        subtitle={`${codes.length} total · ${activeCodes} active · ${expiredCodes} expired`}
+        iconBgClass="bg-violet-100"
+        iconColorClass="text-violet-600"
+        actions={
+          <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
             <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
           </Button>
@@ -250,7 +247,8 @@ export default function PromoCodes() {
             <Plus className="w-4 h-4" /> New Code
           </Button>
         </div>
-      </div>
+        }
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

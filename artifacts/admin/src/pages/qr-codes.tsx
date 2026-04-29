@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -65,15 +66,18 @@ export default function QrCodesPage() {
   return (
     <PullToRefresh onRefresh={async () => { await refetch(); }}>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><QrCodeIcon className="w-6 h-6 text-indigo-600" /> QR Code Management</h1>
-            <p className="text-sm text-muted-foreground mt-1">Generate, view, and manage payment & promo QR codes</p>
-          </div>
-          <Button className="rounded-xl gap-2" onClick={() => setShowCreate(true)}>
-            <Plus className="w-4 h-4" /> Generate QR
-          </Button>
-        </div>
+        <PageHeader
+          icon={QrCodeIcon}
+          title="QR Code Management"
+          subtitle="Generate, view, and manage payment & promo QR codes"
+          iconBgClass="bg-indigo-100"
+          iconColorClass="text-indigo-600"
+          actions={
+            <Button className="rounded-xl gap-2" onClick={() => setShowCreate(true)}>
+              <Plus className="w-4 h-4" /> Generate QR
+            </Button>
+          }
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="p-4 rounded-2xl">

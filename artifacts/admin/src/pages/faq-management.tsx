@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PageHeader, StatCard } from "@/components/shared";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   HelpCircle, Plus, Pencil, Trash2, RefreshCw, ChevronDown,
@@ -202,37 +203,29 @@ export default function FAQManagementPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <HelpCircle className="w-5 h-5 text-primary" />
-            <h1 className="text-xl font-bold text-gray-900">FAQ Management</h1>
+      <PageHeader
+        icon={HelpCircle}
+        title="FAQ Management"
+        subtitle="Manage frequently asked questions shown in the customer app"
+        iconBgClass="bg-primary/10"
+        iconColorClass="text-primary"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-8 rounded-xl gap-1">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </Button>
+            <Button size="sm" onClick={() => setEditFaq(EMPTY_FORM)} className="h-8 rounded-xl gap-1.5">
+              <Plus className="w-3.5 h-3.5" /> Add FAQ
+            </Button>
           </div>
-          <p className="text-sm text-gray-500">Manage frequently asked questions shown in the customer app</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="h-8 rounded-xl gap-1">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </Button>
-          <Button size="sm" onClick={() => setEditFaq(EMPTY_FORM)} className="h-8 rounded-xl gap-1.5">
-            <Plus className="w-3.5 h-3.5" /> Add FAQ
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Total FAQs", value: faqs.length, color: "text-gray-700", bg: "bg-gray-50 border-gray-200" },
-          { label: "Active", value: activeCount, color: "text-green-700", bg: "bg-green-50 border-green-200" },
-          { label: "Inactive", value: inactiveCount, color: "text-amber-700", bg: "bg-amber-50 border-amber-200" },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border p-3 ${s.bg}`}>
-            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
-          </div>
-        ))}
+        <StatCard icon={HelpCircle} label="Total FAQs" value={faqs.length} iconBgClass="bg-gray-100" iconColorClass="text-gray-700" />
+        <StatCard icon={HelpCircle} label="Active" value={activeCount} iconBgClass="bg-green-50" iconColorClass="text-green-700" />
+        <StatCard icon={HelpCircle} label="Inactive" value={inactiveCount} iconBgClass="bg-amber-50" iconColorClass="text-amber-700" />
       </div>
 
       {/* Filters */}

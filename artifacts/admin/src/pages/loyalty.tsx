@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { PageHeader } from "@/components/shared";
 import { Search, Star, Plus, Minus, Loader2, Settings2, ArrowUpDown } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetcher } from "@/lib/api";
@@ -241,20 +242,18 @@ export default function LoyaltyPage() {
   return (
     <PullToRefresh onRefresh={async () => { await refetch(); }}>
       <div className="space-y-6 p-4 md:p-6 max-w-7xl mx-auto">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg">
-              <Star className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Loyalty Points</h1>
-              <p className="text-sm text-muted-foreground">Manage customer loyalty point balances</p>
-            </div>
-          </div>
-          <Badge variant="outline" className={`${loyaltyEnabled ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-red-50 text-red-700 border-red-300"} text-xs font-bold`}>
-            {loyaltyEnabled ? "Program Active" : "Program Disabled"}
-          </Badge>
-        </div>
+        <PageHeader
+          icon={Star}
+          title="Loyalty Points"
+          subtitle="Manage customer loyalty point balances"
+          iconBgClass="bg-amber-100"
+          iconColorClass="text-amber-600"
+          actions={
+            <Badge variant="outline" className={`${loyaltyEnabled ? "bg-emerald-50 text-emerald-700 border-emerald-300" : "bg-red-50 text-red-700 border-red-300"} text-xs font-bold`}>
+              {loyaltyEnabled ? "Program Active" : "Program Disabled"}
+            </Badge>
+          }
+        />
 
         <Card className="rounded-xl border shadow-sm p-4">
           <div className="flex items-center gap-3 mb-3">

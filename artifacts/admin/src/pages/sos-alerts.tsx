@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, RefreshCw, Phone, MapPin, Car, Clock, CheckCircle, CheckCheck, X } from "lucide-react";
+import { PageHeader, StatCard } from "@/components/shared";
 import { fetcher, getAdminAccessToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -410,26 +411,30 @@ export default function SosAlerts() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2 text-red-600">
-            <AlertTriangle className="w-6 h-6" /> SOS Alerts
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {total} alert{total !== 1 ? "s" : ""} in this view · {activeCount} unresolved
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border ${wsConnected ? "bg-green-50 border-green-200 text-green-700" : "bg-gray-50 border-gray-200 text-gray-500"}`}>
-            <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
-            {wsConnected ? "Live" : "Connecting..."}
+      <PageHeader
+        icon={AlertTriangle}
+        title="SOS Alerts"
+        subtitle={`${total} alert${total !== 1 ? "s" : ""} in this view · ${activeCount} unresolved`}
+        iconBgClass="bg-red-100"
+        iconColorClass="text-red-600"
+        actions={
+          <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border ${wsConnected ? "bg-green-50 border-green-200 text-green-700" : "bg-gray-50 border-gray-200 text-gray-500"}`}>
+              <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-green-500 animate-pulse" : "bg-gray-400"}`} />
+              {wsConnected ? "Live" : "Connecting..."}
+            </div>
+            <Button size="sm" variant="outline" onClick={() => loadAlerts(1)} disabled={loading} className="h-9 text-xs gap-1.5">
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
           </div>
-          <Button size="sm" variant="outline" onClick={() => loadAlerts(1)} disabled={loading} className="h-9 text-xs gap-1.5">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-        </div>
+        }
+      />
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard icon={AlertTriangle} label="Total in View" value={total} iconBgClass="bg-gray-100" iconColorClass="text-gray-600" />
+        <StatCard icon={Clock} label="Unresolved (Active)" value={activeCount} iconBgClass="bg-red-100" iconColorClass="text-red-600" onClick={() => setTab("active")} />
       </div>
 
       {/* Tabs */}

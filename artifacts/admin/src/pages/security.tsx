@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { PageHeader } from "@/components/shared";
 import {
   Shield, Save, RefreshCw, Info, AlertTriangle,
   CheckCircle2, XCircle, Lock,
@@ -353,31 +354,24 @@ export default function SecurityPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-red-100 rounded-xl flex items-center justify-center">
-            <Shield className="w-5 h-5 text-red-600" />
+      <PageHeader
+        icon={Shield}
+        title="Security"
+        subtitle={dirtyKeys.size > 0 ? `${dirtyKeys.size} unsaved change${dirtyKeys.size > 1 ? "s" : ""}` : "OTP, sessions, rate limits, GPS, fraud detection, IP whitelist, audit log"}
+        iconBgClass="bg-red-100"
+        iconColorClass="text-red-600"
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => { loadSettings(); toast({ title: "Reloaded" }); }} disabled={loading} className="h-9 rounded-xl gap-2">
+              <RefreshCw className="w-4 h-4" /> Reset
+            </Button>
+            <Button onClick={handleSave} disabled={saving || dirtyKeys.size === 0 || !!ipWhitelistError} className="h-9 rounded-xl gap-2 shadow-sm">
+              {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              {saving ? "Saving..." : `Save${dirtyKeys.size > 0 ? ` (${dirtyKeys.size})` : ""}`}
+            </Button>
           </div>
-          <div>
-            <h1 className="text-2xl font-display font-bold text-foreground">Security</h1>
-            <p className="text-sm text-muted-foreground">
-              {dirtyKeys.size > 0
-                ? <span className="text-amber-600 font-medium">{dirtyKeys.size} unsaved change{dirtyKeys.size > 1 ? "s" : ""}</span>
-                : <span>OTP, sessions, rate limits, GPS, fraud detection, IP whitelist, audit log</span>}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { loadSettings(); toast({ title: "Reloaded" }); }} disabled={loading} className="h-9 rounded-xl gap-2">
-            <RefreshCw className="w-4 h-4" /> Reset
-          </Button>
-          <Button onClick={handleSave} disabled={saving || dirtyKeys.size === 0 || !!ipWhitelistError} className="h-9 rounded-xl gap-2 shadow-sm">
-            {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? "Saving..." : `Save${dirtyKeys.size > 0 ? ` (${dirtyKeys.size})` : ""}`}
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Sub-tab bar — horizontally scrollable on mobile */}
       <div className="overflow-x-auto -mx-1 px-1">

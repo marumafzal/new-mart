@@ -422,7 +422,8 @@ function RideCard({ ride, liveTracking, reviews, ratingWindowHours, serverNow, o
         const totalFare = ride.fare != null ? Number(ride.fare) : 0;
         const gstPct = rideConfig.finance.gstEnabled ? (rideConfig.finance.gstPct / 100) : 0;
         const gst = ride.fareBreakdown?.gstAmount ?? Math.round(totalFare * gstPct);
-        const baseFare = ride.fareBreakdown?.baseFare ?? (totalFare - gst);
+        const perKm = ride.type === "car" ? rideConfig.rides.carPerKm : rideConfig.rides.bikePerKm;
+        const baseFare = ride.fareBreakdown?.baseFare ?? Math.round(parseFloat(String(ride.distance ?? 0)) * perKm);
         return (
           <View style={styles.fareBreakdownBar}>
             <View style={styles.fareRow}>

@@ -390,17 +390,27 @@ export default function Home() {
       qc.invalidateQueries({ queryKey: ["rider-requests"] });
       qc.invalidateQueries({ queryKey: ["rider-active"] });
     };
+    /* Invalidate earnings immediately when a delivery or ride completes so the
+       Home screen progress bar updates within seconds instead of waiting for the
+       60-second polling cycle. The mutations in Active.tsx also call this on the
+       happy-path; this socket handler covers cases where the update arrives via
+       server push (e.g. admin marks delivered, or another tab completes the task). */
+    const handleCompletionEvent = () => {
+      qc.invalidateQueries({ queryKey: ["rider-requests"] });
+      qc.invalidateQueries({ queryKey: ["rider-active"] });
+      qc.invalidateQueries({ queryKey: ["rider-earnings"] });
+    };
     sharedSocket.on("rider:new-request", handleNewRequest);
     sharedSocket.on("new:request", handleNewRequest);
     sharedSocket.on("rider:request-cancelled", handleStateChange);
-    sharedSocket.on("rider:ride-updated", handleStateChange);
-    sharedSocket.on("rider:order-updated", handleStateChange);
+    sharedSocket.on("rider:ride-updated", handleCompletionEvent);
+    sharedSocket.on("rider:order-updated", handleCompletionEvent);
     return () => {
       sharedSocket.off("rider:new-request", handleNewRequest);
       sharedSocket.off("new:request", handleNewRequest);
       sharedSocket.off("rider:request-cancelled", handleStateChange);
-      sharedSocket.off("rider:ride-updated", handleStateChange);
-      sharedSocket.off("rider:order-updated", handleStateChange);
+      sharedSocket.off("rider:ride-updated", handleCompletionEvent);
+      sharedSocket.off("rider:order-updated", handleCompletionEvent);
     };
   }, [sharedSocket, qc]);
 

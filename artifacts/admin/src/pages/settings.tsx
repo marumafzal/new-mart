@@ -10,6 +10,7 @@ import {
   Gift, Star, Percent, ShieldCheck, UserPlus, Server,
   Database, Download, Upload, Trash2, HardDrive, FlaskConical,
   Clock, X, SlidersHorizontal, Palette, MapPin, Gauge, Languages, Bell, ImageUp, List, Bus, Sparkles, ShieldAlert,
+  Search,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { fetcher } from "@/lib/api";
@@ -223,6 +224,32 @@ export default function SettingsPage() {
     return resolveTop10(p.get("tab")) ?? resolveTop10(p.get("cat")) ?? "services";
   });
 
+  /* ── Global settings search (cross-section) ──────────────────────────── */
+  const [searchQ, setSearchQ] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [highlightKey, setHighlightKey] = useState<string | null>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" && document.querySelector('[data-settings-search]')) {
+        const el = document.querySelector<HTMLInputElement>('[data-settings-search]');
+        if (el) { e.preventDefault(); el.focus(); el.select(); }
+      }
+      if (e.key === "Escape" && searchOpen) setSearchOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [searchOpen]);
+
   /* Keep deep links in sync — both ?tab= (canonical) and ?cat= (legacy) work on load. */
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -395,6 +422,48 @@ export default function SettingsPage() {
     ),
     [activeChildrenWithContent, grouped],
   );
+
+  /* Cross-section search results: match settings by key/label/description, group by Top10. */
+  const searchResults = useMemo(() => {
+    const q = searchQ.trim().toLowerCase();
+    if (q.length < 2) return [] as Array<{ key: string; label: string; cat: string; top10: Top10Key }>;
+    const results: Array<{ key: string; label: string; cat: string; top10: Top10Key; score: number }> = [];
+    for (const s of settings) {
+      const label = (s.label || s.key).toLowerCase();
+      const key = s.key.toLowerCase();
+      let score = 0;
+      if (key === q) score = 100;
+      else if (label === q) score = 95;
+      else if (key.startsWith(q)) score = 80;
+      else if (label.startsWith(q)) score = 75;
+      else if (label.includes(q)) score = 60;
+      else if (key.includes(q)) score = 50;
+      if (score > 0) {
+        const dispCat = DISPLAY_CAT_OVERRIDE[s.key] ?? s.category;
+        const top10 = LEGACY_TO_TOP10[dispCat] ?? LEGACY_TO_TOP10[s.category];
+        if (top10) {
+          results.push({ key: s.key, label: s.label || s.key, cat: dispCat, top10, score });
+        }
+      }
+    }
+    return results.sort((a, b) => b.score - a.score).slice(0, 12).map(({ score: _s, ...r }) => r);
+  }, [searchQ, settings]);
+
+  const jumpToSetting = useCallback((target: { key: string; cat: string; top10: Top10Key }) => {
+    setActiveTop10(target.top10);
+    setSearchOpen(false);
+    setMobileDrawerOpen(false);
+    setHighlightKey(target.key);
+    setTimeout(() => {
+      const subEl = document.getElementById(`sub-${target.cat}`);
+      if (subEl) {
+        subEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        subEl.classList.add("ajkm-section-flash");
+        setTimeout(() => subEl.classList.remove("ajkm-section-flash"), 1800);
+      }
+      setTimeout(() => setHighlightKey(null), 2400);
+    }, 100);
+  }, []);
 
   const dirtyCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -594,10 +663,63 @@ export default function SettingsPage() {
                 </Badge>
               )}
             </SheetTitle>
+            {/* Mobile global search */}
+            <div className="relative mt-3">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQ}
+                placeholder="Search across all settings…"
+                onChange={e => setSearchQ(e.target.value)}
+                className="w-full h-9 pl-8 pr-7 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              />
+              {searchQ && (
+                <button
+                  onClick={() => setSearchQ("")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md flex items-center justify-center hover:bg-slate-100 text-slate-400"
+                  title="Clear"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
-          {/* Flat Top-10 list */}
+          {/* Flat Top-10 list OR search results */}
           <div className="overflow-y-auto flex-1 px-3 py-3 space-y-1 pb-8">
-            {TOP10_ORDER.map((key, idx) => {
+            {searchQ.trim().length >= 2 ? (
+              searchResults.length === 0 ? (
+                <div className="text-center py-12 text-sm text-slate-400">
+                  No matching settings
+                </div>
+              ) : (
+                <>
+                  <p className="px-2 pb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                    {searchResults.length} match{searchResults.length === 1 ? "" : "es"}
+                  </p>
+                  {searchResults.map(r => {
+                    const top10cfg = TOP10_CONFIG[r.top10];
+                    return (
+                      <button
+                        key={r.key}
+                        onClick={() => jumpToSetting(r)}
+                        className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left hover:bg-indigo-50 transition-colors border border-slate-100 bg-white"
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${top10cfg.bg}`}>
+                          <top10cfg.icon className={`w-4 h-4 ${top10cfg.color}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">{r.label}</p>
+                          <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">{r.key}</p>
+                        </div>
+                        <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400 shrink-0">
+                          {top10cfg.label.split(" ")[0]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </>
+              )
+            ) : TOP10_ORDER.map((key, idx) => {
               const cfg = TOP10_CONFIG[key];
               const Icon = cfg.icon;
               const isActive = activeTop10 === key;
@@ -641,11 +763,72 @@ export default function SettingsPage() {
         <div className="hidden md:flex w-60 flex-shrink-0 flex-col bg-white rounded-2xl border border-border/60 shadow-sm overflow-hidden sticky top-4">
           {/* Sidebar header */}
           <div className="px-4 pt-4 pb-3 border-b border-border/40 bg-slate-50/80">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-2.5">
               <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center">
                 <Settings2 className="w-3.5 h-3.5 text-slate-600" />
               </div>
               <p className="text-[12px] font-bold text-slate-600 tracking-wide">Settings</p>
+            </div>
+            {/* Global search */}
+            <div ref={searchRef} className="relative">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <input
+                  data-settings-search
+                  type="text"
+                  value={searchQ}
+                  placeholder="Search settings…"
+                  onChange={e => { setSearchQ(e.target.value); setSearchOpen(true); }}
+                  onFocus={() => searchQ.trim().length >= 2 && setSearchOpen(true)}
+                  className="w-full h-8 pl-8 pr-7 rounded-lg border border-slate-200 bg-white text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                />
+                {searchQ && (
+                  <button
+                    onClick={() => { setSearchQ(""); setSearchOpen(false); }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-md flex items-center justify-center hover:bg-slate-100 text-slate-400"
+                    title="Clear"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              {searchOpen && searchQ.trim().length >= 2 && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-80 overflow-y-auto">
+                  {searchResults.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-xs text-slate-400">
+                      No matching settings
+                    </div>
+                  ) : (
+                    <>
+                      <div className="px-3 py-1.5 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{searchResults.length} match{searchResults.length === 1 ? "" : "es"}</span>
+                        <span className="text-[10px] text-slate-400">⌘F</span>
+                      </div>
+                      {searchResults.map(r => {
+                        const top10cfg = TOP10_CONFIG[r.top10];
+                        return (
+                          <button
+                            key={r.key}
+                            onClick={() => jumpToSetting(r)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-50 transition-colors border-b border-slate-50 last:border-b-0"
+                          >
+                            <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${top10cfg.bg}`}>
+                              <top10cfg.icon className={`w-3 h-3 ${top10cfg.color}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-slate-700 truncate">{r.label}</p>
+                              <p className="text-[10px] text-slate-400 truncate font-mono">{r.key}</p>
+                            </div>
+                            <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400 shrink-0">
+                              {top10cfg.label.split(" ")[0]}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

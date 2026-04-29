@@ -389,3 +389,15 @@ html[data-admin-reduce-motion="1"] *::after {
   transition-duration: 0ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Settings search jump-to flash highlight */
+@keyframes ajkm-section-flash-kf {
+  0%   { box-shadow: 0 0 0 0 rgba(99,102,241,0.55); background-color: rgba(99,102,241,0.10); }
+  60%  { box-shadow: 0 0 0 12px rgba(99,102,241,0); background-color: rgba(99,102,241,0.04); }
+  100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); background-color: transparent; }
+}
+.ajkm-section-flash {
+  border-radius: 14px;
+  animation: ajkm-section-flash-kf 1.6s ease-out 1;
+  scroll-margin-top: 80px;
+}

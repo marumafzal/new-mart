@@ -150,3 +150,22 @@ credentials through the post-login popup once signed in.
   logout), settings persistence (`SystemSection` demo-backup save), and
   CSV export with blob URL revocation. Run with
   `pnpm --filter @workspace/admin test` (full suite < 15s).
+### Recent Polish (Apr 2026)
+- **Auth Methods page** (`/admin/auth-methods`) — unified per-role login
+  toggles for Phone OTP, Email OTP, Username/Password, Magic Link, Google
+  OAuth, Facebook OAuth, 2FA (TOTP), and Biometric. 8 methods × 3 roles
+  (Customer/Rider/Vendor) matrix with bulk row toggles, OAuth credential
+  inputs, search, sticky save bar, and role usage stats. Uses existing
+  `platform_settings` JSON values (`{"customer":"on","rider":"on",
+  "vendor":"on"}`) — no backend changes required. Server-side
+  `isAuthMethodEnabled(settings, key, role)` already enforces per-role
+  access in `routes/auth.ts`.
+- **Settings global search** — cross-section live search input in the
+  Settings sidebar (desktop) and mobile drawer. Type 2+ chars to filter
+  any setting by key/label across all 10 top-level groups; clicking a
+  result switches to the right tab, smooth-scrolls to the sub-section,
+  and briefly flashes it (`ajkm-section-flash` keyframe). Cmd/Ctrl+F
+  focuses the search field while on the Settings page.
+- **Command Palette (⌘K) coverage** — added searchIndex entries for
+  `auth-methods`, `launch-control`, `otp-control`, and `sms-gateways`
+  pages with English/Urdu/Roman-Urdu keywords.

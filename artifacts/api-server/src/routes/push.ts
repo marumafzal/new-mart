@@ -66,11 +66,15 @@ router.post("/subscribe", anyUserAuth, async (req, res) => {
 
   if (data.type === "fcm") {
     const { token } = data;
+    /* Delete ALL existing FCM rows for this user+role so rotated/stale tokens
+       don't accumulate.  When FCM rotates the token (reinstall, OS update, etc.)
+       the old token would never be cleaned up if we only matched on the token
+       value itself.  Replacing by user+role is safe: one device, one active token. */
     await db.delete(pushSubscriptionsTable)
       .where(and(
         eq(pushSubscriptionsTable.userId, userId),
-        eq(pushSubscriptionsTable.endpoint, token),
         eq(pushSubscriptionsTable.tokenType, "fcm"),
+        eq(pushSubscriptionsTable.role, role),
       ));
     const id = generateId();
     await db.insert(pushSubscriptionsTable).values({

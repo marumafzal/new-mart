@@ -59,11 +59,29 @@ async function registerFcmPush(
 
     const cleanups: Array<{ remove: () => void }> = [];
 
+    /* Helper: send (or refresh) the FCM token with the server.  Called both on
+       initial registration and whenever FCM rotates the token (reinstall, OS
+       update, app data clear, etc.).  The server-side handler deletes all old
+       FCM rows for this user+role before inserting the new token. */
+    const registerTokenWithServer = async (token: string) => {
+      const authToken = getAuthToken();
+      if (!authToken) return;
+      await fetch(`${API_ORIGIN}/api/push/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ type: "fcm", token, role: "vendor" }),
+      });
+      if (import.meta.env.DEV) console.log("[push] FCM token registered/refreshed");
+    };
+
     /* Attach ALL listeners BEFORE calling register() so no token/error events
        are missed if they fire synchronously or very quickly after register(). */
     const tokenPromise = new Promise<string>((resolve, reject) => {
-      PushNotifications.addListener("registration", (token) => {
-        resolve(token.value);
+      PushNotifications.addListener("registration", async (newToken) => {
+        /* resolve() is idempotent — subsequent calls (token rotation) are no-ops
+           on the promise but we still re-register the new token with the server. */
+        resolve(newToken.value);
+        await registerTokenWithServer(newToken.value).catch(() => {});
       }).then((h) => cleanups.push(h)).catch(reject);
 
       PushNotifications.addListener("registrationError", (err) => {
@@ -80,25 +98,15 @@ async function registerFcmPush(
     /* Now trigger registration — token/error events may fire after this. */
     await PushNotifications.register();
 
-    /* Wait for the FCM token (with a reasonable timeout). */
+    /* Wait for the initial FCM token (with a reasonable timeout).
+       Token delivery and server registration are handled by the registration listener. */
     const TOKEN_TIMEOUT_MS = 15_000;
-    const token = await Promise.race<string>([
-      tokenPromise,
+    await Promise.race<void>([
+      tokenPromise.then(() => {}),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("FCM registration timeout")), TOKEN_TIMEOUT_MS),
       ),
     ]);
-
-    /* Send the token to the server using the correct API origin for native. */
-    const authToken = getAuthToken();
-    if (authToken) {
-      await fetch(`${API_ORIGIN}/api/push/subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
-        body: JSON.stringify({ type: "fcm", token, role: "vendor" }),
-      });
-      if (import.meta.env.DEV) console.log("[push] FCM token registered");
-    }
 
     return { remove: () => cleanups.forEach((h) => h.remove()) };
   } catch (e) {

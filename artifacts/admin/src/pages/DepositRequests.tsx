@@ -147,7 +147,7 @@ function ApproveModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
+            <Button autoFocus variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
               onClick={handleApprove} disabled={approve.isPending}>
               {approve.isPending ? T("processing") : "Approve & Credit"}
@@ -202,7 +202,7 @@ function RejectModal({ d, onClose }: { d: Deposit; onClose: () => void }) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
+            <Button autoFocus variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
               onClick={handleReject} disabled={reject.isPending}>
               {reject.isPending ? T("processing") : "Reject Request"}
@@ -245,7 +245,7 @@ function BulkApproveModal({ count, totalAmount, onConfirm, onClose, isPending }:
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
+            <Button autoFocus variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
               onClick={() => onConfirm(refNo.trim() || undefined)} disabled={isPending}>
               {isPending ? T("processing") : `Approve ${count} Deposits`}
@@ -289,7 +289,7 @@ function BulkRejectModal({ count, totalAmount, onConfirm, onClose, isPending }: 
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
+            <Button autoFocus variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
               onClick={() => {
                 if (!reason.trim()) { toast({ title: "Reason required", variant: "destructive" }); return; }

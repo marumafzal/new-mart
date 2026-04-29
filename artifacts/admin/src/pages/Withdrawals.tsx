@@ -132,7 +132,7 @@ function ApproveModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
+            <Button autoFocus variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold"
               onClick={handleApprove} disabled={approve.isPending}>
               {approve.isPending ? T("processing") : "Confirm Payment"}
@@ -192,7 +192,7 @@ function RejectModal({ w, onClose }: { w: Withdrawal; onClose: () => void }) {
           </div>
 
           <div className="flex gap-3 pt-1">
-            <Button variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
+            <Button autoFocus variant="outline" className="flex-1" onClick={onClose}>{T("cancel")}</Button>
             <Button className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold"
               onClick={handleReject} disabled={reject.isPending}>
               {reject.isPending ? T("processing") : "Reject & Refund"}

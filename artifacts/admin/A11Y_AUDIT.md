@@ -72,11 +72,15 @@ Verified scope: all 63 pages share this stylesheet. All `<button>`, `<a>`, `<inp
 
 ---
 
-## 5. Custom Div Modals → Radix Dialog (WCAG 4.1.2 / 1.3.6 / 2.1.2)
+## 5. Custom Div Modals → Radix Dialog + Full Focus Trap (WCAG 4.1.2 / 1.3.6 / 2.1.2)
 
-`DepositRequests.tsx` (4 modals) and `Withdrawals.tsx` (2 modals) replaced with Radix `Dialog`. Radix natively provides: `role="dialog"`, `aria-modal`, focus trap, focus restoration, ESC, `aria-labelledby`.
+`DepositRequests.tsx` (4 modals) and `Withdrawals.tsx` (2 modals) replaced with Radix `Dialog`. Radix natively provides: `role="dialog"`, `aria-modal`, focus trap (via `@radix-ui/react-focus-scope`), focus restoration, ESC, `aria-labelledby`.
 
-**Status: ✅ Fixed (6 modals)**
+**Focus trap detail:** `DialogPrimitive.Content` wraps its children in a `FocusScope` with `trapped` and `loop` both enabled — Tab / Shift-Tab cycle only within the open dialog and cannot reach page content underneath.
+
+**Initial focus:** `autoFocus` added to the Cancel button in all 6 modals (ApproveModal × 2, RejectModal × 2, BulkApproveModal, BulkRejectModal). The Cancel button is the first element to receive focus when the dialog opens, satisfying WCAG 2.4.3 Focus Order.
+
+**Status: ✅ Fixed (6 modals) — full focus containment + correct initial focus**
 
 ---
 
@@ -168,8 +172,8 @@ All 313 `Sheet`, `Dialog`, `AlertDialog`, `Select`, `DropdownMenu`, `Popover`, `
 | `src/index.css` | Universal focus-visible ring; skip-link style; sr-only; admin-table-wrap |
 | `src/components/layout/AdminLayout.tsx` | Skip link; `tabIndex={-1}` on main; search button aria-label/aria-expanded; mobile drawer ARIA + focus trap + restoration |
 | `src/components/AdminShared.tsx` | Toggle → `button[role=switch][aria-checked]` (onClick only, no double-fire); ModeBtn → `aria-pressed` |
-| `src/pages/DepositRequests.tsx` | 4 modals → Radix Dialog |
-| `src/pages/Withdrawals.tsx` | 2 modals → Radix Dialog |
+| `src/pages/DepositRequests.tsx` | 4 modals → Radix Dialog; `autoFocus` on Cancel in all 4 modals |
+| `src/pages/Withdrawals.tsx` | 2 modals → Radix Dialog; `autoFocus` on Cancel in both modals |
 | `src/pages/transactions.tsx` | Mobile cards + desktop table split |
 | `src/pages/parcel.tsx` | Mobile cards (CardContent) + desktop table split |
 | `src/pages/pharmacy.tsx` | Mobile cards (CardContent) + desktop table split |

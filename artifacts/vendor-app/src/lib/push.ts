@@ -145,9 +145,12 @@ async function registerFcmPush(
 
     /* Handle notification tap — fires when vendor taps the notification in the
        system tray (background / killed app state).  data.orderId is included by
-       the server so the vendor app can deep-link straight to /orders on tap. */
+       the server so the vendor app can deep-link straight to /orders on tap.
+       We also clear _pendingTapData here so the cold-start auth effect doesn't
+       replay the same tap a second time. */
     if (onNotificationTap) {
       PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+        _pendingTapData = null;
         const data = (action.notification?.data ?? {}) as Record<string, string>;
         onNotificationTap(data);
       }).then((h) => cleanups.push(h)).catch(() => {});

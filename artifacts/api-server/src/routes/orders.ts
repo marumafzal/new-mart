@@ -59,15 +59,19 @@ setInterval(async () => {
 }, 5 * 60_000);
 
 function broadcastNewOrder(order: ReturnType<typeof mapOrder>, vendorId?: string | null) {
+  /* Socket broadcast — only when socket.io is initialised. */
   const io = getIO();
-  if (!io) return;
-  io.to("admin-fleet").emit("order:new", order);
-  if (vendorId) {
-    io.to(`vendor:${vendorId}`).emit("order:new", order);
+  if (io) {
+    io.to("admin-fleet").emit("order:new", order);
+    if (vendorId) {
+      io.to(`vendor:${vendorId}`).emit("order:new", order);
+    }
+  }
 
-    /* FCM / VAPID push — reaches vendor even when their app is in the background
-       or completely killed.  data.orderId lets the vendor app deep-link to /orders
-       on tap (handled by pushNotificationActionPerformed in vendor push.ts). */
+  /* FCM / VAPID push — decoupled from socket availability so vendor push
+     remains reliable even if the socket layer hasn't started yet.
+     data.orderId lets the vendor app deep-link to /orders on tap. */
+  if (vendorId) {
     const itemCount = Array.isArray(order.items) ? order.items.length : 0;
     sendPushToUser(vendorId, {
       title: "📦 New Order",

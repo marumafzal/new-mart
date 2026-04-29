@@ -12,7 +12,8 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useUsers, useUpdateUser, useWalletTopup, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, type CreateUserInput } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, type CreateUserInput } from "@/hooks/use-admin";
+import { WalletAdjustModal } from "@/components/WalletAdjustModal";
 import { fetcher } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
@@ -1320,7 +1321,6 @@ export default function Users() {
   const { data, isLoading, refetch, isFetching, isError } = useUsers(conditionTier !== "all" ? conditionTier : undefined);
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
   const updateMutation   = useUpdateUser();
-  const topupMutation    = useWalletTopup();
   const deleteMutation   = useDeleteUser();
   const approveMutation  = useApproveUser();
   const rejectMutation   = useRejectUser();
@@ -1341,9 +1341,7 @@ export default function Users() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo]     = useState("");
-  const [topupUser, setTopupUser] = useState<any>(null);
-  const [topupAmount, setTopupAmount] = useState("");
-  const [topupNote, setTopupNote] = useState("");
+  const [walletUser, setWalletUser] = useState<any>(null);
   const [deleteUser, setDeleteUser] = useState<any>(null);
   const [activityUser, setActivityUser] = useState<any>(null);
   const [securityUser, setSecurityUser] = useState<any>(null);
@@ -1379,21 +1377,6 @@ export default function Users() {
       onSuccess: () => toast({ title: "User updated" }),
       onError: err => toast({ title: "Update failed", description: err.message, variant: "destructive" })
     });
-  };
-
-  const handleTopup = () => {
-    const amt = Number(topupAmount);
-    if (!amt || amt <= 0) { toast({ title: "Enter a valid amount", variant: "destructive" }); return; }
-    topupMutation.mutate(
-      { id: topupUser.id, amount: amt, description: topupNote || `Admin top-up: Rs. ${amt}` },
-      {
-        onSuccess: (d: any) => {
-          toast({ title: "Wallet Topped Up!", description: `Rs. ${amt} added. New balance: ${formatCurrency(d.newBalance)}` });
-          setTopupUser(null); setTopupAmount(""); setTopupNote("");
-        },
-        onError: err => toast({ title: "Top-up failed", description: err.message, variant: "destructive" })
-      }
-    );
   };
 
   const handleDelete = () => {
@@ -1745,7 +1728,7 @@ export default function Users() {
                       <Gavel className="w-3.5 h-3.5" />
                       {user.conditionCount > 0 && <span className="text-[10px] font-bold bg-violet-100 text-violet-700 rounded-full px-1.5 min-w-[18px] text-center">{user.conditionCount}</span>}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => { setTopupUser(user); setTopupAmount(""); setTopupNote(""); }} className="h-8 px-2.5 rounded-lg border-emerald-200 text-emerald-700 text-xs">
+                    <Button variant="outline" size="sm" onClick={() => setWalletUser(user)} className="h-8 px-2.5 rounded-lg border-emerald-200 text-emerald-700 text-xs">
                       <Wallet className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -1889,7 +1872,7 @@ export default function Users() {
                             <Button variant="outline" size="sm" onClick={() => setActivityUser(user)} className="h-8 w-8 rounded-lg border-[#1A56DB]/20 text-[#1A56DB] hover:bg-[#1A56DB]/5 hover:border-[#1A56DB]/30 p-0 flex items-center justify-center transition-colors" title="Activity">
                               <Activity className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => { setTopupUser(user); setTopupAmount(""); setTopupNote(""); }} className="h-8 rounded-lg text-xs gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-colors">
+                            <Button variant="outline" size="sm" onClick={() => setWalletUser(user)} className="h-8 rounded-lg text-xs gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-colors">
                               <Wallet className="w-3.5 h-3.5" /> Top Up
                             </Button>
                             {parseFloat(user.cancellationDebt || "0") > 0 && (
@@ -1924,51 +1907,18 @@ export default function Users() {
         </>
       )}
 
-      <Dialog open={!!topupUser} onOpenChange={(open) => { if (!open) setTopupUser(null); }}>
-        <DialogContent className="w-[95vw] max-w-md rounded-2xl p-4 sm:p-6">
-          <DialogHeader>
-            <DialogTitle className="text-xl flex items-center gap-2 text-emerald-700">
-              <Wallet className="w-5 h-5" /> Wallet Top-up
-            </DialogTitle>
-          </DialogHeader>
-          {topupUser && (
-            <div className="mt-4 space-y-5">
-              <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl p-4 flex items-center gap-3 border border-emerald-100">
-                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold">{(topupUser.name || topupUser.phone || "U")[0].toUpperCase()}</div>
-                <div>
-                  <p className="font-semibold">{topupUser.name || topupUser.phone}</p>
-                  <p className="text-sm text-muted-foreground">Balance: <span className="font-bold text-emerald-600">{formatCurrency(topupUser.walletBalance)}</span></p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-bold">Amount (Rs.)</label>
-                <Input type="number" min="1" placeholder="e.g. 500" value={topupAmount} onChange={e => setTopupAmount(e.target.value)} className="h-12 rounded-xl text-lg font-bold focus:ring-emerald-300" autoFocus />
-                <div className="flex gap-2 mt-2">
-                  {[100, 200, 500, 1000].map(amt => (
-                    <button key={amt} type="button" onClick={() => setTopupAmount(String(amt))} className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${topupAmount === String(amt) ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-muted/50 border-border/50 hover:border-emerald-400 hover:text-emerald-700'}`}>+{amt}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-bold">Note (optional)</label>
-                <Input placeholder="e.g. Bonus for referral" value={topupNote} onChange={e => setTopupNote(e.target.value)} className="h-11 rounded-xl" />
-              </div>
-              {topupAmount && Number(topupAmount) > 0 && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm">
-                  <p className="text-emerald-700 font-semibold">New balance: <span className="text-emerald-800 font-bold">{formatCurrency(topupUser.walletBalance + Number(topupAmount))}</span></p>
-                </div>
-              )}
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1 h-11 rounded-xl" onClick={() => setTopupUser(null)}>Cancel</Button>
-                <Button className="flex-1 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 font-bold gap-2" onClick={handleTopup} disabled={topupMutation.isPending || !topupAmount || Number(topupAmount) <= 0}>
-                  {topupMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                  {topupMutation.isPending ? "Processing..." : `Add ${topupAmount ? formatCurrency(Number(topupAmount)) : ""}`}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {walletUser && (
+        <WalletAdjustModal
+          mode="customer"
+          subject={{
+            id: walletUser.id,
+            name: walletUser.name,
+            phone: walletUser.phone,
+            walletBalance: Number(walletUser.walletBalance) || 0,
+          }}
+          onClose={() => setWalletUser(null)}
+        />
+      )}
 
       <Dialog open={!!deleteUser} onOpenChange={open => { if (!open) setDeleteUser(null); }}>
         <DialogContent className="w-[95vw] max-w-sm rounded-2xl p-6">

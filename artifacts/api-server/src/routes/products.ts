@@ -7,7 +7,8 @@ import { generateId } from "../lib/id.js";
 import { sendSuccess, sendCreated, sendNotFound, sendError, sendInternalError } from "../lib/response.js";
 import { validateBody } from "../middleware/validate.js";
 import { adminAuth, getPlatformSettings } from "./admin.js";
-import { customerAuth } from "../middleware/security.js";
+import { customerAuth, JWT_SECRET } from "../middleware/security.js";
+import jwt from "jsonwebtoken";
 
 const router: IRouter = Router();
 
@@ -240,7 +241,17 @@ router.get("/search", async (req, res) => {
   const total = countResult[0]?.total ?? 0;
 
   // Non-blocking search event logging — never delays the response
-  db.insert(searchLogsTable).values({ query: trimmed, resultCount: total }).catch(() => {});
+  // Optionally extract user ID from auth token if present (search endpoint is public, so this may be null)
+  let searchUserId: string | null = null;
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      const payload = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as jwt.JwtPayload;
+      if (payload?.userId) searchUserId = payload.userId as string;
+    }
+  } catch { /* ignore invalid/missing tokens */ }
+  db.insert(searchLogsTable).values({ query: trimmed, resultCount: total, userId: searchUserId }).catch(() => {});
 
   const slimSearch = req.query.slim === "true";
 

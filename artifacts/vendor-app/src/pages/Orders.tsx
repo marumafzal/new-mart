@@ -571,7 +571,20 @@ export default function Orders() {
                   {locationPermission === "denied" ? (
                     <>
                       <p className="text-xs font-bold text-red-700">Location permission blocked</p>
-                      <p className="text-[11px] text-red-600 mt-0.5 leading-snug">Your browser has blocked location access. To enable it: open browser settings → Site Settings → Location → allow this site. Then refresh the page.</p>
+                      <p className="text-[11px] text-red-600 mt-0.5 leading-snug">
+                        {/Firefox/.test(navigator.userAgent)
+                          ? "In Firefox: click the lock icon in the address bar → Connection Secure → More Information → Permissions → Access Your Location → unblock."
+                          : /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
+                            ? "In Safari: go to Settings → Safari → Location → set this website to Allow."
+                            : "In Chrome/Edge: click the lock 🔒 icon in the address bar → Site Settings → Location → Allow. Then refresh this page."}
+                      </p>
+                      <a
+                        href="https://support.google.com/chrome/answer/142065"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1.5 inline-block text-[11px] font-bold text-red-700 underline">
+                        How to enable location →
+                      </a>
                     </>
                   ) : (
                     <>

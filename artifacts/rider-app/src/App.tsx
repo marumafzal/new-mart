@@ -9,6 +9,7 @@ import { SocketProvider } from "./lib/socket";
 import { registerDrainHandler, setGpsQueueMax, setDismissedRequestTtlSec, type QueuedPing } from "./lib/gpsQueue";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { registerPush } from "./lib/push";
+import { Capacitor } from "@capacitor/core";
 import { initSentry, setSentryUser } from "./lib/sentry";
 import { initAnalytics, trackEvent, identifyUser } from "./lib/analytics";
 import { initErrorReporter } from "./lib/error-reporter";
@@ -117,24 +118,47 @@ function AppRoutes() {
     }
   }, [user?.id]);
 
+  /* ── FCM foreground notification banner ── */
+  const [fcmNotif, setFcmNotif] = useState<{ title: string; body: string } | null>(null);
+  const fcmCleanupRef = useRef<{ remove: () => void } | null>(null);
+  const fcmDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   /* P4: Only request notification permission when it's still in the "default"
      state. After the user has explicitly granted or denied it, we never re-ask
      — modern browsers silently no-op anyway and the call would emit warnings
      that the global error reporter (PF1) would amplify. We also gate by a
      module-level flag so back-to-back logins/logouts in the same tab don't
-     re-prompt on each `user` change. */
+     re-prompt on each `user` change.
+     On native Capacitor builds registerPush() uses FCM directly and handles
+     permission prompts itself — the Notification API guard is bypassed via the
+     Capacitor.isNativePlatform() check inside push.ts. */
   useEffect(() => {
-    if (!user) return;
-    if (typeof Notification === "undefined" || !Notification.requestPermission) return;
-    if (_notifPermissionAsked) return;
+    if (!user) return undefined;
+    const onForeground = (title: string, body: string) => {
+      setFcmNotif({ title, body });
+      if (fcmDismissTimer.current) clearTimeout(fcmDismissTimer.current);
+      fcmDismissTimer.current = setTimeout(() => setFcmNotif(null), 5000);
+    };
+    if (Capacitor.isNativePlatform()) {
+      registerPush(onForeground).then(cleanup => {
+        if (cleanup) fcmCleanupRef.current = cleanup;
+      }).catch(() => {});
+      return () => {
+        fcmCleanupRef.current?.remove();
+        if (fcmDismissTimer.current) clearTimeout(fcmDismissTimer.current);
+      };
+    }
+    if (typeof Notification === "undefined" || !Notification.requestPermission) return undefined;
+    if (_notifPermissionAsked) return undefined;
     if (Notification.permission !== "default") {
       if (Notification.permission === "granted") registerPush().catch(() => {});
-      return;
+      return undefined;
     }
     _notifPermissionAsked = true;
     Notification.requestPermission().then(perm => {
       if (perm === "granted") registerPush().catch(() => {});
     }).catch(() => {});
+    return undefined;
   }, [user?.id]);
 
   /* Show a subtle toast whenever refreshUser fails persistently */
@@ -291,6 +315,12 @@ function AppRoutes() {
             {T("offline")}
           </div>
         )}
+        {fcmNotif && (
+          <button onClick={() => setFcmNotif(null)} className="fixed top-4 left-4 right-4 z-[10000] bg-emerald-700 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl text-left">
+            <div className="font-bold truncate">{fcmNotif.title}</div>
+            <div className="text-xs opacity-90 truncate">{fcmNotif.body}</div>
+          </button>
+        )}
         <div className="flex-1">
           <Suspense fallback={<PageFallback />}>
             <VanDriver />
@@ -311,6 +341,12 @@ function AppRoutes() {
         <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[9999] bg-gray-800 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg pointer-events-none">
           {T("offline")}
         </div>
+      )}
+      {fcmNotif && (
+        <button onClick={() => setFcmNotif(null)} className="fixed top-4 left-4 right-4 z-[10000] bg-emerald-700 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl text-left">
+          <div className="font-bold truncate">{fcmNotif.title}</div>
+          <div className="text-xs opacity-90 truncate">{fcmNotif.body}</div>
+        </button>
       )}
 
       {/* U2: Cap the announcement bar at a compact strip; long messages scroll

@@ -1,13 +1,122 @@
-const BASE = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+/**
+ * Push notification registration — vendor app.
+ *
+ * Strategy:
+ *   • Native (Capacitor on Android/iOS): uses @capacitor/push-notifications
+ *     to obtain an FCM device token and registers it with the server as
+ *     type="fcm".  Foreground notifications are surfaced via a listener
+ *     returned from registerPush() so the App can display an in-app banner.
+ *   • Browser (PWA): falls back to the existing VAPID / Web Push path.
+ *
+ * APNs (iOS): No additional server-side code is required.  Upload your APNs
+ * auth key to the Firebase Console → Project Settings → Cloud Messaging →
+ * iOS app configuration.  The Firebase Admin SDK routes FCM messages to APNs
+ * automatically.  The google-services.json (Android) and
+ * GoogleService-Info.plist (iOS) must be placed in the respective native
+ * project roots before building.
+ */
 
-export async function registerPush(): Promise<void> {
+import { Capacitor } from "@capacitor/core";
+
+/* Mirror the API base URL logic from api.ts so native Capacitor builds send
+   the token to the real backend (VITE_API_BASE_URL) not the WebView origin. */
+const API_ORIGIN =
+  import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
+    ? (import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")
+    : "";
+
+/** Listener cleanup handle returned to callers for foreground messages. */
+export interface PushCleanup {
+  remove: () => void;
+}
+
+export async function registerPush(
+  onForegroundMessage?: (title: string, body: string) => void,
+): Promise<PushCleanup | void> {
+  if (Capacitor.isNativePlatform()) {
+    return registerFcmPush(onForegroundMessage);
+  }
+  return registerVapidPush();
+}
+
+/* ─── Native FCM path ─────────────────────────────────────────────────────── */
+
+function getAuthToken(): string {
+  return localStorage.getItem("ajkmart_vendor_token") ?? "";
+}
+
+async function registerFcmPush(
+  onForegroundMessage?: (title: string, body: string) => void,
+): Promise<PushCleanup | void> {
+  try {
+    const { PushNotifications } = await import("@capacitor/push-notifications");
+
+    const permResult = await PushNotifications.requestPermissions();
+    if (permResult.receive !== "granted") {
+      if (import.meta.env.DEV) console.warn("[push] FCM permission denied");
+      return;
+    }
+
+    const cleanups: Array<{ remove: () => void }> = [];
+
+    /* Attach ALL listeners BEFORE calling register() so no token/error events
+       are missed if they fire synchronously or very quickly after register(). */
+    const tokenPromise = new Promise<string>((resolve, reject) => {
+      PushNotifications.addListener("registration", (token) => {
+        resolve(token.value);
+      }).then((h) => cleanups.push(h)).catch(reject);
+
+      PushNotifications.addListener("registrationError", (err) => {
+        reject(new Error(err.error));
+      }).then((h) => cleanups.push(h)).catch(() => {});
+    });
+
+    if (onForegroundMessage) {
+      PushNotifications.addListener("pushNotificationReceived", (notification) => {
+        onForegroundMessage(notification.title ?? "", notification.body ?? "");
+      }).then((h) => cleanups.push(h)).catch(() => {});
+    }
+
+    /* Now trigger registration — token/error events may fire after this. */
+    await PushNotifications.register();
+
+    /* Wait for the FCM token (with a reasonable timeout). */
+    const TOKEN_TIMEOUT_MS = 15_000;
+    const token = await Promise.race<string>([
+      tokenPromise,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("FCM registration timeout")), TOKEN_TIMEOUT_MS),
+      ),
+    ]);
+
+    /* Send the token to the server using the correct API origin for native. */
+    const authToken = getAuthToken();
+    if (authToken) {
+      await fetch(`${API_ORIGIN}/api/push/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ type: "fcm", token, role: "vendor" }),
+      });
+      if (import.meta.env.DEV) console.log("[push] FCM token registered");
+    }
+
+    return { remove: () => cleanups.forEach((h) => h.remove()) };
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn("[push] FCM registration failed:", e);
+  }
+}
+
+/* ─── Browser VAPID path ──────────────────────────────────────────────────── */
+
+async function registerVapidPush(): Promise<void> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
   try {
-    const reg = await navigator.serviceWorker.register(`${BASE}/sw.js`);
+    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    const reg = await navigator.serviceWorker.register(`${base}/sw.js`);
     const existing = await reg.pushManager.getSubscription();
     if (existing) return;
 
-    const vapidRes = await fetch(`${BASE}/api/push/vapid-key`);
+    const vapidRes = await fetch(`${base}/api/push/vapid-key`);
     if (!vapidRes.ok) return;
     const vj = await vapidRes.json();
     const { publicKey } = (vj?.success === true && "data" in vj ? vj.data : vj) as { publicKey: string };
@@ -18,14 +127,20 @@ export async function registerPush(): Promise<void> {
       applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
     });
 
-    const token = localStorage.getItem("ajkmart_vendor_token") ?? "";
-    await fetch(`${BASE}/api/push/subscribe`, {
+    const authToken = getAuthToken();
+    await fetch(`${base}/api/push/subscribe`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ endpoint: sub.endpoint, p256dh: sub.toJSON().keys?.p256dh, auth: sub.toJSON().keys?.auth, role: "vendor" }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({
+        type: "vapid",
+        endpoint: sub.endpoint,
+        p256dh: sub.toJSON().keys?.p256dh,
+        auth: sub.toJSON().keys?.auth,
+        role: "vendor",
+      }),
     });
   } catch (e) {
-    if (import.meta.env.DEV) console.warn("[push] registration failed:", e);
+    if (import.meta.env.DEV) console.warn("[push] VAPID registration failed:", e);
   }
 }
 

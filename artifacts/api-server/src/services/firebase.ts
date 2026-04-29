@@ -121,3 +121,12 @@ export async function getFirebaseUserByPhone(phone: string): Promise<{ uid: stri
 export function isFirebaseEnabled(): boolean {
   return !!process.env["FIREBASE_SERVICE_ACCOUNT_JSON"];
 }
+
+/**
+ * Return the initialized Firebase Admin SDK instance.
+ * Calls the lazy initializer so callers don't need to duplicate that logic.
+ * Returns null when Firebase is not configured.
+ */
+export async function getFirebaseAdmin(): Promise<typeof import("firebase-admin") | null> {
+  return getAdmin();
+}

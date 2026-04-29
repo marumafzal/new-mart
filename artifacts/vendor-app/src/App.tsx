@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import { usePlatformConfig } from "./lib/useConfig";
 import { useLanguage } from "./lib/useLanguage";
 import { registerPush } from "./lib/push";
+import { Capacitor } from "@capacitor/core";
 import { initSentry, setSentryUser } from "./lib/sentry";
 import { initAnalytics, trackEvent, identifyUser } from "./lib/analytics";
 import { initErrorReporter } from "./lib/error-reporter";
@@ -100,13 +101,34 @@ function AppRoutes() {
     }
   }, [user?.id]);
 
+  /* ── FCM foreground notification banner ── */
+  const [fcmNotif, setFcmNotif] = useState<{ title: string; body: string } | null>(null);
+  const fcmCleanupRef = useRef<{ remove: () => void } | null>(null);
+  const fcmDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (user && typeof Notification !== "undefined" && Notification.requestPermission) {
+    if (!user) return undefined;
+    const onForeground = (title: string, body: string) => {
+      setFcmNotif({ title, body });
+      if (fcmDismissTimer.current) clearTimeout(fcmDismissTimer.current);
+      fcmDismissTimer.current = setTimeout(() => setFcmNotif(null), 5000);
+    };
+    if (Capacitor.isNativePlatform()) {
+      registerPush(onForeground).then(cleanup => {
+        if (cleanup) fcmCleanupRef.current = cleanup;
+      }).catch(() => {});
+      return () => {
+        fcmCleanupRef.current?.remove();
+        if (fcmDismissTimer.current) clearTimeout(fcmDismissTimer.current);
+      };
+    }
+    if (typeof Notification !== "undefined" && Notification.requestPermission) {
       Notification.requestPermission().then(perm => {
         if (perm === "granted") registerPush().catch(() => {});
       }).catch(() => {});
     }
-  }, [user]);
+    return undefined;
+  }, [user?.id]);
 
   const MAINTENANCE_GRACE_MS = 5 * 60 * 1000; /* 5-minute grace period */
   const maintenanceSince = useRef<number | null>(null);
@@ -158,6 +180,14 @@ function AppRoutes() {
         <div className="fixed top-0 inset-x-0 z-50 bg-amber-500 text-white text-center py-2 px-4 text-xs font-bold shadow">
           ⚠️ {config.platform.appName} is in maintenance mode. Full screen in {Math.floor(maintenanceSecs / 60)}:{String(maintenanceSecs % 60).padStart(2, "0")}
         </div>
+      )}
+
+      {/* ── FCM foreground notification banner ── */}
+      {fcmNotif && (
+        <button onClick={() => setFcmNotif(null)} className="fixed top-4 left-4 right-4 z-[10000] bg-orange-600 text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl text-left">
+          <div className="font-bold truncate">{fcmNotif.title}</div>
+          <div className="text-xs opacity-90 truncate">{fcmNotif.body}</div>
+        </button>
       )}
 
       {/* ── Announcement bar (top, dismissable) ── */}

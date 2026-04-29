@@ -31,11 +31,9 @@
     "all-start": "pnpm run start:all",
     "all-stop": "pnpm run stop:all",
     "replit-start": "node scripts/launchers/start.mjs replit",
-    "codespace-start": "pnpm run env && node scripts/launchers/start.mjs codespace",
+    "codespace-start": "node scripts/launchers/start.mjs codespace",
     "vps-start": "node scripts/launchers/start.mjs vps",
-    "local-start": "node scripts/launchers/start.mjs local",
-    "env": "node scripts/decrypt.mjs",
-    "env:encrypt": "node scripts/encrypt.mjs"
+    "local-start": "node scripts/launchers/start.mjs local"
   },
   "private": true,
   "devDependencies": {

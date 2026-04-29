@@ -121,6 +121,7 @@ export interface PlatformConfig {
     referralBonus: number;
     loyaltyEnabled: boolean;
     loyaltyPtsPerRs100: number;
+    loyaltyMin: number;
     maxOrdersDay: number;
     signupBonus: number;
     p2pEnabled: boolean;
@@ -319,7 +320,7 @@ const DEFAULT: PlatformConfig = {
     dailyLimit: 20000, p2pDailyLimit: 10000, withdrawalProcessingDays: 2, kycRequired: false,
     topupMethods: "jazzcash,easypaisa,bank",
     referralEnabled: true, referralBonus: 100,
-    loyaltyEnabled: true, loyaltyPtsPerRs100: 5,
+    loyaltyEnabled: true, loyaltyPtsPerRs100: 5, loyaltyMin: 10,
     maxOrdersDay: 10, signupBonus: 0, p2pEnabled: true, p2pFeePct: 0,
     walletCashbackPct: 0, walletCashbackOrders: true, walletCashbackRides: false, walletCashbackPharm: false,
   },
@@ -365,13 +366,7 @@ const DEFAULT: PlatformConfig = {
     defaultLanguage: "en",
     enabledLanguages: ["en", "ur", "roman", "en_roman", "en_ur"],
   },
-  cities: [
-    "Muzaffarabad", "Mirpur", "Rawalakot", "Kotli", "Bagh", "Bhimber",
-    "Islamabad", "Rawalpindi", "Lahore", "Karachi", "Peshawar", "Quetta",
-    "Faisalabad", "Multan", "Sialkot", "Gujranwala", "Hyderabad",
-    "Abbottabad", "Bahawalpur", "Sargodha", "Sukkur", "Mardan",
-    "Mansehra", "Gilgit", "Skardu",
-  ],
+  cities: [] as string[],
   network: {
     apiTimeoutMs: 30_000,
     maxRetryAttempts: 3,
@@ -556,6 +551,7 @@ export function PlatformConfigProvider({ children }: { children: React.ReactNode
           referralBonus:            raw.customer?.referralBonus            ?? DEFAULT.customer.referralBonus,
           loyaltyEnabled:           raw.customer?.loyaltyEnabled           ?? DEFAULT.customer.loyaltyEnabled,
           loyaltyPtsPerRs100:       raw.customer?.loyaltyPtsPerRs100       ?? DEFAULT.customer.loyaltyPtsPerRs100,
+          loyaltyMin:               raw.customer?.loyaltyMinPoints         ?? raw.customer?.loyaltyMin ?? DEFAULT.customer.loyaltyMin,
           maxOrdersDay:             raw.customer?.maxOrdersDay             ?? DEFAULT.customer.maxOrdersDay,
           signupBonus:              raw.customer?.signupBonus              ?? DEFAULT.customer.signupBonus,
           p2pEnabled:               raw.customer?.p2pEnabled               ?? DEFAULT.customer.p2pEnabled,

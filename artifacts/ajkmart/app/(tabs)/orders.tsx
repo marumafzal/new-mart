@@ -319,6 +319,7 @@ function RideCard({ ride, liveTracking, reviews, ratingWindowHours, serverNow, o
 }) {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
+  const { config: rideConfig } = usePlatformConfig();
   const [hovered, setHovered] = useState(false);
   const cfg = RIDE_STATUS[ride.status] || RIDE_STATUS["searching"]!;
   const isActive    = !["completed", "cancelled"].includes(ride.status);
@@ -419,7 +420,8 @@ function RideCard({ ride, liveTracking, reviews, ratingWindowHours, serverNow, o
 
       {isCompleted && (ride.distance ?? 0) > 0 && (() => {
         const totalFare = ride.fare != null ? Number(ride.fare) : 0;
-        const gst = ride.fareBreakdown?.gstAmount ?? Math.round(totalFare * 0.05);
+        const gstPct = rideConfig.finance.gstEnabled ? (rideConfig.finance.gstPct / 100) : 0;
+        const gst = ride.fareBreakdown?.gstAmount ?? Math.round(totalFare * gstPct);
         const baseFare = ride.fareBreakdown?.baseFare ?? (totalFare - gst);
         return (
           <View style={styles.fareBreakdownBar}>

@@ -871,8 +871,8 @@ function ProfileScreenInner() {
                 </View>
                 <TouchableOpacity
                   activeOpacity={0.75}
-                  disabled={redeemingLoyalty || (loyaltyPoints ?? 0) < 10}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: (loyaltyPoints ?? 0) >= 10 ? C.amberBorder : C.surfaceSecondary, borderRadius: radii.md, paddingHorizontal: 14, paddingVertical: 7, marginTop: 10, borderWidth: 1, borderColor: (loyaltyPoints ?? 0) >= 10 ? C.accent + "44" : C.border }}
+                  disabled={redeemingLoyalty || (loyaltyPoints ?? 0) < (platformConfig.customer.loyaltyMin ?? 10)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", backgroundColor: (loyaltyPoints ?? 0) >= (platformConfig.customer.loyaltyMin ?? 10) ? C.amberBorder : C.surfaceSecondary, borderRadius: radii.md, paddingHorizontal: 14, paddingVertical: 7, marginTop: 10, borderWidth: 1, borderColor: (loyaltyPoints ?? 0) >= (platformConfig.customer.loyaltyMin ?? 10) ? C.accent + "44" : C.border }}
                   onPress={async () => {
                     if (!token) { showToast("Please sign in to redeem points", "error"); return; }
                     setRedeemingLoyalty(true);
@@ -898,10 +898,10 @@ function ProfileScreenInner() {
                   {redeemingLoyalty ? (
                     <ActivityIndicator size="small" color={C.amberDark} />
                   ) : (
-                    <Ionicons name="gift-outline" size={14} color={(loyaltyPoints ?? 0) >= 10 ? C.amberDark : C.textMuted} />
+                    <Ionicons name="gift-outline" size={14} color={(loyaltyPoints ?? 0) >= (platformConfig.customer.loyaltyMin ?? 10) ? C.amberDark : C.textMuted} />
                   )}
-                  <Text style={{ fontFamily: Font.semiBold, fontSize: 12, color: (loyaltyPoints ?? 0) >= 10 ? C.amberDark : C.textMuted }}>
-                    {(loyaltyPoints ?? 0) >= 10 ? `Redeem ${loyaltyPoints} pts` : "Need 10+ pts to redeem"}
+                  <Text style={{ fontFamily: Font.semiBold, fontSize: 12, color: (loyaltyPoints ?? 0) >= (platformConfig.customer.loyaltyMin ?? 10) ? C.amberDark : C.textMuted }}>
+                    {(loyaltyPoints ?? 0) >= (platformConfig.customer.loyaltyMin ?? 10) ? `Redeem ${loyaltyPoints} pts` : `Need ${platformConfig.customer.loyaltyMin ?? 10}+ pts to redeem`}
                   </Text>
                 </TouchableOpacity>
               </View>

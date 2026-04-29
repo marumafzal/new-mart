@@ -1809,6 +1809,20 @@ function WalletScreenInner() {
     );
   }
 
+  if (!platformConfig.features.wallet) {
+    return (
+      <View style={{ flex: 1, backgroundColor: C.background, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingTop: topPad }}>
+        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: C.surfaceSecondary, alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+          <Ionicons name="wallet-outline" size={36} color={C.textMuted} />
+        </View>
+        <Text style={{ fontFamily: Font.bold, fontSize: 20, color: C.text, textAlign: "center", marginBottom: 8 }}>Wallet Unavailable</Text>
+        <Text style={{ fontFamily: Font.regular, fontSize: 14, color: C.textSecondary, textAlign: "center", lineHeight: 22 }}>
+          The wallet service is currently unavailable. Please check back later.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: C.background }}>
       <LinearGradient colors={[C.primaryDark, C.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingTop: topPad + 12, paddingHorizontal: 20, paddingBottom: 14 }}>

@@ -507,26 +507,6 @@ router.get("/parcel-enriched", async (_req, res) => {
   });
 });
 
-/* ── Transactions Enriched ── */
-router.get("/transactions-enriched", async (_req, res) => {
-  const transactions = await db.select().from(walletTransactionsTable).orderBy(desc(walletTransactionsTable.createdAt)).limit(300);
-  const users = await db.select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone }).from(usersTable);
-  const userMap = Object.fromEntries(users.map(u => [u.id, u]));
-
-  const enriched = transactions.map(t => ({
-    ...t,
-    amount: parseFloat(t.amount),
-    createdAt: t.createdAt.toISOString(),
-    userName: userMap[t.userId]?.name || null,
-    userPhone: userMap[t.userId]?.phone || null,
-  }));
-
-  const totalCredit = enriched.filter(t => t.type === "credit").reduce((s, t) => s + t.amount, 0);
-  const totalDebit = enriched.filter(t => t.type === "debit").reduce((s, t) => s + t.amount, 0);
-
-  sendSuccess(res, { transactions: enriched, total: transactions.length, totalCredit, totalDebit });
-});
-
 /* ── Delete User ── */
 const ACTIVE_STATUSES = ["pending", "confirmed", "preparing", "ready", "picked_up", "out_for_delivery"];
 

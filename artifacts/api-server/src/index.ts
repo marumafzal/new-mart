@@ -22,7 +22,7 @@ const server = createServer();
 // Open the port FIRST so the platform's port detector sees a live listener
 // quickly. Migrations + RBAC seeding run immediately after; if they fail,
 // we exit non-zero so the platform restarts us.
-const httpServer = server.listen(port, "::", () => {
+const httpServer = server.listen(port, "0.0.0.0", () => {
   const addr = httpServer.address();
   console.log(`Server listening on port ${port} (addr=${JSON.stringify(addr)})`);
 

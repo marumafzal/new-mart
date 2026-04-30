@@ -25,17 +25,13 @@ author = "agent"
 mode = "parallel"
 
 [workflows.workflow.metadata]
-outputType = "webview"
+outputType = "console"
 artifactId = "3B4_FFSkEVBkAeYMFRJ2e"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/api-server run dev"
-cwd = "./artifacts/api-server"
 waitForPort = 8080
-
-[workflows.workflow.tasks.env]
-PORT = "8080"
 
 [[workflows.workflow]]
 name = "artifacts/rider-app: web"
@@ -142,35 +138,23 @@ args = "artifacts/admin: web"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "API Server"
+args = "artifacts/api-server: API Server"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Start application"
 
 [[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && pnpm run dev"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
 name = "Start application"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "PORT=5000 NODE_ENV=development pnpm --filter @workspace/api-server run dev"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -212,10 +196,6 @@ id = "module:nodejs-24/languageServer:typescript-language-server"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
 
 [[ports]]
 localPort = 8081

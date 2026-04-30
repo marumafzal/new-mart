@@ -37,9 +37,14 @@ minimumReleaseAgeExclude:
 
 onlyBuiltDependencies:
   - '@swc/core'
+  - '@firebase/util'
+  - bcrypt
+  - dtrace-provider
   - esbuild
   - msw
+  - protobufjs
   - sharp
+  - unrs-resolver
 
 overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0

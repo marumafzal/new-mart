@@ -729,7 +729,6 @@ export default function Login() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row" style={{ paddingTop: "env(safe-area-inset-top,0px)" }}>
 
-      {/* ── Left Hero Panel (desktop) ── */}
       <div className="hidden lg:flex lg:w-2/5 xl:w-[45%] bg-gradient-to-br from-indigo-700 via-indigo-600 to-blue-600 flex-col justify-between p-10 relative overflow-hidden flex-shrink-0">
         <div className="absolute -top-24 -right-24 w-80 h-80 bg-white/10 rounded-full pointer-events-none" />
         <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-orange-400/15 rounded-full pointer-events-none" />
@@ -775,7 +774,6 @@ export default function Login() {
         </div>
       </div>
 
-      {/* ── Right Form Panel ── */}
       <div className="flex-1 flex flex-col bg-slate-50">
 
         {/* Mobile hero header */}
@@ -834,7 +832,6 @@ export default function Login() {
             {/* White form card */}
             <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 lg:p-8">
 
-              {/* ── CONTINUE STEP ── */}
               {step === "continue" && (
                 <div>
                   <h2 className="text-xl font-bold text-gray-800 mb-1 lg:hidden">Welcome back 👋</h2>
@@ -921,7 +918,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Method tabs (input step, multiple methods) ── */}
               {step === "input" && enabledMethods.length > 1 && (
                 <div className="mb-5">
                   <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
@@ -943,7 +939,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Single-method back button on input step ── */}
               {step === "input" && enabledMethods.length <= 1 && (
                 <button onClick={() => { setStep("continue"); clearError(); }}
                   className="text-indigo-600 text-sm font-semibold mb-4 flex items-center gap-1.5 hover:text-indigo-700 transition-colors">
@@ -951,7 +946,6 @@ export default function Login() {
                 </button>
               )}
 
-              {/* ── OTP back button ── */}
               {step === "otp" && (
                 <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
                   className="text-indigo-600 text-sm font-semibold mb-4 flex items-center gap-1.5 hover:text-indigo-700 transition-colors">
@@ -959,7 +953,6 @@ export default function Login() {
                 </button>
               )}
 
-              {/* ── PHONE INPUT ── */}
               {method === "phone" && step === "input" && (
                 <div>
                   <h2 className="text-xl font-bold text-gray-800 mb-1">{T("phoneLogin")}</h2>
@@ -993,7 +986,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── PHONE OTP ── */}
               {method === "phone" && step === "otp" && (
                 <div>
                   {otpBypassActive && !bypassBannerDismissed && (
@@ -1082,7 +1074,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── EMAIL INPUT ── */}
               {method === "email" && step === "input" && (
                 <div>
                   <h2 className="text-xl font-bold text-gray-800 mb-1">{T("emailLogin")}</h2>
@@ -1096,7 +1087,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── EMAIL OTP ── */}
               {method === "email" && step === "otp" && (
                 <div>
                   <h2 className="text-xl font-bold text-gray-800 mb-1">{T("enterOtp")}</h2>
@@ -1136,7 +1126,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── USERNAME INPUT ── */}
               {method === "username" && step === "input" && (
                 <div>
                   <h2 className="text-xl font-bold text-gray-800 mb-1">{T("usernameLogin")}</h2>
@@ -1158,7 +1147,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Failed attempts warning ── */}
               {auth.lockoutEnabled && failedAttempts > 0 && !isLockedOut && (step === "input" || step === "otp") && (() => {
                 const remaining = auth.lockoutMaxAttempts - failedAttempts;
                 const alts: { m: LoginMethod; label: string; icon: ReactNode }[] = [];
@@ -1187,7 +1175,6 @@ export default function Login() {
                 );
               })()}
 
-              {/* ── Error banner ── */}
               {step !== "continue" && error && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5">
                   <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
@@ -1195,7 +1182,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Primary action button ── */}
               {step === "input" && enabledMethods.includes(method as "phone" | "email" | "username") && (
                 <button onClick={handleSubmit} disabled={loading || isLockedOut}
                   className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 text-sm shadow-sm shadow-indigo-200">
@@ -1213,7 +1199,6 @@ export default function Login() {
                 </button>
               )}
 
-              {/* ── Social / magic link (input step) ── */}
               {step === "input" && (hasSocial || hasMagicLink) && (
                 <div className="mt-5">
                   {enabledMethods.length > 0 && (
@@ -1247,7 +1232,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Register / Forgot links ── */}
               {step === "input" && (
                 <div className="mt-5 flex flex-col items-center gap-2">
                   <Link href="/register" className="text-sm text-gray-600 font-medium hover:text-indigo-600 transition-colors">

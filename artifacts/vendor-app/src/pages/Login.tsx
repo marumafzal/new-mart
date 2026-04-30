@@ -1064,7 +1064,6 @@ export default function Login() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ paddingTop: "env(safe-area-inset-top,0px)" }}>
 
-      {/* ── Left Hero Panel (desktop) ── */}
       <div className="hidden md:flex md:w-1/2 lg:w-2/5 bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-600 flex-col justify-between p-10 relative overflow-hidden flex-shrink-0">
         <div className="absolute -top-24 -right-24 w-80 h-80 bg-white/10 rounded-full pointer-events-none" />
         <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-teal-300/10 rounded-full pointer-events-none" />
@@ -1108,7 +1107,6 @@ export default function Login() {
         </div>
       </div>
 
-      {/* ── Right Form Panel ── */}
       <div className="flex-1 flex flex-col bg-slate-50">
 
         {/* Mobile hero header */}
@@ -1144,7 +1142,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── CONTINUE STEP ── */}
               {step === "continue" && (
                 <>
                   <h2 className="text-xl font-extrabold text-gray-800 mb-1 md:hidden">Welcome Back 👋</h2>
@@ -1218,7 +1215,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── INPUT STEP ── */}
               {step === "input" && (
                 <>
                   <button onClick={() => { setStep("continue"); clearError(); setOtp(""); setEmailOtp(""); setDevOtp(""); setEmailDevOtp(""); }}
@@ -1243,7 +1239,6 @@ export default function Login() {
                   className="text-emerald-600 text-sm font-bold mb-4 flex items-center gap-1.5 hover:text-emerald-700 transition-colors">← {T("back")}</button>
               )}
 
-              {/* ── PHONE INPUT ── */}
               {method === "phone" && step === "input" && (
                 <>
                   <h2 className="text-xl font-extrabold text-gray-800 mb-1 md:hidden">{T("welcomeBackExcl")}</h2>
@@ -1262,7 +1257,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── PHONE OTP ── */}
               {method === "phone" && step === "otp" && (
                 <>
                   {otpBypassActive && !bypassBannerDismissed && (
@@ -1325,7 +1319,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── EMAIL INPUT ── */}
               {method === "email" && step === "input" && (
                 <>
                   <p className="text-sm text-gray-500 mb-4">{T("loginWith")} {T("email")}</p>
@@ -1338,7 +1331,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── EMAIL OTP ── */}
               {method === "email" && step === "otp" && (
                 <>
                   <h2 className="text-xl font-extrabold text-gray-800 mb-1">{T("enterEmailOtp")}</h2>
@@ -1372,7 +1364,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── USERNAME INPUT ── */}
               {method === "username" && step === "input" && (
                 <>
                   <p className="text-sm text-gray-500 mb-4">Phone, email, or username</p>
@@ -1396,7 +1387,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── FORGOT PASSWORD ── */}
               {step === "forgot" && (
                 <>
                   <button onClick={() => { setStep("input"); clearError(); }} className="text-sm text-emerald-600 hover:text-emerald-700 font-bold mb-4 flex items-center gap-1.5 transition-colors">← Back to Login</button>
@@ -1410,7 +1400,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── FORGOT OTP ── */}
               {step === "forgot-otp" && (
                 <>
                   <button onClick={() => { setStep("forgot"); clearError(); }} className="text-sm text-emerald-600 hover:text-emerald-700 font-bold mb-4 flex items-center gap-1.5 transition-colors">← Back</button>
@@ -1442,7 +1431,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── FORGOT RESET ── */}
               {step === "forgot-reset" && (
                 <>
                   <button onClick={() => { setStep("forgot-otp"); clearError(); }} className="text-sm text-emerald-600 hover:text-emerald-700 font-bold mb-4 flex items-center gap-1.5 transition-colors">← Back</button>
@@ -1462,7 +1450,6 @@ export default function Login() {
                 </>
               )}
 
-              {/* ── FORGOT DONE ── */}
               {step === "forgot-done" && (
                 <div className="text-center py-6">
                   <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1475,7 +1462,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Lockout warning ── */}
               {vendorAuth.lockoutEnabled && failedAttempts > 0 && !isLockedOut && (step === "input" || step === "otp") && (() => {
                 const remaining = (vendorAuth.lockoutMaxAttempts ?? 5) - failedAttempts;
                 const alts: { m: LoginMethod; label: string; icon: ReactNode }[] = [];
@@ -1504,7 +1490,6 @@ export default function Login() {
                 );
               })()}
 
-              {/* ── Error banner ── */}
               {step !== "continue" && error && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5">
                   <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
@@ -1512,7 +1497,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Primary action button ── */}
               {step !== "continue" && step !== "forgot-done" && method !== "google" && method !== "facebook" && (
                 <button onClick={
                   step === "forgot" ? sendForgotOtp
@@ -1535,7 +1519,6 @@ export default function Login() {
                 </button>
               )}
 
-              {/* ── Social/direct buttons (google/facebook method) ── */}
               {step === "input" && (method === "google" || method === "facebook") && (
                 <div className="space-y-3">
                   <p className="text-sm text-gray-500 text-center mb-2">
@@ -1562,7 +1545,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Resend OTP ── */}
               {step === "otp" && (
                 <button
                   onClick={() => { if (resendCooldown > 0) return; (method === "phone" ? sendPhoneOtp : sendEmailOtp)(); }}
@@ -1572,7 +1554,6 @@ export default function Login() {
                 </button>
               )}
 
-              {/* ── Register CTA ── */}
               {step !== "continue" && (
                 <div className="border-t border-gray-100 mt-5 pt-4">
                   <button onClick={() => { setStep("register"); clearError(); }}
@@ -1582,7 +1563,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ── Footer ── */}
               {(config.platform.supportPhone || config.platform.supportEmail || config.content.tncUrl || config.content.privacyUrl) && (
                 <div className="border-t border-gray-100 mt-5 pt-4 space-y-2">
                   {(config.platform.supportPhone || config.platform.supportEmail) && (

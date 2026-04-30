@@ -54,9 +54,42 @@
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
+
+  /* Login page brand tokens */
+  --login-brand: #059669;
+  --login-brand-hover: #047857;
+  --login-brand-shadow: rgba(5, 150, 105, 0.22);
+  --login-hero-from: #047857;
+  --login-hero-via: #059669;
+  --login-hero-to: #0d9488;
+  --login-otp-filled-bg: #ecfdf5;
+  --login-otp-filled-border: #10b981;
+  --login-otp-filled-text: #047857;
+  --login-btn-radius: 1rem;
 }
 
-/* ── Android / Mobile Reset ── */
+@layer components {
+  .login-btn-primary {
+    background-color: var(--login-brand);
+    border-radius: var(--login-btn-radius);
+    box-shadow: 0 1px 3px var(--login-brand-shadow);
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+  }
+  .login-btn-primary:hover:not(:disabled) { background-color: var(--login-brand-hover); }
+  .login-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .login-otp-box-filled {
+    border-color: var(--login-otp-filled-border) !important;
+    background-color: var(--login-otp-filled-bg) !important;
+    color: var(--login-otp-filled-text) !important;
+  }
+}
+
+@keyframes loginStepIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.login-step-enter { animation: loginStepIn 0.22s ease-out; }
+
 @layer base {
   *, *::before, *::after {
     box-sizing: border-box;
@@ -142,22 +175,18 @@
   }
 }
 
-/* ── Bottom Nav Safe Area ── */
 .bottom-nav-safe {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
-/* ── Page container with top status bar safe area ── */
 .page-top-safe {
   padding-top: env(safe-area-inset-top, 0px);
 }
 
-/* ── Header with safe area on gradient headers ── */
 .header-gradient {
   padding-top: calc(env(safe-area-inset-top, 0px) + 2.5rem);
 }
 
-/* ── Android Material ripple press effect ── */
 .android-press {
   transition: transform 0.1s ease, opacity 0.1s ease;
   -webkit-tap-highlight-color: transparent;
@@ -167,24 +196,20 @@
   opacity: 0.85;
 }
 
-/* ── Momentum scroll containers ── */
 .scroll-momentum {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
 
-/* ── Input focus ring fix for Android ── */
 input:focus, textarea:focus, select:focus {
   outline: none;
 }
 
-/* ── Card shadow system (Material-ish depth) ── */
 .card-1 { box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04); }
 .card-2 { box-shadow: 0 4px 6px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04); }
 .card-3 { box-shadow: 0 10px 15px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.04); }
 
-/* ── Gradient text utility ── */
 .text-gradient-orange {
   background: linear-gradient(135deg, #f97316, #f59e0b);
   -webkit-background-clip: text;
@@ -192,7 +217,6 @@ input:focus, textarea:focus, select:focus {
   background-clip: text;
 }
 
-/* ── Skeleton loading animation ── */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -204,32 +228,27 @@ input:focus, textarea:focus, select:focus {
   border-radius: 8px;
 }
 
-/* ── Android status bar padding for header ── */
 .status-bar-spacer {
   height: env(safe-area-inset-top, 24px);
   background: inherit;
 }
 
-/* ── Bottom sheet slide up ── */
 @keyframes slideUp {
   from { transform: translateY(100%); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }
 }
 .slide-up { animation: slideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1); }
 
-/* ── Toast notification ── */
 @keyframes toastIn {
   from { transform: translateY(-100%) scale(0.95); opacity: 0; }
   to   { transform: translateY(0) scale(1); opacity: 1; }
 }
 .toast-in { animation: toastIn 0.25s cubic-bezier(0.32, 0.72, 0, 1); }
 
-/* ── Tab indicator ── */
 .tab-indicator {
   transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ── Custom spacing that Tailwind doesn't generate by default ── */
 @layer utilities {
   .h-13  { height: 3.25rem; }   /* 52px — between h-12 and h-14 */
   .pb-18 { padding-bottom: 4.5rem; }
@@ -237,15 +256,12 @@ input:focus, textarea:focus, select:focus {
   .min-h-13 { min-height: 3.25rem; }
 }
 
-/* ── Full-screen mobile app fix ── */
 body { background-color: #f3f4f6; }
 
-/* ── Prevent text input zoom on iOS/Android (zoom triggers when font-size < 16px) ── */
 input, textarea, select {
   font-size: 16px; /* Tailwind class selectors (higher specificity) will override */
 }
 
-/* ── Consistent focus ring for inputs ── */
 input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.3);
   border-color: #f97316 !important;

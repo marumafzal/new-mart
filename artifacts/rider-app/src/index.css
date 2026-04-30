@@ -52,7 +52,41 @@
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
+
+  /* Login page brand tokens */
+  --login-brand: #4f46e5;
+  --login-brand-hover: #4338ca;
+  --login-brand-shadow: rgba(79, 70, 229, 0.25);
+  --login-hero-from: #4338ca;
+  --login-hero-via: #4f46e5;
+  --login-hero-to: #2563eb;
+  --login-otp-filled-bg: #eef2ff;
+  --login-otp-filled-border: #6366f1;
+  --login-otp-filled-text: #4338ca;
+  --login-btn-radius: 1rem;
 }
+
+@layer components {
+  .login-btn-primary {
+    background-color: var(--login-brand);
+    border-radius: var(--login-btn-radius);
+    box-shadow: 0 1px 3px var(--login-brand-shadow);
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+  }
+  .login-btn-primary:hover:not(:disabled) { background-color: var(--login-brand-hover); }
+  .login-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .login-otp-box-filled {
+    border-color: var(--login-otp-filled-border) !important;
+    background-color: var(--login-otp-filled-bg) !important;
+    color: var(--login-otp-filled-text) !important;
+  }
+}
+
+@keyframes loginStepIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.login-step-enter { animation: loginStepIn 0.22s ease-out; }
 
 @layer base {
   * { @apply border-border; box-sizing: border-box; }

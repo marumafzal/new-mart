@@ -21,6 +21,7 @@ declare global {
       adminIp?: string;
       adminPermissions?: string[];
       ride?: InferSelectModel<typeof ridesTable>;
+      admin?: { id: string; [key: string]: unknown };
     }
   }
 }

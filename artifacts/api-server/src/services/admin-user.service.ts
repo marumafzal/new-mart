@@ -77,7 +77,7 @@ export class UserService {
     let canonPhone: string | null = null;
     if (trimPhone) {
       canonPhone = canonicalizePhone(trimPhone);
-      if (!/^3\d{9}$/.test(canonPhone)) {
+      if (!canonPhone || !/^3\d{9}$/.test(canonPhone)) {
         throw new Error("Phone must be a valid Pakistani mobile number");
       }
 
@@ -85,7 +85,7 @@ export class UserService {
       const [existing] = await db
         .select({ id: usersTable.id })
         .from(usersTable)
-        .where(eq(usersTable.phone, canonPhone))
+        .where(eq(usersTable.phone, canonPhone as string))
         .limit(1);
       if (existing) {
         throw new Error("A user with this phone number already exists");

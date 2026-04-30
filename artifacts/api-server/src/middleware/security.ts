@@ -161,7 +161,9 @@ export async function unblockIP(ip: string) {
   blockedIPsCache.delete(ip);
   try {
     await db.delete(rateLimitsTable).where(eq(rateLimitsTable.key, `blocked_ip:${ip}`));
-  } catch {}
+  } catch (err) {
+    logger.warn({ ip, err: err instanceof Error ? err.message : String(err) }, "[security] unblockIP DB delete failed");
+  }
 }
 
 export async function isIPBlocked(ip: string): Promise<boolean> {
@@ -173,7 +175,9 @@ export async function isIPBlocked(ip: string): Promise<boolean> {
       blockedIPsCache.add(ip);
       return true;
     }
-  } catch {}
+  } catch (err) {
+    logger.warn({ ip, err: err instanceof Error ? err.message : String(err) }, "[security] isIPBlocked DB query failed");
+  }
   return false;
 }
 
@@ -185,7 +189,8 @@ export async function getBlockedIPList(): Promise<string[]> {
     const ips = rows.map(r => r.key.replace("blocked_ip:", ""));
     for (const ip of ips) blockedIPsCache.add(ip);
     return ips;
-  } catch {
+  } catch (err) {
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, "[security] getBlockedIPList DB query failed, returning cache");
     return Array.from(blockedIPsCache);
   }
 }
@@ -535,7 +540,9 @@ export async function recordFailedAttempt(key: string, maxAttempts: number, lock
 export async function resetAttempts(key: string) {
   try {
     await db.delete(rateLimitsTable).where(eq(rateLimitsTable.key, key));
-  } catch {}
+  } catch (err) {
+    logger.warn({ key, err: err instanceof Error ? err.message : String(err) }, "[security] resetAttempts DB delete failed");
+  }
 }
 
 export async function unlockPhone(phone: string) {

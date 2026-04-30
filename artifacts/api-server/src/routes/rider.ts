@@ -2438,7 +2438,9 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
               .set({ isOnline: false, updatedAt: new Date() })
               .where(eq(usersTable.id, riderId));
             autoOffline = true;
-          } catch {}
+          } catch (err) {
+            logger.warn({ riderId, err: err instanceof Error ? err.message : String(err) }, "[rider] Failed to auto-offline rider due to spoofing");
+          }
           const io = getIO();
           if (io) {
             io.to("admin-fleet").emit("rider:spoof-alert", {
@@ -2527,7 +2529,9 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
       .orderBy(desc(ridesTable.updatedAt))
       .limit(1);
     rideId = activeRide?.id ?? null;
-  } catch {}
+  } catch (err) {
+    logger.warn({ riderId, err: err instanceof Error ? err.message : String(err) }, "[rider] Failed to lookup active ride");
+  }
 
   /* Look up vendor and orderId for active delivery order */
   let orderId: string | null = null;
@@ -2544,7 +2548,9 @@ router.patch("/location", locationRateLimiter, async (req, res) => {
       .limit(1);
     vendorId = activeOrder?.vendorId ?? null;
     orderId = activeOrder?.id ?? null;
-  } catch {}
+  } catch (err) {
+    logger.warn({ riderId, err: err instanceof Error ? err.message : String(err) }, "[rider] Failed to lookup active delivery order");
+  }
 
   const updatedAt = nowDate.toISOString();
 
@@ -2770,7 +2776,9 @@ router.post("/location/batch", async (req, res) => {
       await db.update(usersTable)
         .set({ isOnline: false, updatedAt: new Date() })
         .where(eq(usersTable.id, riderId));
-    } catch {}
+    } catch (err) {
+      logger.warn({ riderId, err: err instanceof Error ? err.message : String(err) }, "[rider] Failed to auto-offline rider due to batch spoofing");
+    }
     const io = getIO();
     if (io) {
       io.to("admin-fleet").emit("rider:spoof-alert", {

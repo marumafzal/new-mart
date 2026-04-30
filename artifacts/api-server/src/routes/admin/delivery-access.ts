@@ -391,7 +391,9 @@ router.patch("/delivery-access/requests/:id", async (req, res) => {
           : `Your delivery access request for ${request.serviceType} has been rejected.${notes ? ` Reason: ${notes}` : ""}`,
         type: "system",
       });
-    } catch {}
+    } catch (err) {
+      logger.warn({ vendorId: request.vendorId, status, err: err instanceof Error ? err.message : String(err) }, "[admin:delivery-access] Failed to send delivery access notification");
+    }
 
     await addAuditLog({
       adminId: adminReq.adminId,

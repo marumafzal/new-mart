@@ -11,7 +11,8 @@ function generateBypassCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 import { sendSuccess, sendNotFound, sendValidationError } from "../../lib/response.js";
-import { generateSecureOtp, generateId } from "../../services/password.js";
+import { generateSecureOtp } from "../../services/password.js";
+import { generateId } from "../../lib/id.js";
 import { createHash } from "crypto";
 import { writeAuthAuditLog } from "../../middleware/security.js";
 import { AuditService } from "../../services/admin-audit.service.js";

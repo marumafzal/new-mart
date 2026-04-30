@@ -31,7 +31,7 @@ import { useToast } from "@/context/ToastContext";
 import { usePlatformConfig } from "@/context/PlatformConfigContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
-import { createOrder } from "@workspace/api-client-react";
+import { createOrder, CreateOrderRequestPaymentMethod, type CreateOrderRequestType } from "@workspace/api-client-react";
 import { API_BASE, unwrapApiResponse } from "@/utils/api";
 import { AuthGateSheet, useAuthGate, useRoleGate, RoleBlockSheet } from "@/components/AuthGateSheet";
 
@@ -771,7 +771,7 @@ function CartScreenInner() {
       const data = unwrapApiResponse<{ valid?: boolean; discount?: number; error?: string }>(await res.json());
       if (!mountedRef.current || seq !== promoRevalidateSeq.current) return;
       if (data.valid) {
-        setPromoDiscount(data.discount);
+        setPromoDiscount(data.discount ?? 0);
       } else {
         setPromoCode(null);
         setPromoDiscount(0);
@@ -803,7 +803,7 @@ function CartScreenInner() {
       const data = unwrapApiResponse<{ valid?: boolean; discount?: number; error?: string }>(await res.json());
       if (data.valid) {
         setPromoCode(code);
-        setPromoDiscount(data.discount);
+        setPromoDiscount(data.discount ?? 0);
         setPromoApplied(true);
         setPromoError(null);
         showToast(`${T("promoApplied")} Rs. ${data.discount} discount received`, "success");
@@ -889,7 +889,7 @@ function CartScreenInner() {
         };
         const payload: CartCreateOrderPayload = {
           userId: user?.id ?? "",
-          type: (cartType === "mixed" ? "mart" : cartType) as "mart" | "food" | "pharmacy" | "parcel",
+          type: (cartType === "mixed" ? "mart" : cartType) as CreateOrderRequestType,
           items: items.map(i => ({
             productId: i.productId, name: i.name,
             price: i.price, quantity: i.quantity, image: i.image,

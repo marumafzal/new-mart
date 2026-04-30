@@ -1,3 +1,4 @@
+import type { TranslationKey } from "@workspace/i18n";
 import { Zap, Wifi, VolumeX, Volume2 } from "lucide-react";
 
 interface OnlineToggleCardProps {
@@ -6,7 +7,7 @@ interface OnlineToggleCardProps {
   silenceOn: boolean;
   onToggleOnline: () => void;
   onToggleSilence: () => void;
-  T: (key: string) => string;
+  T: (key: TranslationKey) => string;
 }
 
 export function OnlineToggleCard({

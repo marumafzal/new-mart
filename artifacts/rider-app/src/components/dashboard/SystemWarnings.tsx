@@ -1,3 +1,4 @@
+import type { TranslationKey } from "@workspace/i18n";
 import { Link } from "wouter";
 import {
   AlertTriangle,
@@ -26,7 +27,7 @@ interface FixedBannersProps {
   onDismissWakeLock: () => void;
   audioLocked: boolean;
   onUnlockAudio: () => void;
-  T: (key: string) => string;
+  T: (key: TranslationKey) => string;
 }
 
 export function FixedBanners({

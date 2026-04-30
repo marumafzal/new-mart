@@ -79,8 +79,8 @@ export function EditProfileModal({ visible, onClose }: { visible: boolean; onClo
         const errBody = await avatarRes.json().catch(() => ({}));
         throw new Error(extractApiError(errBody, "Avatar upload failed"));
       }
-      const avatarData = unwrapApiResponse(await avatarRes.json());
-      const avatarUrl: string = avatarData.avatarUrl;
+      const avatarData = unwrapApiResponse<{ avatarUrl?: string }>(await avatarRes.json());
+      const avatarUrl = avatarData.avatarUrl ?? "";
       if (!avatarUrl) throw new Error("No URL returned from server");
       updateUser({ avatar: avatarUrl });
       setAvatarUri(asset.uri);
@@ -142,7 +142,7 @@ export function EditProfileModal({ visible, onClose }: { visible: boolean; onClo
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || errData.error || "Update failed");
       }
-      const data = unwrapApiResponse(await res.json());
+      const data = unwrapApiResponse<{ name?: string; email?: string; cnic?: string; city?: string; accountLevel?: string; kycStatus?: string; area?: string; address?: string; username?: string }>(await res.json());
       updateUser({
         name: data.name ?? name.trim(),
         email: data.email ?? email.trim(),

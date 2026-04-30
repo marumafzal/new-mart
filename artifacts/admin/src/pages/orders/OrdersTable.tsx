@@ -9,6 +9,7 @@ import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { SortHeader } from "./SortHeader";
 import { STATUS_LABELS, allowedNext, PAGE_SIZES } from "./constants";
 import type { SortKey, SortDir } from "./constants";
+import type { TranslationKey } from "@workspace/i18n";
 
 interface OrdersTableProps {
   isLoading: boolean;
@@ -28,7 +29,7 @@ interface OrdersTableProps {
   safePage: number;
   sortedLength: number;
   toastFn: (opts: any) => void;
-  T: (key: string) => string;
+  T: (key: TranslationKey) => string;
 }
 
 export function OrdersTable({

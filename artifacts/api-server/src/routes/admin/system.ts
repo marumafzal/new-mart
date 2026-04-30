@@ -558,8 +558,9 @@ router.get("/integration-history", async (req, res) => {
         .orderBy(desc(integrationTestHistoryTable.createdAt)).limit(limitRows)
     : await baseQuery.orderBy(desc(integrationTestHistoryTable.createdAt)).limit(limitRows);
 
-  const recent: Record<string, Array<typeof rows[number] & { createdAt: string }>> = {};
-  const latest: Record<string, (typeof rows[number] & { createdAt: string }) | null> = {};
+  type SerialisedRow = Omit<typeof rows[number], "createdAt"> & { createdAt: string };
+  const recent: Record<string, SerialisedRow[]> = {};
+  const latest: Record<string, SerialisedRow | null> = {};
 
   for (const r of rows) {
     const serialised = { ...r, createdAt: r.createdAt.toISOString() };

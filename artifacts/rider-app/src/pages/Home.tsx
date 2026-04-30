@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "wouter";
 import { useAuth } from "../lib/auth";
-import { api } from "../lib/api";
+import { api, type Order, type Ride } from "../lib/api";
 import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { useSocket } from "../lib/socket";

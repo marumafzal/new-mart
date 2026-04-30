@@ -925,7 +925,7 @@ components:
           type: string
         type:
           type: string
-          enum: [mart, food]
+          enum: [mart, food, pharmacy, parcel]
         items:
           type: array
           items:

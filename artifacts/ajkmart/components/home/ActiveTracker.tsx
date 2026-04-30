@@ -52,8 +52,11 @@ export function ActiveTrackerStrip({ userId }: { userId: string }) {
   if (ordersLoading || ridesLoading) return null;
   if (ordersError || ridesError) return null;
 
-  const activeOrders = (Array.isArray(ordersData) ? ordersData : (ordersData?.orders ?? [])).filter((o: { status: string }) => !["delivered", "cancelled"].includes(o.status));
-  const activeRides = (Array.isArray(ridesData) ? ridesData : (ridesData?.rides ?? [])).filter((r: { status: string }) => !["completed", "cancelled"].includes(r.status));
+  type StatusItem = { id?: string; status: string };
+  const ordersList: StatusItem[] = Array.isArray(ordersData) ? (ordersData as StatusItem[]) : ((ordersData as { orders?: StatusItem[] })?.orders ?? []);
+  const ridesList: StatusItem[] = Array.isArray(ridesData) ? (ridesData as StatusItem[]) : ((ridesData as { rides?: StatusItem[] })?.rides ?? []);
+  const activeOrders = ordersList.filter((o) => !["delivered", "cancelled"].includes(o.status));
+  const activeRides = ridesList.filter((r) => !["completed", "cancelled"].includes(r.status));
   const total = activeOrders.length + activeRides.length;
   if (total === 0) return null;
 

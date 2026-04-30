@@ -28,8 +28,8 @@ export function NotificationsModal({ visible, userId, token, onClose }: {
     setLoading(true);
     try {
       const r = await fetch(`${API}/notifications`, { headers: authHdrs });
-      const d = unwrapApiResponse(await r.json());
-      setNotifs(d.notifications || []);
+      const d = unwrapApiResponse<{ notifications?: Notification[] }>(await r.json());
+      setNotifs(d.notifications ?? []);
     } catch (err) {
       if (__DEV__) console.warn("[Profile] Notifications load failed:", err instanceof Error ? err.message : String(err));
       showToast("Could not load notifications — tap retry to try again", "error");

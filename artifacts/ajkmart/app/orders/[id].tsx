@@ -161,8 +161,8 @@ export default function OrderDetailScreen() {
     }
     if (!res.ok) throw new Error("Failed to load order data");
     const raw = await res.json();
-    const data = unwrapApiResponse<OrderDetail | { order?: OrderDetail; booking?: OrderDetail }>(raw);
-    const detail = (data.order || data.booking || data) as OrderDetail;
+    const data = unwrapApiResponse<{ order?: OrderDetail; booking?: OrderDetail } & Partial<OrderDetail>>(raw);
+    const detail = (data.order || data.booking || (data as OrderDetail));
     if (detail.userId && detail.userId !== user?.id) {
       throw new Error("Order not found");
     }
@@ -247,7 +247,7 @@ export default function OrderDetailScreen() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
-          const d = unwrapApiResponse<{ riderLat?: number; riderLng?: number }>(await res.json());
+          const d = unwrapApiResponse<{ riderLat?: number; riderLng?: number; etaMinutes?: number }>(await res.json());
           if (mountedRef.current) {
             if (typeof d.riderLat === "number" && typeof d.riderLng === "number") {
               animateToLocation(d.riderLat, d.riderLng);

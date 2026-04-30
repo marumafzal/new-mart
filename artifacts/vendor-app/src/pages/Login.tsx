@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
-import { Phone, Mail, User, Wrench, AlertCircle } from "lucide-react";
+import { Phone, Mail, User, Wrench, AlertCircle, X } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { api, apiFetch } from "../lib/api";
 import { usePlatformConfig, getVendorAuthConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { loadGoogleGSIToken, loadFacebookAccessToken, MagicLinkSender, canonicalizePhone, useAuthConfig, executeCaptcha, formatPhoneForApi } from "@workspace/auth-utils";
+import { useOTPBypass } from "../hooks/useOTPBypass";
 
 type LoginMethod = "phone" | "email" | "username" | "google" | "facebook";
 type Step = "continue" | "input" | "otp" | "pending" | "2fa" | "register" | "register-otp" | "register-info" | "register-submitted" | "forgot" | "forgot-otp" | "forgot-reset" | "forgot-done";
@@ -36,7 +37,6 @@ export default function Login() {
   const { config } = usePlatformConfig();
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
-
   const appName           = config.platform.appName;
   const businessAddress   = config.platform.businessAddress;
   const vendorEarningsPct = Math.round(100 - (config.platform.vendorCommissionPct ?? 15));
@@ -82,6 +82,9 @@ export default function Login() {
   const [fallbackChannels, setFallbackChannels] = useState<string[]>([]);
 
   const [phone, setPhone] = useState("");
+  const { bypassActive: otpBypassActive, bypassMessage: otpBypassMessage, remainingSeconds: bypassRemainingSeconds } = useOTPBypass(
+    method === "phone" && phone.length >= 10 ? phone : undefined
+  );
   const [otp, setOtp]     = useState("");
   const [devOtp, setDevOtp] = useState("");
   const [resendCooldown, setResendCooldown] = useState<number>(() => {
@@ -133,6 +136,7 @@ export default function Login() {
   const [regTermsAccepted, setRegTermsAccepted] = useState(false);
 
   const [magicLinkEmail, setMagicLinkEmail] = useState("");
+  const [bypassBannerDismissed, setBypassBannerDismissed] = useState(false);
 
   const clearError = () => setError("");
 
@@ -474,6 +478,8 @@ export default function Login() {
       const res = await api.sendOtp(phone, channel, captchaToken);
       if (res.otpRequired === false) {
         if (res.token) { await doLogin(res as AuthResponse); setLoading(false); return; }
+        setStep("otp");
+        setBypassBannerDismissed(false);
         const bypass = await api.verifyOtp(phone, "000000", getDeviceFingerprint(), "vendor");
         await doLogin(bypass);
         setLoading(false); return;
@@ -1164,6 +1170,24 @@ export default function Login() {
 
             {method === "phone" && step === "otp" && (
               <>
+                {otpBypassActive && !bypassBannerDismissed && (
+                  <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-4 flex items-start gap-2">
+                    <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-amber-800 text-xs font-semibold leading-relaxed">
+                        {otpBypassMessage || "OTP verification is temporarily disabled. You will be logged in automatically."}
+                      </p>
+                      {bypassRemainingSeconds > 0 && (
+                        <p className="text-amber-600 text-[10px] mt-0.5">
+                          Expires in {Math.floor(bypassRemainingSeconds / 60)}m {bypassRemainingSeconds % 60}s
+                        </p>
+                      )}
+                    </div>
+                    <button onClick={() => setBypassBannerDismissed(true)} className="text-amber-400 hover:text-amber-600 flex-shrink-0" aria-label="Dismiss">
+                      <X size={13} />
+                    </button>
+                  </div>
+                )}
                 <h2 className="text-xl font-extrabold text-gray-800 mb-1">{T("enterOtp")}</h2>
                 <p className="text-sm text-gray-500 mb-1">{T("sentTo_")} <strong className="text-gray-700">+92{phone}</strong></p>
                 {otpChannel && (

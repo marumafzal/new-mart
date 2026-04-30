@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export interface AuthConfig {
   auth_mode: string;
@@ -13,12 +14,18 @@ export interface AuthConfig {
   bypassMessage?: string | null;
 }
 
+const CACHE_KEY = "authConfigCache";
+const CACHE_TIME_KEY = "authConfigCacheTime";
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 /**
  * useOTPBypass hook for Customer App (AJKMart)
- * 
+ *
  * Fetches OTP bypass status from the auth config endpoint.
- * Caches config locally for 5 minutes to reduce API calls.
+ * Caches config in AsyncStorage for 5 minutes to reduce API calls.
  * Refreshes config every 30 seconds to stay in sync.
+ *
+ * Uses AsyncStorage (not localStorage) so it works correctly on device.
  */
 export const useOTPBypass = () => {
   const [bypassActive, setBypassActive] = useState(false);
@@ -43,7 +50,6 @@ export const useOTPBypass = () => {
 
         const config: AuthConfig = await response.json();
 
-        // Update state from config
         setBypassActive(!!config.otpBypassActive);
         if (config.otpBypassExpiresAt) {
           setBypassExpiresAt(new Date(config.otpBypassExpiresAt));
@@ -52,32 +58,26 @@ export const useOTPBypass = () => {
         }
         setBypassMessage(config.bypassMessage || null);
 
-        // Cache for 5 minutes
-        if (typeof localStorage !== "undefined") {
-          localStorage.setItem("authConfigCache", JSON.stringify(config));
-          localStorage.setItem("authConfigCacheTime", Date.now().toString());
-        }
+        await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(config));
+        await AsyncStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
       } catch (error) {
         console.error("[useOTPBypass] Failed to fetch config:", error);
 
-        // Try to use cached config
-        if (typeof localStorage !== "undefined") {
-          const cacheTime = localStorage.getItem("authConfigCacheTime");
-          if (cacheTime && Date.now() - parseInt(cacheTime, 10) < 5 * 60 * 1000) {
-            const cached = localStorage.getItem("authConfigCache");
+        try {
+          const cacheTime = await AsyncStorage.getItem(CACHE_TIME_KEY);
+          if (cacheTime && Date.now() - parseInt(cacheTime, 10) < CACHE_TTL_MS) {
+            const cached = await AsyncStorage.getItem(CACHE_KEY);
             if (cached) {
-              try {
-                const config: AuthConfig = JSON.parse(cached);
-                setBypassActive(!!config.otpBypassActive);
-                if (config.otpBypassExpiresAt) {
-                  setBypassExpiresAt(new Date(config.otpBypassExpiresAt));
-                }
-                setBypassMessage(config.bypassMessage || null);
-              } catch (parseError) {
-                console.error("[useOTPBypass] Failed to parse cache:", parseError);
+              const config: AuthConfig = JSON.parse(cached);
+              setBypassActive(!!config.otpBypassActive);
+              if (config.otpBypassExpiresAt) {
+                setBypassExpiresAt(new Date(config.otpBypassExpiresAt));
               }
+              setBypassMessage(config.bypassMessage || null);
             }
           }
+        } catch (cacheError) {
+          console.error("[useOTPBypass] Failed to read cache:", cacheError);
         }
       } finally {
         setLoading(false);
@@ -86,7 +86,6 @@ export const useOTPBypass = () => {
 
     fetchAuthConfig();
 
-    // Refresh every 30 seconds
     const interval = setInterval(fetchAuthConfig, 30000);
     return () => clearInterval(interval);
   }, []);

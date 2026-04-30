@@ -9,8 +9,9 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { TwoFactorVerify, MagicLinkSender, executeCaptcha, loadGoogleGSIToken, loadFacebookAccessToken, formatPhoneForApi, canonicalizePhone, useAuthConfig } from "@workspace/auth-utils";
 import {
   Phone, Mail, User, Bike, Clock, Lightbulb, Eye, EyeOff,
-  ArrowLeft, Loader2, Shield, Wrench, AlertCircle,
+  ArrowLeft, Loader2, Shield, Wrench, AlertCircle, X,
 } from "lucide-react";
+import { useOTPBypass } from "../hooks/useOTPBypass";
 
 type LoginMethod = "phone" | "email" | "username" | "google" | "facebook" | "magicLink";
 type Step = "continue" | "input" | "otp" | "pending" | "rejected" | "2fa";
@@ -90,6 +91,9 @@ export default function Login() {
   const checkIdentifierAbort = useRef<AbortController | null>(null);
 
   const [phone, setPhone] = useState("");
+  const { bypassActive: otpBypassActive, bypassMessage: otpBypassMessage, remainingSeconds: bypassRemainingSeconds } = useOTPBypass(
+    method === "phone" && phone.length >= 10 ? formatPhoneForApi(phone) : undefined
+  );
   const [otp, setOtp] = useState("");
   const [devOtp, setDevOtp] = useState("");
 
@@ -123,6 +127,7 @@ export default function Login() {
 
   const [otpCooldown, setOtpCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [bypassBannerDismissed, setBypassBannerDismissed] = useState(false);
 
   const startCooldown = (sec = 60) => {
     setOtpCooldown(sec);
@@ -218,6 +223,8 @@ export default function Login() {
           const r = await api.sendOtp(formatPhoneForApi(normalized), captchaToken);
           if (r.otpRequired === false) {
             if (r.token) { await doLogin(r as AuthResponse); setLoading(false); return; }
+            setStep("otp");
+            setBypassBannerDismissed(false);
             const bypass = await api.verifyOtp(formatPhoneForApi(normalized), "000000", getDeviceFingerprint());
             await doLogin(bypass);
             setLoading(false); return;
@@ -410,6 +417,8 @@ export default function Login() {
       const res = await api.sendOtp(formatPhoneForApi(phone), captchaToken, channel);
       if (res.otpRequired === false) {
         if (res.token) { await doLogin(res as AuthResponse); setLoading(false); return; }
+        setStep("otp");
+        setBypassBannerDismissed(false);
         const bypass = await api.verifyOtp(formatPhoneForApi(phone), "000000", getDeviceFingerprint());
         await doLogin(bypass);
         setLoading(false); return;
@@ -883,6 +892,24 @@ export default function Login() {
           )}
           {method === "phone" && step === "otp" && (
             <>
+              {otpBypassActive && !bypassBannerDismissed && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-4 flex items-start gap-2">
+                  <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-amber-800 text-xs font-semibold leading-relaxed">
+                      {otpBypassMessage || "OTP verification is temporarily disabled. You will be logged in automatically."}
+                    </p>
+                    {bypassRemainingSeconds > 0 && (
+                      <p className="text-amber-600 text-[10px] mt-0.5">
+                        Expires in {Math.floor(bypassRemainingSeconds / 60)}m {bypassRemainingSeconds % 60}s
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={() => setBypassBannerDismissed(true)} className="text-amber-400 hover:text-amber-600 flex-shrink-0" aria-label="Dismiss">
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
               <h2 className="text-xl font-bold text-gray-800 mb-1">{T("enterOtp")}</h2>
               <p className="text-sm text-gray-500 mb-1">+92{phone}</p>
               {otpChannel && (

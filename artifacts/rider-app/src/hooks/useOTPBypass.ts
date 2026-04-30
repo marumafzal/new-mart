@@ -15,70 +15,51 @@ export interface AuthConfig {
 
 /**
  * useOTPBypass hook for Rider App
- * 
- * Fetches OTP bypass status from the auth config endpoint.
- * Caches config locally for 5 minutes to reduce API calls.
- * Refreshes config every 30 seconds to stay in sync.
+ *
+ * When `phone` is provided, queries /auth/otp-status?phone= for per-user,
+ * global, timed-disable, and whitelist bypass state (in priority order).
+ * Without a phone, falls back to /auth/config for global-only state.
+ * Refreshes every 30 seconds and caches in localStorage for resilience.
  */
-export const useOTPBypass = () => {
+export const useOTPBypass = (phone?: string) => {
   const [bypassActive, setBypassActive] = useState(false);
   const [bypassExpiresAt, setBypassExpiresAt] = useState<Date | null>(null);
   const [bypassMessage, setBypassMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchAuthConfig = async () => {
+    const cacheKey = phone ? `otpBypassCache_${phone}` : "authConfigCache";
+    const cacheTimeKey = phone ? `otpBypassCacheTime_${phone}` : "authConfigCacheTime";
+
+    const applyData = (data: { bypassActive?: boolean; otpBypassActive?: boolean; bypassExpiresAt?: string | null; otpBypassExpiresAt?: string | null; message?: string | null; bypassMessage?: string | null }) => {
+      setBypassActive(!!(data.bypassActive ?? data.otpBypassActive));
+      const expiresStr = data.bypassExpiresAt ?? data.otpBypassExpiresAt ?? null;
+      setBypassExpiresAt(expiresStr ? new Date(expiresStr) : null);
+      setBypassMessage(data.message ?? data.bypassMessage ?? null);
+    };
+
+    const fetchStatus = async () => {
       try {
         setLoading(true);
-        const response = await fetch("/api/auth/config", {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch auth config: ${response.status}`);
-        }
-
-        const config: AuthConfig = await response.json();
-
-        // Update state from config
-        setBypassActive(!!config.otpBypassActive);
-        if (config.otpBypassExpiresAt) {
-          setBypassExpiresAt(new Date(config.otpBypassExpiresAt));
-        } else {
-          setBypassExpiresAt(null);
-        }
-        setBypassMessage(config.bypassMessage || null);
-
-        /* SSR guard: this hook is in a Vite/React app today but the same
-           file gets pulled into Vite's pre-render path during build, where
-           `localStorage` is undefined. Touching it there crashed the dev
-           server with `ReferenceError: localStorage is not defined`. */
+        const url = phone
+          ? `/api/auth/otp-status?phone=${encodeURIComponent(phone)}`
+          : "/api/auth/config";
+        const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        applyData(data);
         if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
-          localStorage.setItem("authConfigCache", JSON.stringify(config));
-          localStorage.setItem("authConfigCacheTime", Date.now().toString());
+          localStorage.setItem(cacheKey, JSON.stringify(data));
+          localStorage.setItem(cacheTimeKey, Date.now().toString());
         }
       } catch (error) {
-        console.error("[useOTPBypass] Failed to fetch config:", error);
-
-        // Try to use cached config (skip on the server — no localStorage there)
+        console.error("[useOTPBypass] Failed to fetch:", error);
         if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
-          const cacheTime = localStorage.getItem("authConfigCacheTime");
+          const cacheTime = localStorage.getItem(cacheTimeKey);
           if (cacheTime && Date.now() - parseInt(cacheTime, 10) < 5 * 60 * 1000) {
-            const cached = localStorage.getItem("authConfigCache");
+            const cached = localStorage.getItem(cacheKey);
             if (cached) {
-              try {
-                const config: AuthConfig = JSON.parse(cached);
-                setBypassActive(!!config.otpBypassActive);
-                if (config.otpBypassExpiresAt) {
-                  setBypassExpiresAt(new Date(config.otpBypassExpiresAt));
-                }
-                setBypassMessage(config.bypassMessage || null);
-              } catch (parseError) {
-                console.error("[useOTPBypass] Failed to parse cache:", parseError);
-              }
+              try { applyData(JSON.parse(cached)); } catch {}
             }
           }
         }
@@ -87,18 +68,16 @@ export const useOTPBypass = () => {
       }
     };
 
-    fetchAuthConfig();
-
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchAuthConfig, 30000);
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [phone]);
 
   const remainingSeconds = bypassExpiresAt
     ? Math.max(0, Math.ceil((bypassExpiresAt.getTime() - Date.now()) / 1000))
     : 0;
 
-  const isExpired = remainingSeconds === 0 && bypassActive;
+  const isExpired = remainingSeconds === 0 && bypassActive && bypassExpiresAt !== null;
 
   return {
     bypassActive: bypassActive && !isExpired,

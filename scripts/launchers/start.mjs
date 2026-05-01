@@ -211,7 +211,7 @@ async function profileReplit() {
   loadEnvFile(path.join(root, ".env"));
   ensureNodeModules();
 
-  const apiPort = process.env.PORT_API || "8080";
+  const apiPort = process.env.PORT_API || "5000";
   const adminPort = process.env.PORT_ADMIN || "23744";
   const vendorPort = process.env.PORT_VENDOR || "21463";
   const riderPort = process.env.PORT_RIDER || "22969";

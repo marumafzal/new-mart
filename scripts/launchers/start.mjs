@@ -216,7 +216,6 @@ async function profileReplit() {
   const vendorPort = process.env.PORT_VENDOR || "21463";
   const riderPort = process.env.PORT_RIDER || "22969";
   const ajkPort = process.env.PORT_AJK || "20716";
-  const sandboxPort = process.env.PORT_SANDBOX || "8081";
 
   const replitDomain = process.env.REPLIT_DEV_DOMAIN || "";
   const expoDomain = process.env.REPLIT_EXPO_DEV_DOMAIN || replitDomain;
@@ -227,7 +226,6 @@ async function profileReplit() {
     { name: "vendor", filter: "@workspace/vendor-app", script: "dev", env: { PORT: vendorPort, BASE_PATH: "/vendor/" } },
     { name: "rider", filter: "@workspace/rider-app", script: "dev", env: { PORT: riderPort, BASE_PATH: "/rider/" } },
     { name: "ajkmart", filter: "@workspace/ajkmart", script: "dev:web", env: { PORT: ajkPort, BASE_PATH: "/", EXPO_PUBLIC_DOMAIN: expoDomain || `localhost:${apiPort}` } },
-    { name: "sandbox", filter: "@workspace/mockup-sandbox", script: "dev", env: { PORT: sandboxPort, BASE_PATH: "/__mockup" } },
   ];
 
   const children = [];
@@ -246,7 +244,6 @@ async function profileReplit() {
     ["vendor", vendorPort, `${base}/vendor/`],
     ["rider", riderPort, `${base}/rider/`],
     ["ajkmart (web)", ajkPort, expoBase + "/"],
-    ["mockup-sandbox", sandboxPort, `${base}/__mockup`],
   ]);
   if (!dryRun) attachShutdown(children);
 }

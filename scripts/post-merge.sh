@@ -1,7 +1,15 @@
 #!/bin/bash
 set -e
 
-pnpm install --no-frozen-lockfile
+# Only run pnpm install if node_modules is missing or lockfile is newer than install marker
+INSTALL_MARKER="node_modules/.post-merge-install-marker"
+if [ ! -d "node_modules" ] || [ ! -f "$INSTALL_MARKER" ] || [ "pnpm-lock.yaml" -nt "$INSTALL_MARKER" ]; then
+  echo "[post-merge] Running pnpm install..."
+  pnpm install --no-frozen-lockfile
+  touch "$INSTALL_MARKER"
+else
+  echo "[post-merge] node_modules up to date, skipping install"
+fi
 
 # Build library packages so TypeScript declaration files are up to date
 pnpm --filter @workspace/db build

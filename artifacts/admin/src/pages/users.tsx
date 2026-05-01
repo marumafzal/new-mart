@@ -522,7 +522,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
   const securityMutation = useMutation({
     mutationFn: (body: any) => fetcher(`/users/${user.id}/security`, { method: "PATCH", body: JSON.stringify(body) }),
     onSuccess: (_data, vars: any) => {
-      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"], exact: false });
       const changedParts: string[] = [];
       const origRoles = (user.roles || user.role || "customer").split(",").map((r: string) => r.trim()).filter(Boolean);
       const newRoles  = (vars.roles || "customer").split(",").map((r: string) => r.trim()).filter(Boolean);
@@ -1375,7 +1375,11 @@ export default function Users() {
 
   const handleUpdate = (id: string, updates: any) => {
     updateMutation.mutate({ id, ...updates }, {
-      onSuccess: () => toast({ title: "User updated" }),
+      onSuccess: () => {
+        if (updates.isActive === true) toast({ title: "User unblocked", description: "Account has been re-activated." });
+        else if (updates.isActive === false) toast({ title: "User blocked", description: "Account has been deactivated." });
+        else toast({ title: "User updated" });
+      },
       onError: err => toast({ title: "Update failed", description: err.message, variant: "destructive" })
     });
   };

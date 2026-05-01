@@ -256,7 +256,7 @@ router.get("/users", async (req, res) => {
 router.patch("/users/:id", async (req, res) => {
   const { role, isActive, walletBalance } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> & { tokenVersion?: ReturnType<typeof sql> } = {};
-  if (role !== undefined) { updates.roles = role; updates.roles = role; }
+  if (role !== undefined) { updates.roles = role; }
   if (isActive !== undefined) updates.isActive = isActive;
   if (walletBalance !== undefined) updates.walletBalance = String(walletBalance);
 
@@ -534,8 +534,8 @@ router.patch("/users/:id/security", async (req, res) => {
     }
   }
 
-  /* Revoke all sessions if ban, deactivation, or role change occurred */
-  if (body.isBanned || body.isActive === false || body.roles !== undefined || body.role !== undefined) {
+  /* Revoke all sessions if ban, unban (actual transition), deactivation, or role change occurred */
+  if (body.isBanned || (alreadyBanned && body.isBanned === false) || body.isActive === false || body.roles !== undefined || body.role !== undefined) {
     revokeAllUserSessions(id!).catch(() => {});
   }
   if (body.isBanned && body.notify) {

@@ -90,7 +90,7 @@ export const useUpdateUser = () => {
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"], exact: false });
       queryClient.invalidateQueries({ queryKey: ["admin-transactions"] });
     },
   });
@@ -277,7 +277,7 @@ export const useDeleteUser = () => {
   return useMutation({
     mutationFn: (id: string) => fetcher(`/users/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-users"], exact: false });
       queryClient.invalidateQueries({ queryKey: ["admin-stats"] });
     },
   });

@@ -199,6 +199,7 @@ router.get("/users", async (req, res) => {
     conditionCount: condMap.get(u.id)?.count || 0,
     maxConditionSeverity: condMap.get(u.id)?.maxSeverity || null,
     isMpinLocked: !!(u.walletPinLockedUntil && u.walletPinLockedUntil.getTime() > Date.now()),
+    hasMpin: !!u.walletPinHash,
     vendorProfile: vendorProfile?.userId != null ? {
       storeName: vendorProfile.storeName,
       businessType: vendorProfile.businessType,

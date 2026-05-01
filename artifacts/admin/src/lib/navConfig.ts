@@ -60,6 +60,7 @@ import {
   KeyRound,
   Server,
   Menu,
+  ClipboardList,
 } from "lucide-react";
 import type { TranslationKey } from "@workspace/i18n";
 
@@ -112,6 +113,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { nameKey: "navSmsGateways" as TranslationKey,      href: "/sms-gateways",       icon: Server },
       { nameKey: "navConditionsHub",                       href: "/account-conditions", icon: Shield },
       { nameKey: "navConditionRules",                      href: "/condition-rules",    icon: Settings2 },
+      { nameKey: "navActionLog" as TranslationKey,         href: "/audit-logs",         icon: ClipboardList },
     ],
   },
   {
@@ -234,6 +236,7 @@ export const NAV_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "/sos-alerts":            "Active safety alerts",
   "/error-monitor":         "Client and server error stream",
   "/security":              "Audit log of admin actions",
+  "/audit-logs":            "Paginated log of all admin actions with filters",
   "/delivery-access":      "Pilot whitelist and access requests",
   "/support-chat":          "Inbox plus chat moderation",
   "/faq-management":        "Help centre and FAQ articles",

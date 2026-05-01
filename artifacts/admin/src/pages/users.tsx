@@ -13,7 +13,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, useAdminViewOtp, useAdminVerifyContact, useAdminForcePasswordReset, useAdminKycByUserId, useAdminKycApprove, useAdminKycReject, type CreateUserInput } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, useAdminViewOtp, useAdminVerifyContact, useAdminForcePasswordReset, useAdminKycByUserId, useAdminKycApprove, useAdminKycReject, useWaiveDebt, type CreateUserInput } from "@/hooks/use-admin";
 import { WalletAdjustModal } from "@/components/WalletAdjustModal";
 import { fetcher } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuthContext";
@@ -130,7 +130,7 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
               <Lock className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
               <span className="text-muted-foreground text-xs">MPIN Status:</span>
               {(() => {
-                const hasMpin = !!userData.walletPinHash;
+                const hasMpin = !!(userData.hasMpin || userData.walletPinHash);
                 const isLocked = !!userData.isMpinLocked;
                 if (!hasMpin) return <Badge variant="outline" className="text-[10px] bg-gray-100 text-gray-600 border-gray-300">Not Set</Badge>;
                 if (isLocked) {
@@ -1570,14 +1570,7 @@ export default function Users() {
   const bulkBanMutation  = useBulkBanUsers();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const waiveDebtMutation = useMutation({
-    mutationFn: (userId: string) => fetcher(`/admin/users/${userId}/waive-debt`, { method: "PATCH" }),
-    onSuccess: (data: any, userId: string) => {
-      toast({ title: "Debt Waived", description: `${formatCurrency(Number(data.waived?.toFixed(0) || 0))} cancellation debt cleared.` });
-      qc.invalidateQueries({ queryKey: ["admin-users"] });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
+  const waiveDebtMutation = useWaiveDebt();
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -2114,7 +2107,10 @@ export default function Users() {
                             {parseFloat(user.cancellationDebt || "0") > 0 && (
                               <Button
                                 variant="outline" size="sm"
-                                onClick={() => waiveDebtMutation.mutate(user.id)}
+                                onClick={() => waiveDebtMutation.mutate(user.id, {
+                                  onSuccess: (data: any) => toast({ title: "Debt Waived", description: `${formatCurrency(Number(data?.waived?.toFixed(0) || parseFloat(user.cancellationDebt || "0")))} cancellation debt cleared.` }),
+                                  onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+                                })}
                                 disabled={waiveDebtMutation.isPending}
                                 className="h-8 rounded-lg text-xs gap-1.5 border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 transition-colors"
                                 title={`Waive Rs. ${parseFloat(user.cancellationDebt).toFixed(0)} debt`}

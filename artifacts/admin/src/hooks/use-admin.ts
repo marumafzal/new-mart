@@ -271,6 +271,18 @@ export const useCreateUser = () => {
   });
 };
 
+// Waive Debt
+export const useWaiveDebt = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      fetcher(`/users/${userId}/waive-debt`, { method: "PATCH" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"], exact: false });
+    },
+  });
+};
+
 // Delete User
 export const useDeleteUser = () => {
   const queryClient = useQueryClient();

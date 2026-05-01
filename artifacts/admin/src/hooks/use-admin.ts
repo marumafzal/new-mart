@@ -30,12 +30,44 @@ export const useStats = () => {
   });
 };
 
+export interface AdminUsersQueryOptions {
+  conditionTier?: string;
+  search?: string;
+  role?: string;
+  status?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  page?: number;
+  limit?: number;
+}
+
 // Users
-export const useUsers = (conditionTier?: string) => {
-  const params = conditionTier ? `?conditionTier=${conditionTier}` : "";
+export const useUsers = (options: AdminUsersQueryOptions = {}, enabled = true) => {
+  const {
+    conditionTier,
+    search,
+    role,
+    status,
+    createdFrom,
+    createdTo,
+    page = 1,
+    limit = 25,
+  } = options;
+
+  const params = new URLSearchParams();
+  if (conditionTier) params.set("conditionTier", conditionTier);
+  if (search) params.set("search", search);
+  if (role) params.set("role", role);
+  if (status) params.set("status", status);
+  if (createdFrom) params.set("createdFrom", createdFrom);
+  if (createdTo) params.set("createdTo", createdTo);
+  params.set("page", String(page));
+  params.set("limit", String(limit));
+
   return useQuery({
-    queryKey: ["admin-users", conditionTier || ""],
-    queryFn: () => fetcher(`/users${params}`),
+    queryKey: ["admin-users", conditionTier || "all", search || "", role || "all", status || "all", createdFrom || "", createdTo || "", page, limit],
+    queryFn: () => fetcher(`/users?${params.toString()}`),
+    enabled,
     refetchInterval: REFETCH_INTERVAL,
   });
 };
@@ -49,10 +81,11 @@ export const useSearchRiders = (q: string, onlineOnly = true) => {
   });
 };
 
-export const usePendingUsers = () => {
+export const usePendingUsers = (enabled = true) => {
   return useQuery({
     queryKey: ["admin-users-pending"],
     queryFn: () => fetcher("/users/pending"),
+    enabled,
     refetchInterval: 15_000,
   });
 };

@@ -144,8 +144,10 @@ router.get("/users", async (req, res) => {
   const search = ((req.query?.search as string) ?? "").trim();
   const role = ((req.query?.role as string) ?? "").trim().toLowerCase();
   const status = ((req.query?.status as string) ?? "").trim().toLowerCase();
-  const pageNum = Math.max(1, parseInt((req.query?.page as string) ?? "1", 10));
-  const pageSize = Math.min(200, Math.max(1, parseInt((req.query?.limit as string) ?? "50", 10)));
+  const rawPage = parseInt((req.query?.page as string) ?? "1", 10);
+  const rawLimit = parseInt((req.query?.limit as string) ?? "50", 10);
+  const pageNum = Math.max(1, Number.isFinite(rawPage) ? rawPage : 1);
+  const pageSize = Math.min(200, Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 50));
 
   const conditions: SQL[] = [];
 

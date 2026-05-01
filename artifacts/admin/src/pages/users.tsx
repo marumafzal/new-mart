@@ -13,7 +13,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, type CreateUserInput } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, useAdminViewOtp, useAdminVerifyContact, useAdminForcePasswordReset, useAdminKycByUserId, useAdminKycApprove, useAdminKycReject, type CreateUserInput } from "@/hooks/use-admin";
 import { WalletAdjustModal } from "@/components/WalletAdjustModal";
 import { fetcher } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuthContext";
@@ -511,6 +511,33 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
   const [showMpinResetConfirm, setShowMpinResetConfirm] = useState(false);
 
   /* ── OTP Tools state ── */
+  const [showOtpData, setShowOtpData] = useState(false);
+  const otpQuery = useAdminViewOtp(user.id);
+  const verifyContact = useAdminVerifyContact();
+  const forcePasswordReset = useAdminForcePasswordReset();
+  const [requirePasswordChange, setRequirePasswordChange] = useState<boolean>(user.requirePasswordChange || false);
+
+  const handleViewOtp = () => {
+    otpQuery.refetch().then(() => setShowOtpData(true));
+  };
+
+  const handleVerifyContact = (type: "phone" | "email") => {
+    verifyContact.mutate({ userId: user.id, type }, {
+      onSuccess: () => toast({ title: `${type === "phone" ? "Phone" : "Email"} verified`, description: `Manually marked as verified.` }),
+      onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleForcePasswordReset = () => {
+    forcePasswordReset.mutate(user.id, {
+      onSuccess: () => {
+        setRequirePasswordChange(true);
+        toast({ title: "Password reset required", description: "User will be prompted to change password on next login." });
+      },
+      onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
   const [bypassMinutes, setBypassMinutes] = useState<15 | 30 | 60>(15);
   const [bypassActive, setBypassActive] = useState<boolean>(
     !!(user.otpBypassUntil && new Date(user.otpBypassUntil) > new Date())
@@ -819,6 +846,78 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
               <span className="text-xs text-violet-500 ml-1">Admin support — no notifications sent to user</span>
             </div>
             <div className="p-3 space-y-3">
+              {/* View Current OTP */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-foreground">View Current OTP</p>
+                    <p className="text-xs text-muted-foreground">Show live OTP code for troubleshooting</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-violet-400 text-violet-700 hover:bg-violet-50 rounded-lg text-xs shrink-0"
+                    onClick={handleViewOtp}
+                    disabled={otpQuery.isFetching}
+                  >
+                    {otpQuery.isFetching ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Loading...</> : <><Eye className="w-3 h-3 mr-1" />View OTP</>}
+                  </Button>
+                </div>
+                {showOtpData && otpQuery.data && (
+                  <div className="bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-violet-700">Phone OTP:</span>
+                      {otpQuery.data.phone?.active ? (
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono font-bold text-violet-900 bg-violet-100 px-2 py-0.5 rounded text-sm tracking-widest">{otpQuery.data.phone.code}</code>
+                          <span className="text-[10px] text-violet-500">exp {new Date(otpQuery.data.phone.expiry).toLocaleTimeString()}</span>
+                        </div>
+                      ) : <span className="text-xs text-muted-foreground italic">No active OTP</span>}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-violet-700">Email OTP:</span>
+                      {otpQuery.data.email?.active ? (
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono font-bold text-violet-900 bg-violet-100 px-2 py-0.5 rounded text-sm tracking-widest">{otpQuery.data.email.code}</code>
+                          <span className="text-[10px] text-violet-500">exp {new Date(otpQuery.data.email.expiry).toLocaleTimeString()}</span>
+                        </div>
+                      ) : <span className="text-xs text-muted-foreground italic">No active OTP</span>}
+                    </div>
+                    <button onClick={() => setShowOtpData(false)} className="text-[10px] text-violet-500 hover:underline">Hide</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Verify Contact */}
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold text-foreground">Manual Verification</p>
+                <p className="text-xs text-muted-foreground">Force-mark phone or email as verified</p>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 border-emerald-400 text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs gap-1"
+                    onClick={() => handleVerifyContact("phone")}
+                    disabled={verifyContact.isPending || !!user.phoneVerified}
+                  >
+                    {verifyContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Phone className="w-3 h-3" />}
+                    {user.phoneVerified ? "Phone ✓" : "Verify Phone"}
+                  </Button>
+                  {user.email && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 border-emerald-400 text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs gap-1"
+                      onClick={() => handleVerifyContact("email")}
+                      disabled={verifyContact.isPending || !!user.emailVerified}
+                    >
+                      {verifyContact.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Mail className="w-3 h-3" />}
+                      {user.emailVerified ? "Email ✓" : "Verify Email"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+
               {/* Bypass OTP */}
               <div className="space-y-2">
                 <div className="flex items-center gap-3">
@@ -872,6 +971,29 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* ── Force Password Reset ── */}
+          <div className={`rounded-xl p-3 border flex items-center gap-3 ${requirePasswordChange ? "bg-orange-50 border-orange-300" : "bg-muted/20 border-border"}`}>
+            <KeyRound className={`w-5 h-5 flex-shrink-0 ${requirePasswordChange ? "text-orange-600" : "text-muted-foreground"}`} />
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <p className={`text-sm font-semibold ${requirePasswordChange ? "text-orange-800" : "text-foreground"}`}>Force Password Reset</p>
+                {requirePasswordChange && <Badge variant="outline" className="text-[10px] bg-orange-100 text-orange-700 border-orange-300">RESET REQUIRED</Badge>}
+              </div>
+              <p className="text-xs text-muted-foreground">User must change password on next login</p>
+            </div>
+            {!requirePasswordChange && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-orange-300 text-orange-700 hover:bg-orange-50 rounded-lg text-xs shrink-0"
+                onClick={handleForcePasswordReset}
+                disabled={forcePasswordReset.isPending}
+              >
+                {forcePasswordReset.isPending ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Setting...</> : "Force Reset"}
+              </Button>
+            )}
           </div>
 
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
@@ -1125,17 +1247,40 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 
 function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
   const correctionMutation = useRequestUserCorrection();
+  const kycApprove = useAdminKycApprove();
+  const kycReject = useAdminKycReject();
   const { toast } = useToast();
   const [corrField, setCorrField] = useState("");
   const [corrNote, setCorrNote]   = useState("");
   const [showCorrForm, setShowCorrForm] = useState(false);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
+  const [rejectReason, setRejectReason] = useState("");
+  const [showRejectInput, setShowRejectInput] = useState(false);
+
+  const { data: kycData, isLoading: kycLoading } = useAdminKycByUserId(user.id);
+  const kycRecord = kycData?.records?.[0] ?? null;
+  const kycId = kycRecord?.id ?? null;
 
   const parsed = parseUserDocuments(user);
-  const docs = parsed.files;
-  const riderNote = parsed.note;
+  const legacyDocs = parsed.files;
+
+  const kycPhotos: { label: string; url: string }[] = [];
+  if (kycRecord?.frontIdPhoto) kycPhotos.push({ label: "CNIC Front", url: kycRecord.frontIdPhoto });
+  if (kycRecord?.backIdPhoto)  kycPhotos.push({ label: "CNIC Back",  url: kycRecord.backIdPhoto });
+  if (kycRecord?.selfiePhoto)  kycPhotos.push({ label: "Selfie",     url: kycRecord.selfiePhoto });
+
+  const docs = kycPhotos.length > 0 ? kycPhotos : legacyDocs.map(d => ({ label: d.label, url: d.url }));
 
   const allChecked = ["cnic_legible", "photo_match", "details_correct", "not_expired"].every(k => checklist[k]);
+
+  const KYC_STATUS_COLORS: Record<string, string> = {
+    verified: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    approved: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    pending:  "bg-amber-100 text-amber-700 border-amber-200",
+    rejected: "bg-red-100 text-red-700 border-red-200",
+    resubmit: "bg-orange-100 text-orange-700 border-orange-200",
+    none:     "bg-gray-100 text-gray-600 border-gray-200",
+  };
 
   const handleRequestCorrection = () => {
     if (!user.id) return;
@@ -1149,6 +1294,29 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
     });
   };
 
+  const handleApproveKyc = () => {
+    if (!kycId) return;
+    kycApprove.mutate({ kycId }, {
+      onSuccess: () => {
+        toast({ title: "KYC Approved", description: "User's KYC has been verified and account activated." });
+        onClose();
+      },
+      onError: (e: any) => toast({ title: "Approval failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleRejectKyc = () => {
+    if (!kycId || !rejectReason.trim()) return;
+    kycReject.mutate({ kycId, reason: rejectReason.trim() }, {
+      onSuccess: () => {
+        toast({ title: "KYC Rejected", description: "User has been notified." });
+        setShowRejectInput(false);
+        onClose();
+      },
+      onError: (e: any) => toast({ title: "Rejection failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
   const toggleCheck = (key: string) => setChecklist(prev => ({ ...prev, [key]: !prev[key] }));
 
   return (
@@ -1158,57 +1326,80 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
       title={<><FileText className="w-5 h-5 text-indigo-600" /> KYC Documents — {user.name || user.phone}</>}
       dialogClassName="w-[95vw] max-w-2xl max-h-[85dvh] overflow-y-auto rounded-2xl"
     >
-        <div className="flex flex-wrap gap-3 mt-1">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
-            <span className="font-semibold text-muted-foreground">CNIC:</span>
-            <span className="font-mono">{user.cnic || "N/A"}</span>
+        {/* KYC Record Info */}
+        {kycLoading ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="w-5 h-5 animate-spin text-[#1A56DB]" />
+            <span className="ml-2 text-sm text-muted-foreground">Loading KYC record…</span>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
-            <span className="font-semibold text-muted-foreground">Vehicle:</span>
-            <span>{user.vehicleType || "N/A"}</span>
+        ) : kycRecord ? (
+          <div className="mt-1 space-y-2">
+            <div className="flex flex-wrap gap-2 items-center">
+              <Badge variant="outline" className={`text-xs font-semibold capitalize ${KYC_STATUS_COLORS[kycRecord.status] || KYC_STATUS_COLORS.none}`}>
+                KYC: {kycRecord.status}
+              </Badge>
+              {kycRecord.cnic && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-lg text-xs">
+                  <span className="font-semibold text-muted-foreground">CNIC:</span>
+                  <span className="font-mono">{kycRecord.cnic}</span>
+                </div>
+              )}
+              {kycRecord.fullName && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-lg text-xs">
+                  <span className="font-semibold text-muted-foreground">Name:</span>
+                  <span>{kycRecord.fullName}</span>
+                </div>
+              )}
+              {kycRecord.dateOfBirth && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-lg text-xs">
+                  <span className="font-semibold text-muted-foreground">DOB:</span>
+                  <span>{kycRecord.dateOfBirth}</span>
+                </div>
+              )}
+              {kycRecord.city && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-lg text-xs">
+                  <span className="font-semibold text-muted-foreground">City:</span>
+                  <span>{kycRecord.city}</span>
+                </div>
+              )}
+            </div>
+            {kycRecord.rejectionReason && (
+              <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                <span className="font-bold">Rejected reason:</span> {kycRecord.rejectionReason}
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
-            <span className="font-semibold text-muted-foreground">Plate:</span>
-            <span className="font-mono">{user.vehiclePlate || user.vehicleRegNo || "N/A"}</span>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
-            <span className="font-semibold text-muted-foreground">License #:</span>
-            <span className="font-mono">{user.drivingLicense || "N/A"}</span>
-          </div>
-        </div>
-
-        {riderNote && (
-          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl">
-            <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1 flex items-center gap-1">
-              <MessageSquare className="w-3.5 h-3.5" /> Rider's Note
-            </p>
-            <p className="text-sm text-blue-900 leading-relaxed">{riderNote}</p>
+        ) : (
+          <div className="flex flex-wrap gap-3 mt-1">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
+              <span className="font-semibold text-muted-foreground">KYC Status:</span>
+              <span className="font-semibold text-amber-600">{user.kycStatus || "none"}</span>
+            </div>
+            {user.cnic && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-xs">
+                <span className="font-semibold text-muted-foreground">CNIC:</span>
+                <span className="font-mono">{user.cnic}</span>
+              </div>
+            )}
           </div>
         )}
 
         {docs.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground text-sm">
+          <div className="py-8 text-center text-muted-foreground text-sm mt-3">
             <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
-            No documents uploaded yet.
+            No KYC documents submitted yet.
           </div>
         ) : (
           <>
             <div className="flex items-center justify-between mt-3 mb-1">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                Uploaded Documents ({docs.length})
+                Documents ({docs.length})
               </p>
-              {docs.length < 4 && (
-                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-                  {4 - docs.length} missing
-                </span>
-              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               {docs.map((doc, i) => (
-                <div key={`${doc.type}-${i}`} className="space-y-1 group">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    {DOC_TYPE_LABELS[doc.type] || doc.label}
-                  </p>
+                <div key={`${doc.label}-${i}`} className="space-y-1 group">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{doc.label}</p>
                   <a href={doc.url} target="_blank" rel="noopener noreferrer" className="block relative rounded-xl overflow-hidden border border-border/50">
                     <img src={doc.url} alt={doc.label} className="w-full h-32 object-cover group-hover:opacity-80 transition-opacity" />
                     <span className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-medium">
@@ -1240,6 +1431,57 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
             </p>
           )}
         </div>
+
+        {/* KYC Approve / Reject actions (only when a pending KYC record exists) */}
+        {kycId && kycRecord?.status === "pending" && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">KYC Decision</p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleApproveKyc}
+                disabled={kycApprove.isPending || !allChecked}
+                className="flex-1 h-9 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs gap-1"
+              >
+                {kycApprove.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                Approve KYC
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowRejectInput(v => !v)}
+                disabled={kycReject.isPending}
+                className="flex-1 h-9 border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs gap-1"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Reject KYC
+              </Button>
+            </div>
+            {!allChecked && (
+              <p className="text-xs text-amber-600 italic">Complete all checklist items above to enable approval.</p>
+            )}
+            {showRejectInput && (
+              <div className="space-y-2 p-3 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-xs font-bold text-red-800">Rejection Reason (required)</p>
+                <Input
+                  placeholder="e.g. CNIC blurry, photo doesn't match, expired document..."
+                  value={rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                  className="h-9 rounded-lg border-red-200 text-sm"
+                />
+                <Button
+                  size="sm"
+                  onClick={handleRejectKyc}
+                  disabled={!rejectReason.trim() || kycReject.isPending}
+                  className="w-full h-9 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs"
+                >
+                  {kycReject.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                  Confirm Rejection
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {!showCorrForm ? (
           <button onClick={() => setShowCorrForm(true)} className="mt-4 text-xs text-amber-600 flex items-center gap-1 hover:underline font-semibold">

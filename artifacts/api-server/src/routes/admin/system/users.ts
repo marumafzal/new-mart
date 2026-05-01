@@ -617,6 +617,111 @@ router.patch("/users/:id/identity", async (req, res) => {
   sendSuccess(res, { ...stripUser(user), walletBalance: parseFloat(String(user.walletBalance)) });
 });
 
+/* ── GET /admin/users/:id/otp — view live OTP code for support troubleshooting ── */
+router.get("/users/:id/otp", async (req, res) => {
+  const userId = req.params["id"]!;
+  const [user] = await db
+    .select({
+      id: usersTable.id,
+      phone: usersTable.phone,
+      otpCode: usersTable.otpCode,
+      otpExpiry: usersTable.otpExpiry,
+      emailOtpCode: usersTable.emailOtpCode,
+      emailOtpExpiry: usersTable.emailOtpExpiry,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  if (!user) { sendNotFound(res, "User not found"); return; }
+
+  const now = new Date();
+  const phoneOtpActive = !!(user.otpCode && user.otpExpiry && user.otpExpiry > now);
+  const emailOtpActive = !!(user.emailOtpCode && user.emailOtpExpiry && user.emailOtpExpiry > now);
+
+  const adminReq = req as AdminRequest;
+  addAuditEntry({
+    action: "admin_view_otp",
+    ip: getClientIp(req),
+    adminId: adminReq.adminId,
+    details: `Admin viewed OTP for user ${userId} (${user.phone})`,
+    result: "success",
+  });
+
+  sendSuccess(res, {
+    phone: {
+      code: phoneOtpActive ? user.otpCode : null,
+      expiry: phoneOtpActive ? user.otpExpiry?.toISOString() : null,
+      active: phoneOtpActive,
+    },
+    email: {
+      code: emailOtpActive ? user.emailOtpCode : null,
+      expiry: emailOtpActive ? user.emailOtpExpiry?.toISOString() : null,
+      active: emailOtpActive,
+    },
+  });
+});
+
+/* ── PATCH /admin/users/:id/verify-contact — manually verify phone or email ── */
+router.patch("/users/:id/verify-contact", async (req, res) => {
+  const userId = req.params["id"]!;
+  const { type } = req.body as { type: "phone" | "email" };
+
+  if (!type || !["phone", "email"].includes(type)) {
+    sendValidationError(res, "type must be 'phone' or 'email'");
+    return;
+  }
+
+  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { sendNotFound(res, "User not found"); return; }
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (type === "phone") updates.phoneVerified = true;
+  else updates.emailVerified = true;
+
+  await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
+
+  const adminReq = req as AdminRequest;
+  addAuditEntry({
+    action: "admin_verify_contact",
+    ip: getClientIp(req),
+    adminId: adminReq.adminId,
+    details: `Admin manually verified ${type} for user ${userId} (${user.phone})`,
+    result: "success",
+  });
+
+  sendSuccess(res, { success: true, type, message: `${type === "phone" ? "Phone" : "Email"} marked as verified` });
+});
+
+/* ── POST /admin/users/:id/force-password-reset — require password change on next login ── */
+router.post("/users/:id/force-password-reset", async (req, res) => {
+  const userId = req.params["id"]!;
+  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { sendNotFound(res, "User not found"); return; }
+
+  await db.update(usersTable).set({ requirePasswordChange: true, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+
+  await db.insert(notificationsTable).values({
+    id: generateId(),
+    userId,
+    title: "Password Reset Required",
+    body: "For your account security, you are required to change your password on next login.",
+    type: "security",
+    icon: "lock-closed-outline",
+  }).catch(() => {});
+
+  const adminReq = req as AdminRequest;
+  addAuditEntry({
+    action: "admin_force_password_reset",
+    ip: getClientIp(req),
+    adminId: adminReq.adminId,
+    details: `Admin forced password reset for user ${userId} (${user.phone})`,
+    result: "success",
+  });
+
+  sendSuccess(res, { success: true, message: `Password reset required for ${user.name ?? user.phone}. They will be prompted on next login.` });
+});
+
 router.post("/users/:id/reset-otp", async (req, res) => {
   await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, req.params["id"]!));
   sendSuccess(res, { success: true, message: "OTP cleared — user must re-authenticate" });

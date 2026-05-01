@@ -1,5 +1,5 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetcher } from "@/lib/api";
+import { fetcher, apiAbsoluteFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 const REFETCH_INTERVAL = 30_000;
@@ -1584,6 +1584,74 @@ export const useDeleteOtpWhitelist = () => {
   return useMutation({
     mutationFn: (id: string) => fetcher(`/admin/whitelist/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-otp-whitelist"] }),
+  });
+};
+
+// ══════════════════════════════════════════════════════
+// USER OTP / CONTACT VERIFICATION / PASSWORD RESET (Admin tools)
+// ══════════════════════════════════════════════════════
+
+export const useAdminViewOtp = (userId: string | null) =>
+  useQuery({
+    queryKey: ["admin-user-otp", userId],
+    queryFn: () => fetcher(`/users/${userId}/otp`),
+    enabled: false,
+    staleTime: 0,
+  });
+
+export const useAdminVerifyContact = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, type }: { userId: string; type: "phone" | "email" }) =>
+      fetcher(`/users/${userId}/verify-contact`, { method: "PATCH", body: JSON.stringify({ type }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"], exact: false });
+    },
+  });
+};
+
+export const useAdminForcePasswordReset = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      fetcher(`/users/${userId}/force-password-reset`, { method: "POST", body: "{}" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"], exact: false });
+    },
+  });
+};
+
+export const useAdminKycByUserId = (userId: string | null) =>
+  useQuery({
+    queryKey: ["admin-kyc-by-user", userId],
+    queryFn: () => apiAbsoluteFetch(`/api/kyc/admin/list?userId=${userId}&limit=1`),
+    enabled: !!userId,
+    staleTime: 30_000,
+  });
+
+export const useAdminKycApprove = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kycId, reason }: { kycId: string; reason?: string }) =>
+      apiAbsoluteFetch(`/api/kyc/admin/${kycId}/approve`, { method: "POST", body: JSON.stringify({ reason: reason ?? "" }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"], exact: false });
+      qc.invalidateQueries({ queryKey: ["admin-kyc-by-user"], exact: false });
+      qc.invalidateQueries({ queryKey: ["admin-kyc"] });
+    },
+  });
+};
+
+export const useAdminKycReject = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kycId, reason }: { kycId: string; reason: string }) =>
+      apiAbsoluteFetch(`/api/kyc/admin/${kycId}/reject`, { method: "POST", body: JSON.stringify({ reason }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"], exact: false });
+      qc.invalidateQueries({ queryKey: ["admin-kyc-by-user"], exact: false });
+      qc.invalidateQueries({ queryKey: ["admin-kyc"] });
+    },
   });
 };
 

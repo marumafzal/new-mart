@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { kycVerificationsTable, usersTable, notificationsTable, riderProfilesTable } from "@workspace/db/schema";
+import { kycVerificationsTable, usersTable, notificationsTable, riderProfilesTable, vendorProfilesTable } from "@workspace/db/schema";
 import { eq, desc, and, ne, or, ilike } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { customerAuth } from "../middleware/security.js";
@@ -472,7 +472,7 @@ router.post("/submit-base64", customerAuth, async (req, res) => {
 
 /* ─── Admin: GET /api/kyc/admin/list ─── */
 router.get("/admin/list", adminAuth, async (req, res) => {
-  const { status, q, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { status, q, userId, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page));
   const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
   const offset = (pageNum - 1) * limitNum;
@@ -480,6 +480,9 @@ router.get("/admin/list", adminAuth, async (req, res) => {
   const conditions = [];
   if (status && status !== "all") {
     conditions.push(eq(kycVerificationsTable.status, status));
+  }
+  if (userId?.trim()) {
+    conditions.push(eq(kycVerificationsTable.userId, userId.trim()));
   }
   if (q?.trim()) {
     const term = `%${q.trim()}%`;
@@ -508,6 +511,10 @@ router.get("/admin/list", adminAuth, async (req, res) => {
       dateOfBirth: kycVerificationsTable.dateOfBirth,
       gender: kycVerificationsTable.gender,
       city: kycVerificationsTable.city,
+      address: kycVerificationsTable.address,
+      frontIdPhoto: kycVerificationsTable.frontIdPhoto,
+      backIdPhoto: kycVerificationsTable.backIdPhoto,
+      selfiePhoto: kycVerificationsTable.selfiePhoto,
       submittedAt: kycVerificationsTable.submittedAt,
       reviewedAt: kycVerificationsTable.reviewedAt,
       rejectionReason: kycVerificationsTable.rejectionReason,
@@ -625,6 +632,23 @@ router.post("/admin/:id/approve", adminAuth, async (req, res) => {
       updatedAt: now,
     })
     .where(eq(usersTable.id, record.userId));
+
+  /* ── Sync vendor/rider profile rows on KYC approval (best-effort) ──
+   *
+   * Neither vendorProfilesTable nor riderProfilesTable has an approvalStatus,
+   * kycStatus, or isVerified column in the current schema — the authoritative
+   * KYC/approval state lives on usersTable (kycStatus, approvalStatus).
+   * We touch updatedAt so any downstream cache-invalidation by updatedAt works,
+   * and rows that don't exist are silently skipped via Promise.allSettled.
+   * ── */
+  await Promise.allSettled([
+    db.update(riderProfilesTable)
+      .set({ updatedAt: now })
+      .where(eq(riderProfilesTable.userId, record.userId)),
+    db.update(vendorProfilesTable)
+      .set({ updatedAt: now })
+      .where(eq(vendorProfilesTable.userId, record.userId)),
+  ]);
 
   /* ── Notify the user that KYC was approved (in-app + push) ── */
   await db.insert(notificationsTable).values({

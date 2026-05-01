@@ -10,6 +10,7 @@ import {
   notificationsTable,
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable, productsTable, platformSettingsTable, adminAccountsTable, authAuditLogTable, refreshTokensTable, rideRatingsTable, riderPenaltiesTable, reviewsTable,
   vendorProfilesTable,
+  riderProfilesTable,
   vendorSchedulesTable,
   locationHistoryTable,
   supportMessagesTable,
@@ -52,6 +53,8 @@ router.get("/stats", async (_req, res) => {
     [pharmRevenue],
     recentOrders,
     recentRides,
+    [riderCount],
+    [vendorCount],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable),
     db.select({ count: count() }).from(ordersTable),
@@ -72,6 +75,8 @@ router.get("/stats", async (_req, res) => {
     db.select({ total: sum(pharmacyOrdersTable.total) }).from(pharmacyOrdersTable).where(eq(pharmacyOrdersTable.status, "delivered")),
     db.select().from(ordersTable).orderBy(desc(ordersTable.createdAt)).limit(5),
     db.select().from(ridesTable).orderBy(desc(ridesTable.createdAt)).limit(5),
+    db.select({ count: count() }).from(riderProfilesTable),
+    db.select({ count: count() }).from(vendorProfilesTable),
   ]);
 
   sendSuccess(res, {
@@ -99,10 +104,12 @@ router.get("/stats", async (_req, res) => {
       createdAt: o.createdAt.toISOString(),
       updatedAt: o.updatedAt.toISOString(),
     })),
+    totalRiders: riderCount!.count,
+    totalVendors: vendorCount!.count,
     recentRides: recentRides.map(r => ({
       ...r,
-      fare: parseFloat(r.fare),
-      distance: parseFloat(r.distance),
+      fare: parseFloat(r.fare ?? "0"),
+      distance: parseFloat(r.distance ?? "0"),
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
     })),
@@ -1340,41 +1347,6 @@ Important: Only use keys from the lists above. If the command is ambiguous, map 
 ══════════════════════════════════════════════════════════════════════════════ */
 
 /* ── PATCH /admin/users/:id/request-correction — ask user to re-upload specific doc ── */
-router.get("/leaderboard", async (_req, res) => {
-  const vendors = await db.select({
-    id:     usersTable.id,
-    name:   vendorProfilesTable.storeName,
-    phone:  usersTable.phone,
-    totalOrders: sql<number>`count(${ordersTable.id})`,
-    totalRevenue: sql<number>`coalesce(sum(${ordersTable.total}),0)`,
-  })
-  .from(usersTable)
-  .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
-  .leftJoin(ordersTable, and(eq(ordersTable.vendorId, usersTable.id), eq(ordersTable.status, "delivered")))
-  .where(ilike(usersTable.roles, "%vendor%"))
-  .groupBy(usersTable.id, vendorProfilesTable.storeName)
-  .orderBy(sql`coalesce(sum(${ordersTable.total}),0) desc`)
-  .limit(5);
-
-  const riders = await db.select({
-    id:   usersTable.id,
-    name: usersTable.name,
-    phone: usersTable.phone,
-    completedTrips: sql<number>`count(${ridesTable.id})`,
-    totalEarned: sql<number>`coalesce(sum(${ridesTable.fare}),0)`,
-  })
-  .from(usersTable)
-  .leftJoin(ridesTable, and(eq(ridesTable.riderId, usersTable.id), eq(ridesTable.status, "completed")))
-  .where(ilike(usersTable.roles, "%rider%"))
-  .groupBy(usersTable.id)
-  .orderBy(sql`count(${ridesTable.id}) desc`)
-  .limit(5);
-
-  sendSuccess(res, {
-    vendors: vendors.map(v => ({ ...v, totalRevenue: parseFloat(String(v.totalRevenue)), totalOrders: Number(v.totalOrders) })),
-    riders:  riders.map(r  => ({ ...r,  totalEarned: parseFloat(String(r.totalEarned)),  completedTrips: Number(r.completedTrips) })),
-  });
-});
 
 /* ══════════════════════════════════════════════════════════════════════════════
    RIDE MANAGEMENT MODULE — Admin ride actions with full audit logging

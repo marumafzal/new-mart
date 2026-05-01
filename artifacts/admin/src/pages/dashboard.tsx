@@ -123,6 +123,11 @@ export default function Dashboard() {
             <SkeletonBlock key={i} className="h-28" />
           ))}
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[1, 2].map(i => (
+            <SkeletonBlock key={i} className="h-28" />
+          ))}
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {[1, 2, 3, 4].map(i => (
             <SkeletonBlock key={i} className="h-24" />
@@ -154,6 +159,8 @@ export default function Dashboard() {
   const activeSosCount  = typeof statsData?.activeSos    === "number" ? statsData.activeSos    : 0;
   const pendingOrders   = typeof statsData?.pendingOrders === "number" ? statsData.pendingOrders : 0;
   const activeRides     = typeof statsData?.activeRides  === "number" ? statsData.activeRides  : 0;
+  const totalRiders     = typeof statsData?.totalRiders  === "number" ? statsData.totalRiders  : 0;
+  const totalVendors    = typeof statsData?.totalVendors === "number" ? statsData.totalVendors : 0;
 
   const lastUpdated = dataUpdatedAt ? updatedAgo(dataUpdatedAt) : "";
 
@@ -244,6 +251,39 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
+      </div>
+
+      {/* Total Riders & Total Vendors */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <HeroCardLink href="/riders">
+          <Card className="rounded-2xl border-0 shadow-md bg-gradient-to-br from-violet-500 to-violet-700 text-white overflow-hidden relative">
+            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-white/10" />
+            <CardContent className="p-5 relative">
+              <div className="flex items-start justify-between mb-3">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center">
+                  <Users className="w-5 h-5 text-white" />
+                </div>
+              </div>
+              <p className="text-white/70 text-xs font-medium mb-1">Total Riders</p>
+              <h3 className="text-xl font-bold">{totalRiders.toLocaleString()}</h3>
+            </CardContent>
+          </Card>
+        </HeroCardLink>
+
+        <HeroCardLink href="/vendors">
+          <Card className="rounded-2xl border-0 shadow-md bg-gradient-to-br from-teal-500 to-teal-700 text-white overflow-hidden relative">
+            <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-white/10" />
+            <CardContent className="p-5 relative">
+              <div className="flex items-start justify-between mb-3">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center">
+                  <ShoppingBag className="w-5 h-5 text-white" />
+                </div>
+              </div>
+              <p className="text-white/70 text-xs font-medium mb-1">Total Vendors</p>
+              <h3 className="text-xl font-bold">{totalVendors.toLocaleString()}</h3>
+            </CardContent>
+          </Card>
+        </HeroCardLink>
       </div>
 
       {/* Revenue Breakdown */}

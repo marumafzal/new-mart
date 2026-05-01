@@ -91,7 +91,26 @@ type ScanResult = {
 
 type ScanMode = "manual" | "auto" | "daily" | "specific";
 type Pagination = { page: number; limit: number; total: number; totalPages: number };
-type Tab = "new" | "unresolved" | "completed" | "customers";
+type Tab = "new" | "unresolved" | "completed" | "customers" | "filescan";
+
+type FileScanFinding = {
+  filePath: string;
+  lineNumber: number;
+  ruleName: string;
+  severity: "critical" | "medium" | "minor";
+  message: string;
+  snippet: string;
+};
+
+type FileScanHistoryEntry = {
+  id: string;
+  scannedAt: string;
+  durationMs: number;
+  totalFindings: number;
+  triggeredBy: string;
+};
+
+type FileScanLatest = FileScanHistoryEntry & { findings: FileScanFinding[] };
 
 const SOURCE_APPS = [
   { value: "", label: "All Sources" },
@@ -127,7 +146,7 @@ const SOURCE_ICONS: Record<string, typeof Monitor> = {
   customer: Monitor, rider: Zap, vendor: Code, admin: Bug, api: Server,
 };
 
-const TAB_STATUS_FILTERS: Record<Exclude<Tab, "customers">, string[]> = {
+const TAB_STATUS_FILTERS: Record<Exclude<Tab, "customers" | "filescan">, string[]> = {
   new:        ["new"],
   unresolved: ["acknowledged", "in_progress"],
   completed:  ["resolved"],
@@ -188,6 +207,7 @@ const TABS: {
   { id: "unresolved", label: "Unresolved",      icon: ShieldAlert,  activeColor: "#D97706", activeBorder: "#F59E0B", activeBg: "#FFFBEB", badgeBg: "#FEF3C7", badgeColor: "#92400E" },
   { id: "completed",  label: "Completed",       icon: CheckCircle2, activeColor: "#16A34A", activeBorder: "#22C55E", activeBg: "#F0FDF4", badgeBg: "#DCFCE7", badgeColor: "#15803D" },
   { id: "customers",  label: "Customer Reports", icon: Users,        activeColor: "#7C3AED", activeBorder: "#8B5CF6", activeBg: "#F5F3FF", badgeBg: "#EDE9FE", badgeColor: "#6D28D9" },
+  { id: "filescan",   label: "File Scan",        icon: ScanLine,     activeColor: "#7C3AED", activeBorder: "#A855F7", activeBg: "#FAF5FF", badgeBg: "#EDE9FE", badgeColor: "#6D28D9" },
 ];
 
 const AUTO_INTERVALS = [
@@ -416,9 +436,18 @@ export default function ErrorMonitor() {
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null);
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
 
-  const tabStatuses = activeTab !== "customers" ? TAB_STATUS_FILTERS[activeTab] : [];
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkTaskModal, setShowBulkTaskModal] = useState(false);
+  const [bulkTaskContent, setBulkTaskContent] = useState("");
+  const [bulkTaskLoading, setBulkTaskLoading] = useState(false);
+
+  const [fileScanRunning, setFileScanRunning] = useState(false);
+  const [fileScanError, setFileScanError] = useState<string | null>(null);
+  const [fileScanExpandedFinding, setFileScanExpandedFinding] = useState<number | null>(null);
+
+  const tabStatuses = (activeTab !== "customers" && activeTab !== "filescan") ? TAB_STATUS_FILTERS[activeTab] : [];
   const params = new URLSearchParams({ page: String(page), limit: "30" });
-  if (activeTab !== "customers") {
+  if (activeTab !== "customers" && activeTab !== "filescan") {
     tabStatuses.forEach(s => params.append("status", s));
   }
   if (sourceApp) params.set("sourceApp", sourceApp);
@@ -430,9 +459,9 @@ export default function ErrorMonitor() {
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["error-reports", activeTab, page, sourceApp, severity, errorType, resolutionMethod, dateFrom, dateTo],
-    queryFn: () => activeTab === "customers" ? Promise.resolve(null) : fetcher(`/error-reports?${params}`),
+    queryFn: () => fetcher(`/error-reports?${params}`),
     refetchInterval: 30000,
-    enabled: activeTab !== "customers",
+    enabled: activeTab !== "customers" && activeTab !== "filescan",
   });
 
   const customerParams = new URLSearchParams({ page: String(customerPage), limit: "20" });
@@ -450,6 +479,21 @@ export default function ErrorMonitor() {
   const customerReports: CustomerReport[] = customerData?.reports || [];
   const customerPagination: Pagination = customerData?.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 };
 
+  const { data: fileScanLatest, refetch: refetchFileScanLatest } = useQuery<FileScanLatest | null>({
+    queryKey: ["file-scan-latest"],
+    queryFn: () => fetcher("/error-reports/file-scan/latest"),
+    enabled: activeTab === "filescan",
+    staleTime: 0,
+  });
+
+  const { data: fileScanHistory, refetch: refetchFileScanHistory } = useQuery<FileScanHistoryEntry[]>({
+    queryKey: ["file-scan-history"],
+    queryFn: () => fetcher("/error-reports/file-scan/history"),
+    enabled: activeTab === "filescan",
+  });
+
+  const fileScanFindings: FileScanFinding[] = (fileScanLatest?.findings ?? []) as FileScanFinding[];
+
   const newCount        = useTabCount("new",        sourceApp, severity, errorType);
   const unresolvedCount = useTabCount("unresolved", sourceApp, severity, errorType);
   const completedCount  = useTabCount("completed",  sourceApp, severity, errorType);
@@ -466,6 +510,7 @@ export default function ErrorMonitor() {
     unresolved: unresolvedCount,
     completed: completedCount,
     customers: customerNewCount,
+    filescan: fileScanLatest?.totalFindings ?? 0,
   };
 
   const updateMutation = useMutation({
@@ -570,6 +615,56 @@ export default function ErrorMonitor() {
     setManualRootCause("");
   };
 
+  const handleBulkGenerateTask = async () => {
+    setBulkTaskLoading(true);
+    setShowBulkTaskModal(true);
+    setBulkTaskContent("");
+    try {
+      const ids = Array.from(selectedIds);
+      const result = await fetcher("/error-reports/bulk-generate-task", {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      });
+      setBulkTaskContent(result.taskPlan);
+    } catch {
+      setBulkTaskContent("Failed to generate bulk task plan.");
+    } finally {
+      setBulkTaskLoading(false);
+    }
+  };
+
+  const handleRunFileScan = useCallback(async () => {
+    if (fileScanRunning) return;
+    setFileScanRunning(true);
+    setFileScanError(null);
+    try {
+      await fetcher("/error-reports/file-scan/run", { method: "POST" });
+      await refetchFileScanLatest();
+      await refetchFileScanHistory();
+    } catch {
+      setFileScanError("File scan failed. Check the API server connection.");
+    } finally {
+      setFileScanRunning(false);
+    }
+  }, [fileScanRunning, refetchFileScanLatest, refetchFileScanHistory]);
+
+  const handleFileScanGenerateTask = async (finding: FileScanFinding) => {
+    setTaskPlanLoading(true);
+    setShowTaskPlanDialog("filescan-finding");
+    setTaskPlanContent("");
+    try {
+      const result = await fetcher("/error-reports/file-scan/generate-task", {
+        method: "POST",
+        body: JSON.stringify({ finding }),
+      });
+      setTaskPlanContent(result.taskPlan);
+    } catch {
+      setTaskPlanContent("Failed to generate task plan.");
+    } finally {
+      setTaskPlanLoading(false);
+    }
+  };
+
   const markErrorViewed = useCallback((id: string) => {
     const now = new Date().toISOString();
     setViewedErrorTimestamps(prev => {
@@ -652,7 +747,7 @@ export default function ErrorMonitor() {
           sourceApp: sourceApp || undefined,
           severity: severity || undefined,
           errorType: errorType || undefined,
-          statusFilter: activeTab !== "customers" ? TAB_STATUS_FILTERS[activeTab] : [],
+          statusFilter: (activeTab !== "customers" && activeTab !== "filescan") ? TAB_STATUS_FILTERS[activeTab] : [],
         }),
       });
       queryClient.invalidateQueries({ queryKey: ["error-reports"] });
@@ -664,10 +759,27 @@ export default function ErrorMonitor() {
     }
   };
 
-  const switchTab = (tab: Tab) => { setActiveTab(tab); setPage(1); setExpandedId(null); };
+  const switchTab = (tab: Tab) => { setActiveTab(tab); setPage(1); setExpandedId(null); setSelectedIds(new Set()); };
   const hasFilters = !!(sourceApp || severity || errorType || resolutionMethod || dateFrom || dateTo);
   const clearFilters = () => { setSourceApp(""); setSeverity(""); setErrorType(""); setResolutionMethod(""); setDateFrom(""); setDateTo(""); setPage(1); };
-  const canFixAll = activeTab !== "completed" && activeTab !== "customers" && pagination.total > 0;
+  const canFixAll = activeTab !== "completed" && activeTab !== "customers" && activeTab !== "filescan" && pagination.total > 0;
+
+  const toggleSelectId = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === reports.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(reports.map(r => r.id)));
+    }
+  };
 
   const groupedReports = useMemo(() => {
     if (!groupByCategory) return null;
@@ -731,21 +843,34 @@ export default function ErrorMonitor() {
     const nextStep = STATUS_NEXT[report.status];
     const nextBtnStyle = nextStep ? NEXT_BTN_STYLE[nextStep.status] : null;
 
+    const isSelected = selectedIds.has(report.id);
     return (
       <div
         key={report.id}
         style={{
-          backgroundColor: "#ffffff",
-          borderLeft: `4px solid ${accentColor}`,
+          backgroundColor: isSelected ? "#F5F3FF" : "#ffffff",
+          borderLeft: `4px solid ${isSelected ? "#7C3AED" : accentColor}`,
           borderBottom: "1px solid #F1F5F9",
         }}
       >
         <div
           style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 16px", cursor: "pointer" }}
           onClick={() => { setExpandedId(isExpanded ? null : report.id); if (!isExpanded) markErrorViewed(report.id); }}
-          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = "#F8FAFC"}
-          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = "transparent"}
+          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = isSelected ? "#EDE9FE" : "#F8FAFC"}
+          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = isSelected ? "#F5F3FF" : "transparent"}
         >
+          <div
+            style={{ marginTop: 2, flexShrink: 0, display: "flex", alignItems: "center", gap: 6 }}
+            onClick={e => { e.stopPropagation(); toggleSelectId(report.id); }}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleSelectId(report.id)}
+              onClick={e => e.stopPropagation()}
+              style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#7C3AED" }}
+            />
+          </div>
           <div style={{ marginTop: 2, color: "#9CA3AF", flexShrink: 0 }}>
             {isExpanded ? <ChevronDown style={{ width: 16, height: 16 }} /> : <ChevronRight style={{ width: 16, height: 16 }} />}
           </div>
@@ -1076,6 +1201,7 @@ export default function ErrorMonitor() {
         iconBgClass="bg-red-100"
         iconColorClass="text-red-600"
         actions={<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {activeTab !== "filescan" && <>
           <button
             onClick={() => setShowAutoResolvePanel(!showAutoResolvePanel)}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: `1px solid ${autoResolveSettings?.enabled ? "#22C55E" : "#D1D5DB"}`, backgroundColor: autoResolveSettings?.enabled ? "#F0FDF4" : "#ffffff", color: autoResolveSettings?.enabled ? "#16A34A" : "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
@@ -1093,7 +1219,9 @@ export default function ErrorMonitor() {
               {fixingAll ? "Fixing…" : `Fix All (${pagination.total})`}
             </button>
           )}
+          </>}
 
+          {activeTab !== "filescan" && <>
           <button
             onClick={() => setShowScanPanel(p => !p)}
             style={{
@@ -1137,9 +1265,10 @@ export default function ErrorMonitor() {
             Filters
             {hasFilters && <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#6366F1", display: "inline-block" }} />}
           </button>
+          </>}
 
           <button
-            onClick={() => activeTab === "customers" ? refetchCustomers() : refetch()}
+            onClick={() => activeTab === "customers" ? refetchCustomers() : activeTab === "filescan" ? (refetchFileScanLatest(), refetchFileScanHistory()) : refetch()}
             style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: "1px solid #D1D5DB", backgroundColor: "#ffffff", color: "#374151", fontSize: 13, fontWeight: 500, cursor: "pointer" }}
           >
             <RefreshCw style={{ width: 14, height: 14, animation: (isLoading || customerLoading) ? "spin 1s linear infinite" : "none" }} />
@@ -1149,7 +1278,7 @@ export default function ErrorMonitor() {
       />
 
       {/* ── Scan Panel ── */}
-      {showScanPanel && (
+      {showScanPanel && activeTab !== "filescan" && (
         <div style={{ backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 12, padding: 16, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: "#1F2937", display: "flex", alignItems: "center", gap: 6 }}>
@@ -1445,7 +1574,7 @@ export default function ErrorMonitor() {
       )}
 
       {/* ── Filter Bar ── */}
-      {showFilters && activeTab !== "customers" && (
+      {showFilters && activeTab !== "customers" && activeTab !== "filescan" && (
         <div style={{ backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", borderRadius: 12, padding: 16, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Filters</span>
@@ -1528,9 +1657,177 @@ export default function ErrorMonitor() {
         })}
       </div>
 
+      {/* ── Floating selection action bar ── */}
+      {selectedIds.size > 0 && activeTab !== "customers" && activeTab !== "filescan" && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          backgroundColor: "#1F2937", color: "#fff", borderRadius: 12, padding: "12px 20px",
+          display: "flex", alignItems: "center", gap: 14, zIndex: 9000,
+          boxShadow: "0 8px 30px rgba(0,0,0,0.35)", border: "1px solid #374151",
+          whiteSpace: "nowrap",
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>
+            {selectedIds.size} error{selectedIds.size > 1 ? "s" : ""} selected
+          </span>
+          <button
+            onClick={handleBulkGenerateTask}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, backgroundColor: "#7C3AED", color: "#fff", border: "none", cursor: "pointer" }}
+          >
+            <FileText style={{ width: 13, height: 13 }} />
+            Bulk Task Plan
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500, backgroundColor: "#374151", color: "#D1D5DB", border: "none", cursor: "pointer" }}
+          >
+            <X style={{ width: 12, height: 12 }} />
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* ── Error / Customer List ── */}
       <div style={{ backgroundColor: "#ffffff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-        {activeTab === "customers" ? (
+        {activeTab === "filescan" ? (
+          /* ── File Scan Tab ───────────────────────────────────────────── */
+          <div style={{ padding: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <ScanLine style={{ width: 20, height: 20, color: "#7C3AED" }} />
+                <div>
+                  <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: 0 }}>Source File Scanner</h2>
+                  <p style={{ fontSize: 12, color: "#6B7280", margin: 0, marginTop: 2 }}>
+                    {fileScanLatest
+                      ? `Last scan: ${formatTimestamp(fileScanLatest.scannedAt)} · ${fileScanLatest.totalFindings} findings`
+                      : "No scans run yet"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleRunFileScan}
+                disabled={fileScanRunning}
+                style={{
+                  display: "flex", alignItems: "center", gap: 7, padding: "9px 20px", borderRadius: 10,
+                  fontSize: 13, fontWeight: 700, backgroundColor: fileScanRunning ? "#E5E7EB" : "#7C3AED",
+                  color: fileScanRunning ? "#9CA3AF" : "#fff", border: "none",
+                  cursor: fileScanRunning ? "not-allowed" : "pointer",
+                }}
+              >
+                <Play style={{ width: 14, height: 14, animation: fileScanRunning ? "spin 1s linear infinite" : "none" }} />
+                {fileScanRunning ? "Scanning…" : "Run Scan Now"}
+              </button>
+            </div>
+
+            {fileScanError && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#B91C1C", fontSize: 12, backgroundColor: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "10px 14px", marginBottom: 16 }}>
+                <AlertCircle style={{ width: 14, height: 14, flexShrink: 0 }} /> {fileScanError}
+              </div>
+            )}
+
+            {fileScanHistory && fileScanHistory.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>Scan History</p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {fileScanHistory.map(h => (
+                    <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 8, backgroundColor: "#F8FAFC", border: "1px solid #E5E7EB", fontSize: 11, color: "#374151" }}>
+                      <span style={{ fontWeight: 600 }}>{formatTimestamp(h.scannedAt)}</span>
+                      <span style={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "#9CA3AF" }} />
+                      <span style={{ color: h.totalFindings > 0 ? "#7C3AED" : "#15803D", fontWeight: 700 }}>{h.totalFindings} finding{h.totalFindings !== 1 ? "s" : ""}</span>
+                      <span style={{ color: "#9CA3AF" }}>{h.triggeredBy}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {fileScanFindings.length === 0 ? (
+              fileScanLatest ? (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", color: "#9CA3AF" }}>
+                  <CheckCircle2 style={{ width: 48, height: 48, color: "#4ADE80", marginBottom: 12 }} />
+                  <p style={{ fontSize: 18, fontWeight: 600, color: "#374151", margin: 0 }}>No issues found</p>
+                  <p style={{ fontSize: 13, marginTop: 4 }}>All scanned files passed the code quality checks.</p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 0", color: "#9CA3AF" }}>
+                  <ScanLine style={{ width: 48, height: 48, color: "#A78BFA", marginBottom: 12 }} />
+                  <p style={{ fontSize: 18, fontWeight: 600, color: "#374151", margin: 0 }}>Run a scan to get started</p>
+                  <p style={{ fontSize: 13, marginTop: 4 }}>Click "Run Scan Now" to analyze your source files for code quality issues.</p>
+                </div>
+              )
+            ) : (
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                  {(["critical", "medium", "minor"] as const).map(sev => {
+                    const count = fileScanFindings.filter(f => f.severity === sev).length;
+                    if (!count) return null;
+                    const sc = SCAN_FINDING_COLORS[sev]!;
+                    return (
+                      <span key={sev} style={{ fontSize: 12, fontWeight: 700, padding: "3px 12px", borderRadius: 9999, backgroundColor: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
+                        {sev.charAt(0).toUpperCase() + sev.slice(1)}: {count}
+                      </span>
+                    );
+                  })}
+                  <span style={{ fontSize: 12, color: "#6B7280", marginLeft: "auto" }}>
+                    {fileScanFindings.length} total finding{fileScanFindings.length !== 1 ? "s" : ""} in {fileScanLatest?.durationMs}ms
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  {fileScanFindings.map((finding, i) => {
+                    const fc = SCAN_FINDING_COLORS[finding.severity]!;
+                    const isExp = fileScanExpandedFinding === i;
+                    return (
+                      <div key={i} style={{ backgroundColor: "#ffffff", border: `1px solid ${fc.border}`, borderLeft: `4px solid ${fc.dot}`, borderRadius: 8, marginBottom: 6, overflow: "hidden" }}>
+                        <div
+                          style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 14px", cursor: "pointer" }}
+                          onClick={() => setFileScanExpandedFinding(isExp ? null : i)}
+                        >
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: fc.dot, flexShrink: 0, marginTop: 5 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: fc.color, backgroundColor: fc.bg, padding: "1px 8px", borderRadius: 9999, border: `1px solid ${fc.border}` }}>
+                                {finding.severity.toUpperCase()}
+                              </span>
+                              <code style={{ fontSize: 11, color: "#6B7280", backgroundColor: "#F3F4F6", padding: "1px 6px", borderRadius: 4 }}>
+                                {finding.ruleName}
+                              </code>
+                              <span style={{ fontSize: 11, color: "#9CA3AF" }}>
+                                {isExp ? <ChevronDown style={{ width: 12, height: 12, display: "inline" }} /> : <ChevronRight style={{ width: 12, height: 12, display: "inline" }} />}
+                              </span>
+                            </div>
+                            <p style={{ fontSize: 13, fontWeight: 500, color: "#111827", margin: "0 0 3px 0" }}>{finding.message}</p>
+                            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                              <code style={{ fontSize: 11, color: "#4F46E5", backgroundColor: "#EEF2FF", padding: "1px 8px", borderRadius: 4 }}>
+                                {finding.filePath}:{finding.lineNumber}
+                              </code>
+                            </div>
+                          </div>
+                          <div style={{ flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleFileScanGenerateTask(finding)}
+                              style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, backgroundColor: "#EDE9FE", color: "#7C3AED", border: "1px solid #DDD6FE", cursor: "pointer" }}
+                            >
+                              <FileText style={{ width: 11, height: 11 }} />
+                              Task Plan
+                            </button>
+                          </div>
+                        </div>
+                        {isExp && (
+                          <div style={{ padding: "0 14px 14px 34px", borderTop: "1px solid #F1F5F9" }}>
+                            <p style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", marginBottom: 4, marginTop: 10, textTransform: "uppercase", letterSpacing: "0.07em" }}>Code Snippet</p>
+                            <pre style={{ fontSize: 11, fontFamily: "monospace", backgroundColor: "#F8FAFC", border: "1px solid #E5E7EB", borderRadius: 6, padding: "8px 12px", whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#374151", margin: 0 }}>
+                              {finding.snippet}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : activeTab === "customers" ? (
           <>
             {customerLoading && customerReports.length === 0 ? (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
@@ -1573,6 +1870,12 @@ export default function ErrorMonitor() {
               </div>
             ) : groupedReports ? (
               <div>
+                {reports.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", backgroundColor: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
+                    <input type="checkbox" checked={selectedIds.size === reports.length && reports.length > 0} onChange={toggleSelectAll} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#7C3AED" }} />
+                    <span style={{ fontSize: 12, color: "#6B7280" }}>{selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}</span>
+                  </div>
+                )}
                 {Object.entries(groupedReports).map(([cat, catReports]) => (
                   <div key={cat}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", backgroundColor: "#F8FAFC", borderBottom: "1px solid #E5E7EB", position: "sticky", top: 0, zIndex: 10 }}>
@@ -1585,7 +1888,15 @@ export default function ErrorMonitor() {
                 ))}
               </div>
             ) : (
-              <div>{reports.map(r => renderReportRow(r))}</div>
+              <div>
+                {reports.length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", backgroundColor: "#F8FAFC", borderBottom: "1px solid #E5E7EB" }}>
+                    <input type="checkbox" checked={selectedIds.size === reports.length && reports.length > 0} onChange={toggleSelectAll} style={{ width: 14, height: 14, cursor: "pointer", accentColor: "#7C3AED" }} />
+                    <span style={{ fontSize: 12, color: "#6B7280" }}>{selectedIds.size > 0 ? `${selectedIds.size} of ${reports.length} selected` : `Select all ${reports.length}`}</span>
+                  </div>
+                )}
+                {reports.map(r => renderReportRow(r))}
+              </div>
             )}
 
             {pagination.totalPages > 1 && (
@@ -1681,6 +1992,55 @@ export default function ErrorMonitor() {
             )}
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
               <button onClick={() => setShowTaskPlanDialog(null)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", backgroundColor: "#ffffff", color: "#374151", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Task Plan Modal ── */}
+      {showBulkTaskModal && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setShowBulkTaskModal(false)}>
+          <div style={{ backgroundColor: "#ffffff", borderRadius: 16, padding: 24, maxWidth: 700, width: "100%", maxHeight: "85vh", overflow: "auto", boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                <FileText style={{ width: 18, height: 18, color: "#7C3AED" }} /> Bulk Task Plan — {selectedIds.size} Error{selectedIds.size > 1 ? "s" : ""}
+              </h3>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={async () => {
+                    const result = await safeCopyToClipboard(bulkTaskContent);
+                    if (!result.ok) {
+                      try {
+                        const ta = document.createElement("textarea");
+                        ta.value = bulkTaskContent;
+                        ta.setAttribute("readonly", "");
+                        ta.style.position = "fixed";
+                        ta.style.opacity = "0";
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand("copy");
+                        document.body.removeChild(ta);
+                      } catch { /* silent */ }
+                    }
+                  }}
+                  style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, backgroundColor: "#EDE9FE", color: "#7C3AED", border: "1px solid #DDD6FE", cursor: "pointer" }}
+                >
+                  <Copy style={{ width: 12, height: 12 }} /> Copy
+                </button>
+                <button onClick={() => setShowBulkTaskModal(false)} style={{ padding: "6px", borderRadius: 6, border: "none", backgroundColor: "transparent", cursor: "pointer", color: "#9CA3AF" }}>
+                  <X style={{ width: 16, height: 16 }} />
+                </button>
+              </div>
+            </div>
+            {bulkTaskLoading ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", border: "4px solid #7C3AED", borderTopColor: "transparent", animation: "spin 0.8s linear infinite" }} />
+              </div>
+            ) : (
+              <pre style={{ fontSize: 12, fontFamily: "monospace", color: "#374151", backgroundColor: "#F8FAFC", border: "1px solid #E5E7EB", borderRadius: 8, padding: 16, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 560, overflow: "auto" }}>{bulkTaskContent}</pre>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={() => setShowBulkTaskModal(false)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", backgroundColor: "#ffffff", color: "#374151", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>Close</button>
             </div>
           </div>
         </div>

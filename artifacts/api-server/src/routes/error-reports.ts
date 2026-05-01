@@ -2,13 +2,14 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import crypto from "crypto";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { errorReportsTable, customerErrorReportsTable, errorResolutionBackupsTable, autoResolveLogTable, platformSettingsTable } from "@workspace/db/schema";
+import { errorReportsTable, customerErrorReportsTable, errorResolutionBackupsTable, autoResolveLogTable, platformSettingsTable, fileScanResultsTable } from "@workspace/db/schema";
 import { eq, desc, and, gte, lte, count, inArray, ne, sql, lt, type SQL } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { sendSuccess, sendError, sendNotFound, sendValidationError } from "../lib/response.js";
 import { adminAuth, type AdminRequest } from "./admin-shared.js";
 import { validateBody } from "../middleware/validate.js";
 import { logger } from "../lib/logger.js";
+import { runFileScanner, type FileScanFinding } from "../services/file-scanner.js";
 
 const router = Router();
 
@@ -208,12 +209,14 @@ router.post("/", errorReportIngestGuard, validateBody(createErrorReportSchema), 
     const severity = classifySeverity(body.errorType, body.statusCode, body.errorMessage);
     const shortImpact = classifyImpact(body.errorType, severity);
 
-    /* ── Hash-based deduplication ──────────────────────────────────────── */
+    /* ── Hash-based deduplication with smart re-open ───────────────────── */
     const hash = body.errorHash ?? computeErrorHash(body.errorMessage, body.errorType, body.sourceApp);
-    let existingByHash: (typeof errorReportsTable.$inferSelect) | undefined;
+    let activeExisting: (typeof errorReportsTable.$inferSelect) | undefined;
+    let resolvedExisting: (typeof errorReportsTable.$inferSelect) | undefined;
     try {
       const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS);
-      const [row] = await db.select()
+      // First: look for an active (non-resolved) match within the dedup window
+      const [activeRow] = await db.select()
         .from(errorReportsTable)
         .where(and(
           eq(errorReportsTable.errorHash, hash),
@@ -221,26 +224,70 @@ router.post("/", errorReportIngestGuard, validateBody(createErrorReportSchema), 
           gte(errorReportsTable.timestamp, cutoff),
         ))
         .limit(1);
-      existingByHash = row;
+      activeExisting = activeRow;
+
+      // Second: look for a resolved match (any time) if no active one
+      if (!activeExisting) {
+        const [resolvedRow] = await db.select()
+          .from(errorReportsTable)
+          .where(and(
+            eq(errorReportsTable.errorHash, hash),
+            eq(errorReportsTable.status, "resolved"),
+          ))
+          .orderBy(desc(errorReportsTable.updatedAt))
+          .limit(1);
+        resolvedExisting = resolvedRow;
+      }
     } catch {
       /* Columns may not exist yet on first startup — safe to skip dedup */
     }
 
-    if (existingByHash) {
-      const newCount = (existingByHash.occurrenceCount ?? 1) + 1;
+    // Case 1: active duplicate — just increment count
+    if (activeExisting) {
+      const newCount = (activeExisting.occurrenceCount ?? 1) + 1;
       try {
         await db.update(errorReportsTable)
           .set({ occurrenceCount: newCount, updatedAt: new Date() })
-          .where(eq(errorReportsTable.id, existingByHash.id));
+          .where(eq(errorReportsTable.id, activeExisting.id));
       } catch {}
       return sendSuccess(res, {
-        ...existingByHash,
+        ...activeExisting,
         occurrenceCount: newCount,
         deduplicated: true,
-        timestamp: existingByHash.timestamp.toISOString(),
-        resolvedAt: existingByHash.resolvedAt?.toISOString() ?? null,
-        acknowledgedAt: existingByHash.acknowledgedAt?.toISOString() ?? null,
+        timestamp: activeExisting.timestamp.toISOString(),
+        resolvedAt: activeExisting.resolvedAt?.toISOString() ?? null,
+        acknowledgedAt: activeExisting.acknowledgedAt?.toISOString() ?? null,
         updatedAt: new Date().toISOString(),
+      }, undefined, 200);
+    }
+
+    // Case 2: previously resolved — reopen it
+    if (resolvedExisting) {
+      const newCount = (resolvedExisting.occurrenceCount ?? 1) + 1;
+      const now = new Date();
+      try {
+        await db.update(errorReportsTable)
+          .set({
+            status: "new",
+            occurrenceCount: newCount,
+            resolvedAt: null,
+            resolutionMethod: null,
+            resolutionNotes: null,
+            updatedAt: now,
+          })
+          .where(eq(errorReportsTable.id, resolvedExisting.id));
+      } catch {}
+      return sendSuccess(res, {
+        ...resolvedExisting,
+        status: "new",
+        occurrenceCount: newCount,
+        resolvedAt: null,
+        resolutionMethod: null,
+        resolutionNotes: null,
+        reopened: true,
+        timestamp: resolvedExisting.timestamp.toISOString(),
+        acknowledgedAt: resolvedExisting.acknowledgedAt?.toISOString() ?? null,
+        updatedAt: now.toISOString(),
       }, undefined, 200);
     }
 
@@ -1352,6 +1399,119 @@ function analyzeErrorCauseServer(errorType: string, errorMessage: string): { cau
   return { causes, consequences, fixes };
 }
 
+/* ── Helpers ───────────────────────────────────────────────────────────── */
+function extractFileReferences(stackTrace: string): Array<{ file: string; line: number }> {
+  const refs: Array<{ file: string; line: number }> = [];
+  if (!stackTrace) return refs;
+  // Match patterns like: at fn (src/routes/foo.ts:42:10) or src/routes/foo.ts:42
+  const re = /(?:at\s+\S+\s+\()?([^\s()\n]+\.(ts|tsx|js|mjs)):(\d+)/g;
+  let m: RegExpExecArray | null;
+  const seen = new Set<string>();
+  while ((m = re.exec(stackTrace)) !== null) {
+    const file = m[1]!;
+    const line = parseInt(m[3]!, 10);
+    const key = `${file}:${line}`;
+    if (!seen.has(key) && refs.length < 10) {
+      seen.add(key);
+      refs.push({ file, line });
+    }
+  }
+  return refs;
+}
+
+function buildSingleTaskPlan(report: typeof errorReportsTable.$inferSelect): { markdown: string; fileReferences: Array<{ file: string; line: number }> } {
+  const severityLabel = report.severity.toUpperCase();
+  const typeLabel = report.errorType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const sourceLabel = report.sourceApp === "api" ? "API Server" : report.sourceApp.charAt(0).toUpperCase() + report.sourceApp.slice(1);
+  const fileReferences = extractFileReferences(report.stackTrace ?? "");
+
+  const lines = [
+    `# Bug Fix Task: ${typeLabel}`,
+    ``,
+    `> **For developer or AI agent** — this plan contains all context needed to reproduce, diagnose, and fix the issue.`,
+    ``,
+    `## Summary`,
+    `| Field | Value |`,
+    `|-------|-------|`,
+    `| Error ID | \`${report.id}\` |`,
+    `| Severity | **${severityLabel}** |`,
+    `| Source App | ${sourceLabel} |`,
+    `| Error Type | ${typeLabel} |`,
+    `| Occurrences | ${report.occurrenceCount ?? 1} |`,
+    `| First Seen | ${report.timestamp.toISOString()} |`,
+    `| Status | ${report.status} |`,
+  ];
+  if (report.moduleName) lines.push(`| Module | \`${report.moduleName}\` |`);
+  if (report.functionName) lines.push(`| Function | \`${report.functionName}\` |`);
+  if (report.componentName) lines.push(`| Component | \`${report.componentName}\` |`);
+  lines.push(``);
+
+  lines.push(`## Error Message`);
+  lines.push(`\`\`\``);
+  lines.push(report.errorMessage);
+  lines.push(`\`\`\``);
+  lines.push(``);
+
+  if (report.shortImpact) {
+    lines.push(`## User Impact`);
+    lines.push(report.shortImpact);
+    lines.push(``);
+  }
+
+  if (fileReferences.length > 0) {
+    lines.push(`## Files to Investigate`);
+    fileReferences.forEach(ref => lines.push(`- \`${ref.file}\` — line ${ref.line}`));
+    lines.push(``);
+  }
+
+  if (report.stackTrace) {
+    lines.push(`## Stack Trace`);
+    lines.push(`\`\`\``);
+    lines.push(report.stackTrace.slice(0, 4000));
+    lines.push(`\`\`\``);
+    lines.push(``);
+  }
+
+  if (report.metadata && Object.keys(report.metadata as object).length > 0) {
+    lines.push(`## Metadata`);
+    lines.push(`\`\`\`json`);
+    lines.push(JSON.stringify(report.metadata, null, 2).slice(0, 1000));
+    lines.push(`\`\`\``);
+    lines.push(``);
+  }
+
+  const rca = analyzeErrorCauseServer(report.errorType, report.errorMessage);
+  if (rca.causes.length > 0) {
+    lines.push(`## Likely Root Causes`);
+    rca.causes.forEach(c => lines.push(`- ${c}`));
+    lines.push(``);
+  }
+  if (rca.fixes.length > 0) {
+    lines.push(`## Recommended Fix Steps`);
+    rca.fixes.forEach((f, i) => lines.push(`${i + 1}. ${f}`));
+    lines.push(``);
+  }
+  if (rca.consequences.length > 0) {
+    lines.push(`## Consequences If Unresolved`);
+    rca.consequences.forEach(c => lines.push(`- ${c}`));
+    lines.push(``);
+  }
+
+  lines.push(`## Investigation Checklist`);
+  lines.push(`1. Reproduce using the error message and stack trace above`);
+  lines.push(`2. Open the files listed in "Files to Investigate"`);
+  lines.push(`3. Identify the root cause and add appropriate error handling`);
+  lines.push(`4. Write a regression test`);
+  lines.push(`5. Deploy to staging and verify resolution`);
+  lines.push(``);
+  lines.push(`## Priority`);
+  lines.push(report.severity === "critical" ? `🔴 **HIGH** — Critical error actively affecting users. Fix immediately.` :
+    report.severity === "medium" ? `🟡 **MEDIUM** — Impacts functionality. Schedule for next sprint.` :
+    `🟢 **LOW** — Minor issue. Address when convenient.`);
+
+  return { markdown: lines.join("\n"), fileReferences };
+}
+
 router.post("/:id/generate-task", adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -1364,94 +1524,343 @@ router.post("/:id/generate-task", adminAuth, async (req, res) => {
       return;
     }
 
-    const severityLabel = report.severity.toUpperCase();
-    const typeLabel = report.errorType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-    const sourceLabel = report.sourceApp === "api" ? "API Server" : report.sourceApp.charAt(0).toUpperCase() + report.sourceApp.slice(1);
+    const { markdown, fileReferences } = buildSingleTaskPlan(report);
 
-    const taskPlan = [
-      `# Bug Fix Task: ${typeLabel}`,
-      ``,
-      `## Summary`,
-      `- **Severity**: ${severityLabel}`,
-      `- **Source**: ${sourceLabel}`,
-      `- **Type**: ${typeLabel}`,
-      `- **Error ID**: ${report.id}`,
-      `- **Reported**: ${report.timestamp.toISOString()}`,
-      ``,
-      `## Error Message`,
-      `\`\`\``,
-      report.errorMessage,
-      `\`\`\``,
-      ``,
-    ];
-
-    if (report.functionName || report.moduleName || report.componentName) {
-      taskPlan.push(`## Location`);
-      if (report.moduleName) taskPlan.push(`- **Module**: \`${report.moduleName}\``);
-      if (report.functionName) taskPlan.push(`- **Function**: \`${report.functionName}\``);
-      if (report.componentName) taskPlan.push(`- **Component**: \`${report.componentName}\``);
-      taskPlan.push(``);
-    }
-
-    if (report.stackTrace) {
-      taskPlan.push(`## Stack Trace`);
-      taskPlan.push(`\`\`\``);
-      taskPlan.push(report.stackTrace.slice(0, 3000));
-      taskPlan.push(`\`\`\``);
-      taskPlan.push(``);
-    }
-
-    if (report.shortImpact) {
-      taskPlan.push(`## Impact`);
-      taskPlan.push(report.shortImpact);
-      taskPlan.push(``);
-    }
-
-    const rca = analyzeErrorCauseServer(report.errorType, report.errorMessage);
-    if (rca.causes.length > 0) {
-      taskPlan.push(`## Likely Root Causes`);
-      rca.causes.forEach(c => taskPlan.push(`- ${c}`));
-      taskPlan.push(``);
-    }
-    if (rca.fixes.length > 0) {
-      taskPlan.push(`## Recommended Fixes`);
-      rca.fixes.forEach(f => taskPlan.push(`- ${f}`));
-      taskPlan.push(``);
-    }
-    if (rca.consequences.length > 0) {
-      taskPlan.push(`## Potential Consequences If Unresolved`);
-      rca.consequences.forEach(c => taskPlan.push(`- ${c}`));
-      taskPlan.push(``);
-    }
-
-    taskPlan.push(`## Suggested Investigation Steps`);
-    taskPlan.push(`1. Review the error message and stack trace above`);
-    taskPlan.push(`2. Identify the root cause in the ${sourceLabel} codebase`);
-    taskPlan.push(`3. Write a fix and add appropriate error handling`);
-    taskPlan.push(`4. Add tests to prevent regression`);
-    taskPlan.push(`5. Deploy and verify the fix in staging`);
-    taskPlan.push(``);
-    taskPlan.push(`## Priority`);
-    taskPlan.push(report.severity === "critical" ? `HIGH — This is a critical error affecting users. Fix ASAP.` :
-      report.severity === "medium" ? `MEDIUM — This error impacts functionality. Schedule for next sprint.` :
-      `LOW — Minor issue. Can be addressed when convenient.`);
-
-    const markdown = taskPlan.join("\n");
-
-    const now = new Date();
     await db.update(errorReportsTable)
-      .set({
-        resolutionMethod: "task_created",
-        updatedAt: now,
-      })
+      .set({ resolutionMethod: "task_created", updatedAt: new Date() })
       .where(eq(errorReportsTable.id, id!));
 
-    sendSuccess(res, { taskPlan: markdown, errorId: id });
+    sendSuccess(res, { taskPlan: markdown, errorId: id, fileReferences });
   } catch (err) {
     logger.error({ err }, "Failed to generate task plan");
     sendError(res, "Failed to generate task plan", 500);
   }
 });
+
+const bulkGenerateTaskSchema = z.object({
+  ids: z.array(z.string()).min(1).max(20),
+});
+
+router.post("/bulk-generate-task", adminAuth, validateBody(bulkGenerateTaskSchema), async (req, res) => {
+  try {
+    const { ids } = req.body as { ids: string[] };
+    const reports = await db.select().from(errorReportsTable)
+      .where(inArray(errorReportsTable.id, ids));
+
+    if (reports.length === 0) {
+      sendNotFound(res, "No matching error reports found");
+      return;
+    }
+
+    const severityOrder = { critical: 0, medium: 1, minor: 2 };
+    const sorted = [...reports].sort((a, b) =>
+      (severityOrder[a.severity] ?? 2) - (severityOrder[b.severity] ?? 2)
+    );
+
+    const criticalCount = sorted.filter(r => r.severity === "critical").length;
+    const mediumCount = sorted.filter(r => r.severity === "medium").length;
+    const minorCount = sorted.filter(r => r.severity === "minor").length;
+    const overallSeverity = criticalCount > 0 ? "CRITICAL" : mediumCount > 0 ? "MEDIUM" : "LOW";
+
+    const lines: string[] = [
+      `# Bulk Bug Fix Task Plan — ${reports.length} Error${reports.length > 1 ? "s" : ""}`,
+      ``,
+      `> **For developer or AI agent** — this plan covers ${reports.length} selected errors. Fix in priority order.`,
+      ``,
+      `## Overview`,
+      `| Severity | Count |`,
+      `|----------|-------|`,
+      `| 🔴 Critical | ${criticalCount} |`,
+      `| 🟡 Medium | ${mediumCount} |`,
+      `| 🟢 Minor | ${minorCount} |`,
+      `| **Overall Priority** | **${overallSeverity}** |`,
+      ``,
+    ];
+
+    for (let i = 0; i < sorted.length; i++) {
+      const r = sorted[i]!;
+      const typeLabel = r.errorType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const sourceLabel = r.sourceApp === "api" ? "API Server" : r.sourceApp.charAt(0).toUpperCase() + r.sourceApp.slice(1);
+      const sevIcon = r.severity === "critical" ? "🔴" : r.severity === "medium" ? "🟡" : "🟢";
+      const rca = analyzeErrorCauseServer(r.errorType, r.errorMessage);
+      const fileRefs = extractFileReferences(r.stackTrace ?? "");
+
+      lines.push(`---`);
+      lines.push(``);
+      lines.push(`## Error ${i + 1} of ${sorted.length}: ${sevIcon} ${typeLabel}`);
+      lines.push(``);
+      lines.push(`| Field | Value |`);
+      lines.push(`|-------|-------|`);
+      lines.push(`| Error ID | \`${r.id}\` |`);
+      lines.push(`| Severity | ${sevIcon} ${r.severity.toUpperCase()} |`);
+      lines.push(`| Source | ${sourceLabel} |`);
+      lines.push(`| Type | ${typeLabel} |`);
+      lines.push(`| Occurrences | ${r.occurrenceCount ?? 1} |`);
+      lines.push(`| Status | ${r.status} |`);
+      if (r.moduleName) lines.push(`| Module | \`${r.moduleName}\` |`);
+      if (r.functionName) lines.push(`| Function | \`${r.functionName}\` |`);
+      if (r.componentName) lines.push(`| Component | \`${r.componentName}\` |`);
+      lines.push(``);
+
+      lines.push(`**Error Message:**`);
+      lines.push(`\`\`\``);
+      lines.push(r.errorMessage);
+      lines.push(`\`\`\``);
+      lines.push(``);
+
+      if (fileRefs.length > 0) {
+        lines.push(`**Files to Investigate:**`);
+        fileRefs.forEach(ref => lines.push(`- \`${ref.file}\` line ${ref.line}`));
+        lines.push(``);
+      }
+
+      if (r.stackTrace) {
+        lines.push(`**Stack Trace (excerpt):**`);
+        lines.push(`\`\`\``);
+        lines.push(r.stackTrace.slice(0, 1500));
+        lines.push(`\`\`\``);
+        lines.push(``);
+      }
+
+      if (rca.causes.length > 0) {
+        lines.push(`**Likely Root Causes:**`);
+        rca.causes.forEach(c => lines.push(`- ${c}`));
+        lines.push(``);
+      }
+
+      if (rca.fixes.length > 0) {
+        lines.push(`**Fix Steps:**`);
+        rca.fixes.forEach((f, fi) => lines.push(`${fi + 1}. ${f}`));
+        lines.push(``);
+      }
+    }
+
+    lines.push(`---`);
+    lines.push(``);
+    lines.push(`## Prioritized Fix Order`);
+    sorted.forEach((r, i) => {
+      const sevIcon = r.severity === "critical" ? "🔴" : r.severity === "medium" ? "🟡" : "🟢";
+      const typeLabel = r.errorType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      lines.push(`${i + 1}. ${sevIcon} \`${r.id}\` — ${typeLabel} (${r.sourceApp})`);
+    });
+
+    const markdown = lines.join("\n");
+    sendSuccess(res, { taskPlan: markdown, count: reports.length });
+  } catch (err) {
+    logger.error({ err }, "Failed to generate bulk task plan");
+    sendError(res, "Failed to generate bulk task plan", 500);
+  }
+});
+
+/* ── File Scanner routes ────────────────────────────────────────────────── */
+
+router.post("/file-scan/run", adminAuth, async (req: AdminRequest, res) => {
+  try {
+    const triggeredBy = (req.adminName ?? req.adminId ?? "admin") as string;
+    const report = await runFileScanner();
+    const id = generateId();
+    await db.insert(fileScanResultsTable).values({
+      id,
+      scannedAt: new Date(report.timestamp),
+      durationMs: report.durationMs,
+      totalFindings: report.totalFindings,
+      findings: report.findings as unknown as Record<string, unknown>[],
+      triggeredBy,
+    });
+    sendSuccess(res, { ...report, id });
+  } catch (err) {
+    logger.error({ err }, "File scan failed");
+    sendError(res, "File scan failed", 500);
+  }
+});
+
+router.get("/file-scan/history", adminAuth, async (_req, res) => {
+  try {
+    const rows = await db.select({
+      id: fileScanResultsTable.id,
+      scannedAt: fileScanResultsTable.scannedAt,
+      durationMs: fileScanResultsTable.durationMs,
+      totalFindings: fileScanResultsTable.totalFindings,
+      triggeredBy: fileScanResultsTable.triggeredBy,
+    })
+      .from(fileScanResultsTable)
+      .orderBy(desc(fileScanResultsTable.scannedAt))
+      .limit(7);
+    sendSuccess(res, rows.map(r => ({ ...r, scannedAt: r.scannedAt.toISOString() })));
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch file scan history");
+    sendError(res, "Failed to fetch file scan history", 500);
+  }
+});
+
+router.get("/file-scan/latest", adminAuth, async (_req, res) => {
+  try {
+    const [row] = await db.select().from(fileScanResultsTable)
+      .orderBy(desc(fileScanResultsTable.scannedAt))
+      .limit(1);
+    if (!row) {
+      sendSuccess(res, null);
+      return;
+    }
+    sendSuccess(res, { ...row, scannedAt: row.scannedAt.toISOString() });
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch latest file scan");
+    sendError(res, "Failed to fetch latest file scan", 500);
+  }
+});
+
+const fileScanTaskSchema = z.object({
+  finding: z.object({
+    filePath: z.string(),
+    lineNumber: z.number(),
+    ruleName: z.string(),
+    severity: z.enum(["critical", "medium", "minor"]),
+    message: z.string(),
+    snippet: z.string(),
+  }),
+});
+
+router.post("/file-scan/generate-task", adminAuth, validateBody(fileScanTaskSchema), async (req, res) => {
+  try {
+    const { finding } = req.body as { finding: FileScanFinding };
+    const sevIcon = finding.severity === "critical" ? "🔴" : finding.severity === "medium" ? "🟡" : "🟢";
+    const ruleLabel = finding.ruleName.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+    const lines = [
+      `# Code Quality Fix Task: ${ruleLabel}`,
+      ``,
+      `> **For developer or AI agent** — static analysis identified a code quality issue that needs fixing.`,
+      ``,
+      `## Issue Summary`,
+      `| Field | Value |`,
+      `|-------|-------|`,
+      `| Rule | \`${finding.ruleName}\` |`,
+      `| Severity | ${sevIcon} ${finding.severity.toUpperCase()} |`,
+      `| File | \`${finding.filePath}\` |`,
+      `| Line | ${finding.lineNumber} |`,
+      ``,
+      `## Problem Description`,
+      finding.message,
+      ``,
+      `## Code Snippet (line ${finding.lineNumber})`,
+      `\`\`\`typescript`,
+      finding.snippet,
+      `\`\`\``,
+      ``,
+      `## Why This Is Risky`,
+    ];
+
+    const whyRisky: Record<string, string> = {
+      "empty-catch": "Silent error swallowing hides bugs in production. Errors are thrown but never logged or handled, making debugging nearly impossible.",
+      "console-log": "console.log calls in production code leak implementation details, may expose sensitive data, and bypass structured logging that supports filtering, alerting, and aggregation.",
+      "todo-fixme-hack": "TODO/FIXME/HACK comments mark unfinished or temporary code. If left indefinitely, they accumulate as technical debt and may indicate incomplete features or known bugs.",
+      "async-no-trycatch": "Async functions without try/catch will result in unhandled promise rejections which crash Node.js workers or leave React components in a broken state.",
+      "route-no-trycatch": "Express route handlers without try/catch cause unhandled exceptions that crash the entire server process or return 500 with no user-friendly message.",
+      "missing-null-check": "Accessing properties on potentially null/undefined values causes TypeError crashes that are hard to debug in production.",
+      "unhandled-promise": "Promise-returning calls without await or .catch() leave errors completely unhandled — the operation may silently fail.",
+      "silent-catch-continue": "A catch block that only has comments effectively swallows the error, making it invisible in logs and impossible to diagnose.",
+    };
+
+    lines.push(whyRisky[finding.ruleName] ?? "This pattern is considered unsafe and should be addressed to improve code reliability.");
+    lines.push(``);
+
+    lines.push(`## How to Fix`);
+    const howToFix: Record<string, string[]> = {
+      "empty-catch": [
+        "1. Open `" + finding.filePath + "` at line " + finding.lineNumber,
+        "2. Add error logging: `logger.error({ err }, 'Description of what failed')`",
+        "3. Either re-throw the error or handle it gracefully",
+        "4. Never leave a catch block completely empty",
+      ],
+      "console-log": [
+        "1. Import the structured logger: `import { logger } from '../lib/logger.js'`",
+        "2. Replace `console.log(...)` with `logger.info(...)` or appropriate log level",
+        "3. Use structured fields: `logger.info({ userId, action }, 'User performed action')`",
+      ],
+      "todo-fixme-hack": [
+        "1. Create a proper task/ticket for the noted work",
+        "2. Either complete the work now or remove the comment and track it in your backlog",
+        "3. Never leave TODO/FIXME comments in production code without a tracking ticket",
+      ],
+      "async-no-trycatch": [
+        "1. Wrap the function body in a try/catch block",
+        "2. Log the error with context in the catch: `logger.error({ err }, 'What failed')`",
+        "3. Return a meaningful error response or re-throw as appropriate",
+      ],
+      "route-no-trycatch": [
+        "1. Wrap the entire route handler body in `try { ... } catch (err) { ... }`",
+        "2. In the catch block: `logger.error({ err }, 'Route failed'); sendError(res, 'message', 500)`",
+        "3. Never let route handlers throw uncaught exceptions",
+      ],
+      "missing-null-check": [
+        "1. Use optional chaining: `req.body?.field?.subField`",
+        "2. Add runtime validation with Zod before accessing nested properties",
+        "3. Provide default values: `const value = req.body?.field ?? defaultValue`",
+      ],
+    };
+
+    const fixes = howToFix[finding.ruleName] ?? [
+      `1. Open \`${finding.filePath}\` at line ${finding.lineNumber}`,
+      `2. Review the flagged code and apply the appropriate fix`,
+      `3. Add a test to cover the fixed code path`,
+    ];
+    fixes.forEach(f => lines.push(f));
+    lines.push(``);
+
+    lines.push(`## Surrounding Context`);
+    lines.push(`Open \`${finding.filePath}\` and navigate to line ${finding.lineNumber}. Review the surrounding ~20 lines for full context before making changes.`);
+    lines.push(``);
+    lines.push(`## Priority`);
+    lines.push(finding.severity === "critical"
+      ? `🔴 **HIGH** — This issue can cause crashes or data loss. Fix immediately.`
+      : finding.severity === "medium"
+      ? `🟡 **MEDIUM** — This issue reduces reliability. Fix in the current sprint.`
+      : `🟢 **LOW** — Code quality improvement. Fix when convenient.`);
+
+    sendSuccess(res, { taskPlan: lines.join("\n"), finding });
+  } catch (err) {
+    logger.error({ err }, "Failed to generate file scan task plan");
+    sendError(res, "Failed to generate file scan task plan", 500);
+  }
+});
+
+/* ── Daily file scanner scheduler ─────────────────────────────────────── */
+let _dailyScanTimeout: ReturnType<typeof setTimeout> | null = null;
+
+export function scheduleDailyFileScan(timeHHMM: string = "02:00"): void {
+  if (_dailyScanTimeout) {
+    clearTimeout(_dailyScanTimeout);
+    _dailyScanTimeout = null;
+  }
+  const [hStr, mStr] = timeHHMM.split(":");
+  const h = parseInt(hStr ?? "2", 10);
+  const m = parseInt(mStr ?? "0", 10);
+
+  const now = new Date();
+  const next = new Date();
+  next.setHours(h, m, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+
+  const delay = next.getTime() - now.getTime();
+  _dailyScanTimeout = setTimeout(async () => {
+    try {
+      const report = await runFileScanner();
+      const id = generateId();
+      await db.insert(fileScanResultsTable).values({
+        id,
+        scannedAt: new Date(report.timestamp),
+        durationMs: report.durationMs,
+        totalFindings: report.totalFindings,
+        findings: report.findings as unknown as Record<string, unknown>[],
+        triggeredBy: "scheduler",
+      });
+      logger.info({ totalFindings: report.totalFindings }, "[file-scanner] Daily scan completed");
+    } catch (err) {
+      logger.error({ err }, "[file-scanner] Daily scan failed");
+    }
+    scheduleDailyFileScan(timeHHMM);
+  }, delay);
+}
 
 let _resolutionMigrated = false;
 export async function ensureErrorResolutionTables() {
@@ -1494,6 +1903,18 @@ export async function ensureErrorResolutionTables() {
         reason TEXT NOT NULL,
         rule_matched TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      )
+    `);
+  } catch {}
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS file_scan_results (
+        id TEXT PRIMARY KEY,
+        scanned_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        duration_ms INTEGER NOT NULL,
+        total_findings INTEGER NOT NULL,
+        findings JSONB NOT NULL,
+        triggered_by TEXT NOT NULL DEFAULT 'manual'
       )
     `);
   } catch {}

@@ -15,6 +15,7 @@ import {
 } from "./services/admin-seed.service.js";
 import { purgeStaleAdminPasswordResetTokens } from "./services/admin-password.service.js";
 import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-password-watch.service.js";
+import { ensureErrorResolutionTables } from "./routes/error-reports.js";
 import router from "./routes/index.js";
 
 /**
@@ -73,6 +74,14 @@ export async function runStartupTasks(): Promise<void> {
       "[startup] admin password watchdog failed (continuing):",
       err,
     );
+  }
+  // Ensure error-monitor supplementary tables exist (error_resolution_backups,
+  // auto_resolve_log, file_scan_results). Idempotent — uses CREATE TABLE IF NOT EXISTS.
+  try {
+    await ensureErrorResolutionTables();
+    console.log("[startup] error-monitor supplementary tables ready");
+  } catch (err) {
+    console.error("[startup] error-monitor table migration failed (continuing):", err);
   }
 }
 

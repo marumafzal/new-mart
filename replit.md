@@ -179,3 +179,14 @@ credentials through the post-login popup once signed in.
 - **Command Palette (⌘K) coverage** — added searchIndex entries for
   `auth-methods`, `launch-control`, `otp-control`, and `sms-gateways`
   pages with English/Urdu/Roman-Urdu keywords.
+
+### Error Monitor — Task #2 Upgrade (May 2026)
+- **Multi-select checkboxes** on every error row in the Error Monitor table. A floating action bar appears when 1+ errors are selected, offering "Bulk Task Plan" for the selected set.
+- **Bulk Task Plan** (`POST /api/admin/error-reports/bulk-generate-task`) — generates a consolidated task plan markdown for multiple errors at once, displayed in a modal with copy-to-clipboard.
+- **Smart re-open on resolved duplicates** — when an incoming error hash matches a previously resolved error, it is automatically reopened (status set back to `open`, occurrence count bumped) instead of creating a duplicate row.
+- **Richer single-error task plans** — `POST /api/admin/error-reports/:id/generate-task` now includes file reference paths, snippet context, occurrence count, and resolution history for better AI-usable prompts.
+- **File Scanner service** (`artifacts/api-server/src/services/file-scanner.ts`) — walks 5 source directories, applies 8 static-analysis rules (empty-catch, console-log, todo-fixme, async-no-trycatch, route-no-trycatch, missing-null-check, unhandled-promise, silent-catch-continue). Detected ~1,100 findings across the codebase.
+- **File Scan tab** (5th tab, purple) in Error Monitor — UI to trigger a manual scan, view history list, browse per-finding details (collapsible by file), and generate a task plan from a scan result.
+- **`file_scan_results` table** (`lib/db/src/schema/file_scan_results.ts`) — stores scan runs (id, scanned_at, duration_ms, total_findings, findings JSONB, triggered_by). Created via `ensureErrorResolutionTables()` called in `runStartupTasks()`.
+- **Daily file scan scheduler** — `scheduleDailyFileScan("02:00")` schedules an automatic nightly scan via `setTimeout`.
+- **`app.ts` wired up** — `ensureErrorResolutionTables()` is now called in `runStartupTasks()` at boot to ensure all error-monitor supplementary tables (`error_resolution_backups`, `auto_resolve_log`, `file_scan_results`) exist before serving requests.

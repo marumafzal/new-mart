@@ -724,7 +724,11 @@ router.post("/users/:id/force-password-reset", async (req, res) => {
 });
 
 router.post("/users/:id/reset-otp", async (req, res) => {
-  await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, req.params["id"]!));
+  const userId = req.params["id"]!;
+  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, name: usersTable.name, roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+  const adminReq = req as AdminRequest;
+  addAuditEntry({ action: "admin_reset_otp", ip: getClientIp(req), adminId: adminReq.adminId, adminName: adminReq.adminName, affectedUserId: userId, affectedUserName: user?.name || user?.phone, affectedUserRole: user?.roles?.split(",")[0]?.trim() || "customer", details: `OTP cleared for ${user?.phone || userId} — user must re-authenticate`, result: "success" });
   sendSuccess(res, { success: true, message: "OTP cleared — user must re-authenticate" });
 });
 
@@ -838,13 +842,14 @@ router.patch("/users/:id/request-correction", async (req, res) => {
 /* ── PATCH /admin/users/:id/waive-debt — waive rider's cancellation debt ── */
 router.patch("/users/:id/waive-debt", async (req, res) => {
   const userId = req.params["id"]!;
-  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, cancellationDebt: usersTable.cancellationDebt })
+  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, name: usersTable.name, roles: usersTable.roles, cancellationDebt: usersTable.cancellationDebt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
   const debt = parseFloat(user.cancellationDebt ?? "0");
   if (debt <= 0) { sendSuccess(res, { success: true, message: "No debt to waive" }); return; }
   await db.update(usersTable).set({ cancellationDebt: "0", updatedAt: new Date() }).where(eq(usersTable.id, userId));
-  addAuditEntry({ action: "debt_waived", ip: getClientIp(req), adminId: (req as AdminRequest).adminId, details: `Cancelled debt of Rs.${debt.toFixed(0)} for ${user.phone}`, result: "success" });
+  const adminReq = req as AdminRequest;
+  addAuditEntry({ action: "debt_waived", ip: getClientIp(req), adminId: adminReq.adminId, adminName: adminReq.adminName, affectedUserId: userId, affectedUserName: user.name || user.phone, affectedUserRole: user.roles?.split(",")[0]?.trim() || "rider", details: `Cancelled debt of Rs.${debt.toFixed(0)} for ${user.phone}`, result: "success" });
   const debtLang = await getUserLanguage(userId);
   await db.insert(notificationsTable).values({
     id: generateId(), userId,
@@ -929,6 +934,9 @@ router.delete("/users/:id/sessions/:sessionId", async (req, res) => {
     await db.update(refreshTokensTable).set({ revokedAt: new Date() }).where(eq(refreshTokensTable.id, session.refreshTokenId));
   }
 
+  const [affectedUser] = await db.select({ name: usersTable.name, phone: usersTable.phone, roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, id!)).limit(1);
+  const adminReq = req as AdminRequest;
+  addAuditEntry({ action: "revoke_session", ip: getClientIp(req), adminId: adminReq.adminId, adminName: adminReq.adminName, affectedUserId: id!, affectedUserName: affectedUser?.name || affectedUser?.phone, affectedUserRole: affectedUser?.roles?.split(",")[0]?.trim() || "customer", details: `Revoked session ${sessionId} for user ${affectedUser?.phone || id} (device: ${session.deviceName || session.browser || "unknown"})`, result: "success" });
   writeAuthAuditLog("admin_session_revoked", { userId: id!, ip: req.ip ?? "", metadata: { sessionId } });
   sendSuccess(res, { revoked: true });
 });
@@ -950,6 +958,9 @@ router.delete("/users/:id/sessions", async (req, res) => {
     .set({ tokenVersion: sql`token_version + 1`, updatedAt: new Date() })
     .where(eq(usersTable.id, id!));
 
+  const [affectedUser] = await db.select({ name: usersTable.name, phone: usersTable.phone, roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, id!)).limit(1);
+  const adminReq = req as AdminRequest;
+  addAuditEntry({ action: "revoke_all_sessions", ip: getClientIp(req), adminId: adminReq.adminId, adminName: adminReq.adminName, affectedUserId: id!, affectedUserName: affectedUser?.name || affectedUser?.phone, affectedUserRole: affectedUser?.roles?.split(",")[0]?.trim() || "customer", details: `All sessions revoked for user ${affectedUser?.phone || id}`, result: "success" });
   writeAuthAuditLog("admin_all_sessions_revoked", { userId: id!, ip: req.ip ?? "" });
   sendSuccess(res, { revoked: true, message: "All sessions revoked for user" });
 });

@@ -16,6 +16,9 @@ export interface AuditWrapperInput {
   resource: string; // e.g., "user_123", "order_456"
   resourceType: string; // e.g., "user", "order", "ride"
   details?: string;
+  affectedUserId?: string;
+  affectedUserName?: string;
+  affectedUserRole?: string;
 }
 
 export class AuditService {
@@ -39,6 +42,10 @@ export class AuditService {
         action: input.action,
         ip: input.adminIp,
         adminId: input.adminId,
+        adminName: input.adminName,
+        affectedUserId: input.affectedUserId,
+        affectedUserName: input.affectedUserName,
+        affectedUserRole: input.affectedUserRole,
         details: [
           input.details,
           `${input.resourceType}=${input.resource}`,
@@ -70,6 +77,10 @@ export class AuditService {
         action: `${input.action}_failed`,
         ip: input.adminIp,
         adminId: input.adminId,
+        adminName: input.adminName,
+        affectedUserId: input.affectedUserId,
+        affectedUserName: input.affectedUserName,
+        affectedUserRole: input.affectedUserRole,
         details: [
           input.details,
           `${input.resourceType}=${input.resource}`,

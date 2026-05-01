@@ -225,9 +225,13 @@ export interface AuditEntry {
   timestamp: string;
   action: string;
   adminId?: string;
+  adminName?: string;
   ip: string;
   details: string;
   result: "success" | "fail" | "warn" | "pending";
+  affectedUserId?: string;
+  affectedUserName?: string;
+  affectedUserRole?: string;
 }
 export const auditLog: AuditEntry[] = [];
 

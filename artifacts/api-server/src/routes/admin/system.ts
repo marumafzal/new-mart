@@ -649,18 +649,30 @@ router.get("/all-notifications", async (req, res) => {
 
 /* ── GET /admin/audit-log — view admin action audit trail ── */
 router.get("/audit-log", adminAuth, (req, res) => {
-  const page   = Math.max(1, parseInt(String(req.query["page"]  || "1")));
-  const limit  = Math.min(parseInt(String(req.query["limit"]  || "50")), 500);
-  const action = req.query["action"] as string | undefined;
-  const result = req.query["result"] as string | undefined;
-  const from   = req.query["from"] as string | undefined;
-  const to     = req.query["to"]   as string | undefined;
+  const page    = Math.max(1, parseInt(String(req.query["page"]    || "1")));
+  const limit   = Math.min(parseInt(String(req.query["limit"]   || "50")), 500);
+  const action  = req.query["action"]  as string | undefined;
+  const result  = req.query["result"]  as string | undefined;
+  const from    = req.query["from"]    as string | undefined;
+  const to      = req.query["to"]      as string | undefined;
+  const adminId = req.query["adminId"] as string | undefined;
+  const search  = req.query["search"]  as string | undefined;
 
   let entries = [...auditLog];
-  if (action) entries = entries.filter(e => e.action.includes(action));
-  if (result) entries = entries.filter(e => e.result === result);
-  if (from)   entries = entries.filter(e => new Date(e.timestamp) >= new Date(from));
-  if (to)     entries = entries.filter(e => new Date(e.timestamp) <= new Date(to));
+  if (action)  entries = entries.filter(e => e.action.includes(action));
+  if (result)  entries = entries.filter(e => e.result === result);
+  if (from)    entries = entries.filter(e => new Date(e.timestamp) >= new Date(from));
+  if (to)      entries = entries.filter(e => new Date(e.timestamp) <= new Date(to));
+  if (adminId) entries = entries.filter(e => (e.adminId || "").toLowerCase().includes(adminId.toLowerCase())
+                                           || (e.adminName || "").toLowerCase().includes(adminId.toLowerCase()));
+  if (search)  entries = entries.filter(e =>
+    (e.adminId || "").toLowerCase().includes(search.toLowerCase()) ||
+    (e.adminName || "").toLowerCase().includes(search.toLowerCase()) ||
+    (e.action || "").toLowerCase().includes(search.toLowerCase()) ||
+    (e.details || "").toLowerCase().includes(search.toLowerCase()) ||
+    (e.ip || "").toLowerCase().includes(search.toLowerCase()) ||
+    (e.affectedUserName || "").toLowerCase().includes(search.toLowerCase())
+  );
 
   const total = entries.length;
   const paginated = entries.slice((page - 1) * limit, page * limit);

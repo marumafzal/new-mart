@@ -1104,12 +1104,14 @@ export const useDispatchMonitor = () =>
     refetchInterval: 10_000,
   });
 
-export const useAuditLog = (params?: { page?: number; action?: string; from?: string; to?: string }) => {
+export const useAuditLog = (params?: { page?: number; action?: string; from?: string; to?: string; result?: string; search?: string }) => {
   const qs = new URLSearchParams();
   if (params?.page)   qs.set("page",   String(params.page));
   if (params?.action) qs.set("action", params.action);
   if (params?.from)   qs.set("from",   params.from);
   if (params?.to)     qs.set("to",     params.to);
+  if (params?.result) qs.set("result", params.result);
+  if (params?.search) qs.set("search", params.search);
   const q = qs.toString();
   return useQuery({
     queryKey: ["admin-audit-log", params],

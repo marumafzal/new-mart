@@ -1037,7 +1037,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
               <Lock className="w-4 h-4 text-emerald-600"/> MPIN Status
             </h3>
             {(() => {
-              const hasMpin = !!user.walletPinHash;
+              const hasMpin = !!(user.hasMpin || user.walletPinHash);
               const isLocked = !!user.isMpinLocked;
 
               const statusLabel = !hasMpin ? "Not Set" : isLocked ? "Locked" : "Active";
@@ -1126,8 +1126,8 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
                 {!sessionsLoading && sessionsData?.sessions?.map((s: any) => (
                   <div key={s.id} className="flex items-center justify-between bg-white border border-slate-100 rounded-lg px-3 py-2">
                     <div className="min-w-0">
-                      <p className="text-xs font-medium text-slate-700 truncate">{s.deviceInfo ?? s.userAgent ?? "Unknown device"}</p>
-                      <p className="text-[10px] text-muted-foreground">{s.ipAddress} · {new Date(s.createdAt).toLocaleString()}</p>
+                      <p className="text-xs font-medium text-slate-700 truncate">{s.deviceName ?? s.browser ?? "Unknown device"}{s.os ? ` · ${s.os}` : ""}</p>
+                      <p className="text-[10px] text-muted-foreground">{s.ip ?? s.location ?? "—"} · {s.lastActiveAt ? new Date(s.lastActiveAt).toLocaleString() : s.createdAt ? new Date(s.createdAt).toLocaleString() : "—"}</p>
                     </div>
                     <Button
                       size="sm"
@@ -1431,6 +1431,17 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
             </p>
           )}
         </div>
+
+        {/* KYC status mismatch: user appears pending but no API record found */}
+        {!kycLoading && !kycRecord && (user.kycStatus === "pending" || user.approvalStatus === "pending") && (
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800">
+              User's KYC status is <strong>{user.kycStatus || user.approvalStatus}</strong> but no active KYC submission was found in the system.
+              The user may need to re-submit their documents, or the record may have been deleted.
+            </p>
+          </div>
+        )}
 
         {/* KYC Approve / Reject actions (only when a pending KYC record exists) */}
         {kycId && kycRecord?.status === "pending" && (

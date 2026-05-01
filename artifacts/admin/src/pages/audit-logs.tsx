@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import {
   ClipboardList, RefreshCw, Search, Filter, ChevronLeft, ChevronRight,
-  AlertCircle, CheckCircle2, XCircle, Loader2, CalendarDays, User,
+  AlertCircle, CheckCircle2, XCircle, Loader2, CalendarDays, User, ShieldCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { useAuditLog } from "@/hooks/use-admin";
@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-
 
 const ACTION_OPTIONS = [
   { value: "all",                    label: "All Actions" },
@@ -24,33 +23,37 @@ const ACTION_OPTIONS = [
   { value: "vendor_credit",          label: "Vendor Credit" },
   { value: "rider_payout",           label: "Rider Payout" },
   { value: "rider_bonus",            label: "Rider Bonus" },
-  { value: "waive_debt",             label: "Waive Debt" },
-  { value: "revoke_sessions",        label: "Revoke Sessions" },
+  { value: "debt_waived",            label: "Waive Debt" },
+  { value: "revoke_session",         label: "Revoke Session" },
+  { value: "revoke_all_sessions",    label: "Revoke All Sessions" },
+  { value: "admin_reset_otp",        label: "Reset OTP" },
+  { value: "admin_otp_bypass",       label: "OTP Bypass" },
   { value: "user_ban",               label: "User Banned" },
   { value: "bulk_ban",               label: "Bulk Ban" },
   { value: "kyc_approve",            label: "KYC Approved" },
   { value: "kyc_reject",             label: "KYC Rejected" },
-  { value: "admin_otp",              label: "OTP Actions" },
+  { value: "admin_2fa_disable",      label: "2FA Disabled" },
   { value: "admin_login",            label: "Admin Login" },
   { value: "admin_logout",           label: "Admin Logout" },
+  { value: "settings_update",        label: "Settings Updated" },
   { value: "product_approve",        label: "Product Approved" },
-  { value: "product_reject",         label: "Product Rejected" },
   { value: "order_refund",           label: "Order Refund" },
 ];
 
-const RESULT_BADGE: Record<string, { label: string; cls: string }> = {
-  success: { label: "Success", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  fail:    { label: "Failed",  cls: "bg-red-50 text-red-700 border-red-200" },
-  failure: { label: "Failed",  cls: "bg-red-50 text-red-700 border-red-200" },
+const RESULT_BADGE: Record<string, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
+  success: { label: "Success", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: CheckCircle2 },
+  fail:    { label: "Failed",  cls: "bg-red-50 text-red-700 border-red-200",             icon: XCircle },
+  failure: { label: "Failed",  cls: "bg-red-50 text-red-700 border-red-200",             icon: XCircle },
+  warn:    { label: "Warning", cls: "bg-amber-50 text-amber-700 border-amber-200",        icon: AlertCircle },
+  pending: { label: "Pending", cls: "bg-gray-50 text-gray-600 border-gray-200",           icon: Loader2 },
 };
 
 function ActionBadge({ action }: { action: string }) {
-  const label = ACTION_OPTIONS.find(o => action.startsWith(o.value))?.label || action;
-  const isAuth = action.includes("login") || action.includes("logout") || action.includes("mfa");
-  const isBan  = action.includes("ban") || action.includes("block") || action.includes("delete");
-  const isWallet = action.includes("wallet") || action.includes("topup") || action.includes("payout") || action.includes("bonus") || action.includes("credit") || action.includes("waive");
-  const isKyc  = action.includes("kyc");
-  const isOtp  = action.includes("otp");
+  const isBan    = action.includes("ban") || action.includes("block") || action.includes("delete");
+  const isWallet = action.includes("wallet") || action.includes("topup") || action.includes("payout") || action.includes("bonus") || action.includes("credit") || action.includes("debt");
+  const isKyc    = action.includes("kyc");
+  const isOtp    = action.includes("otp") || action.includes("2fa") || action.includes("session");
+  const isAuth   = action.includes("login") || action.includes("logout") || action.includes("mfa");
 
   const cls = isBan ? "bg-red-50 text-red-700 border-red-200"
     : isWallet ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -60,61 +63,55 @@ function ActionBadge({ action }: { action: string }) {
     : "bg-gray-50 text-gray-700 border-gray-200";
 
   return (
-    <Badge variant="outline" className={`text-[10px] font-mono px-1.5 py-0.5 max-w-[160px] truncate ${cls}`} title={action}>
+    <Badge variant="outline" className={`text-[10px] font-mono px-1.5 py-0.5 max-w-[180px] truncate ${cls}`} title={action}>
       {action}
     </Badge>
   );
 }
 
 export default function AuditLogsPage() {
-  const [page, setPage]           = useState(1);
-  const [action, setAction]       = useState("all");
-  const [dateFrom, setDateFrom]   = useState("");
-  const [dateTo, setDateTo]       = useState("");
-  const [searchAdmin, setSearchAdmin] = useState("");
-  const [searchApplied, setSearchApplied] = useState("");
+  const [page, setPage]       = useState(1);
+  const [action, setAction]   = useState("all");
+  const [result, setResult]   = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo]   = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch]   = useState("");
 
   const params = {
     page,
     action: action !== "all" ? action : undefined,
-    from: dateFrom || undefined,
-    to: dateTo || undefined,
+    result: result !== "all" ? result : undefined,
+    from:   dateFrom || undefined,
+    to:     dateTo   || undefined,
+    search: search   || undefined,
   };
 
   const { data, isLoading, isError, refetch, isFetching } = useAuditLog(params);
 
-  const entries: any[] = data?.entries || [];
-  const total: number = data?.total || 0;
+  const entries: any[]     = data?.entries || [];
+  const total: number      = data?.total || 0;
   const totalPages: number = data?.totalPages || 1;
-  const limit: number = data?.limit || 50;
 
-  const filteredEntries = searchApplied
-    ? entries.filter((e: any) =>
-        (e.adminId || "").toLowerCase().includes(searchApplied.toLowerCase()) ||
-        (e.action || "").toLowerCase().includes(searchApplied.toLowerCase()) ||
-        (e.details || "").toLowerCase().includes(searchApplied.toLowerCase()) ||
-        (e.ip || "").toLowerCase().includes(searchApplied.toLowerCase())
-      )
-    : entries;
-
-  const handleSearch = () => {
-    setSearchApplied(searchAdmin);
+  const handleSearch = useCallback(() => {
+    setSearch(searchInput);
     setPage(1);
-  };
+  }, [searchInput]);
 
   const handleClear = () => {
     setAction("all");
+    setResult("all");
     setDateFrom("");
     setDateTo("");
-    setSearchAdmin("");
-    setSearchApplied("");
+    setSearchInput("");
+    setSearch("");
     setPage(1);
   };
 
-  const hasFilters = action !== "all" || dateFrom || dateTo || searchApplied;
+  const hasFilters = action !== "all" || result !== "all" || dateFrom || dateTo || search;
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-6 max-w-[1400px]">
       <PageHeader
         icon={ClipboardList}
         title="Audit Logs"
@@ -136,20 +133,20 @@ export default function AuditLogsPage() {
 
       {/* Filter Bar */}
       <Card className="rounded-2xl border border-border shadow-sm p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search by admin ID, action, or IP..."
-              value={searchAdmin}
-              onChange={e => setSearchAdmin(e.target.value)}
+              placeholder="Search by admin, action, IP, or affected user..."
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
               className="pl-9 h-9 rounded-xl"
             />
           </div>
 
           <Select value={action} onValueChange={v => { setAction(v); setPage(1); }}>
-            <SelectTrigger className="h-9 rounded-xl w-[180px]">
+            <SelectTrigger className="h-9 rounded-xl w-[190px]">
               <Filter className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Filter action" />
             </SelectTrigger>
@@ -157,6 +154,19 @@ export default function AuditLogsPage() {
               {ACTION_OPTIONS.map(opt => (
                 <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={result} onValueChange={v => { setResult(v); setPage(1); }}>
+            <SelectTrigger className="h-9 rounded-xl w-[130px]">
+              <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+              <SelectValue placeholder="Result" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Results</SelectItem>
+              <SelectItem value="success">Success</SelectItem>
+              <SelectItem value="fail">Failed</SelectItem>
+              <SelectItem value="warn">Warning</SelectItem>
             </SelectContent>
           </Select>
 
@@ -223,18 +233,19 @@ export default function AuditLogsPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30 hover:bg-muted/30">
-                    <TableHead className="font-semibold text-muted-foreground text-xs w-[160px]">Timestamp</TableHead>
-                    <TableHead className="font-semibold text-muted-foreground text-xs w-[180px]">Action</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-xs w-[150px]">Timestamp</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-xs w-[190px]">Action</TableHead>
                     <TableHead className="font-semibold text-muted-foreground text-xs w-[140px]">Admin</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-xs w-[160px]">Affected User</TableHead>
                     <TableHead className="font-semibold text-muted-foreground text-xs w-[110px]">IP Address</TableHead>
                     <TableHead className="font-semibold text-muted-foreground text-xs w-[90px] text-center">Result</TableHead>
                     <TableHead className="font-semibold text-muted-foreground text-xs">Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredEntries.length === 0 ? (
+                  {entries.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-40">
+                      <TableCell colSpan={7} className="h-40">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <ClipboardList className="w-10 h-10 text-muted-foreground/30" />
                           <p className="text-sm text-muted-foreground font-medium">No audit log entries found</p>
@@ -245,9 +256,11 @@ export default function AuditLogsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredEntries.map((entry: any, idx: number) => {
-                      const resultInfo = RESULT_BADGE[entry.result] || { label: entry.result || "—", cls: "bg-gray-50 text-gray-600 border-gray-200" };
+                    entries.map((entry: any, idx: number) => {
+                      const resultInfo = RESULT_BADGE[entry.result] || { label: entry.result || "—", cls: "bg-gray-50 text-gray-600 border-gray-200", icon: AlertCircle };
+                      const ResultIcon = resultInfo.icon;
                       const ts = entry.timestamp ? new Date(entry.timestamp) : null;
+                      const adminLabel = entry.adminName || (entry.adminId ? entry.adminId.slice(0, 10) + "…" : "System");
 
                       return (
                         <TableRow key={`${entry.timestamp}-${idx}`} className="hover:bg-muted/30 transition-colors group">
@@ -259,36 +272,57 @@ export default function AuditLogsPage() {
                               </div>
                             ) : "—"}
                           </TableCell>
+
                           <TableCell>
                             <ActionBadge action={entry.action || "—"} />
                           </TableCell>
+
                           <TableCell>
-                            {entry.adminId ? (
-                              <div className="flex items-center gap-1.5">
-                                <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
-                                  <User className="w-3 h-3 text-indigo-600" />
-                                </div>
-                                <span className="text-xs font-mono text-foreground truncate max-w-[100px]" title={entry.adminId}>
-                                  {entry.adminId.slice(0, 10)}…
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                                <User className="w-3 h-3 text-indigo-600" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-medium text-foreground truncate block max-w-[100px]" title={entry.adminName || entry.adminId}>
+                                  {adminLabel}
                                 </span>
+                                {entry.adminId && entry.adminName && (
+                                  <span className="text-[10px] text-muted-foreground font-mono block truncate max-w-[100px]">
+                                    {entry.adminId.slice(0, 8)}…
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            {entry.affectedUserName ? (
+                              <div className="min-w-0">
+                                <span className="text-xs font-medium text-foreground block truncate max-w-[140px]" title={entry.affectedUserName}>
+                                  {entry.affectedUserName}
+                                </span>
+                                {entry.affectedUserRole && (
+                                  <Badge variant="outline" className="text-[9px] px-1 py-0 border-gray-200 text-gray-500 mt-0.5">
+                                    {entry.affectedUserRole}
+                                  </Badge>
+                                )}
                               </div>
                             ) : (
-                              <span className="text-xs text-muted-foreground">System</span>
+                              <span className="text-xs text-muted-foreground">—</span>
                             )}
                           </TableCell>
+
                           <TableCell>
                             <span className="text-xs font-mono text-muted-foreground">{entry.ip || "—"}</span>
                           </TableCell>
+
                           <TableCell className="text-center">
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0.5 ${resultInfo.cls}`}>
-                              {entry.result === "success"
-                                ? <><CheckCircle2 className="w-3 h-3 inline mr-0.5" />{resultInfo.label}</>
-                                : entry.result === "fail" || entry.result === "failure"
-                                  ? <><XCircle className="w-3 h-3 inline mr-0.5" />{resultInfo.label}</>
-                                  : resultInfo.label
-                              }
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0.5 gap-0.5 inline-flex items-center ${resultInfo.cls}`}>
+                              <ResultIcon className="w-3 h-3 flex-shrink-0" />
+                              {resultInfo.label}
                             </Badge>
                           </TableCell>
+
                           <TableCell>
                             <p className="text-xs text-muted-foreground max-w-xs truncate group-hover:whitespace-normal group-hover:max-w-none group-hover:overflow-visible transition-all" title={entry.details}>
                               {entry.details || "—"}
@@ -357,10 +391,10 @@ export default function AuditLogsPage() {
               </div>
             )}
 
-            {filteredEntries.length > 0 && totalPages <= 1 && (
+            {entries.length > 0 && totalPages <= 1 && (
               <div className="px-4 py-2.5 border-t border-border/50 bg-muted/10">
                 <p className="text-xs text-muted-foreground">
-                  Showing {filteredEntries.length} of {total.toLocaleString()} entries
+                  Showing {entries.length} of {total.toLocaleString()} entries
                 </p>
               </div>
             )}

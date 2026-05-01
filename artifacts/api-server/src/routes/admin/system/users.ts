@@ -9,6 +9,8 @@ import {
   accountConditionsTable,
   userSessionsTable,
   refreshTokensTable,
+  vendorProfilesTable,
+  riderProfilesTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
 import {
@@ -139,10 +141,21 @@ router.get("/users/search-riders", async (req, res) => {
 router.get("/users", async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
   const conditionTier = (req.query?.conditionTier as string) ?? "";
-  const users = await (
+
+  const baseQuery = db
+    .select({
+      user: usersTable,
+      vendorProfile: vendorProfilesTable,
+      riderProfile: riderProfilesTable,
+    })
+    .from(usersTable)
+    .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
+    .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId));
+
+  const rows = await (
     filter === "2fa_enabled"
-      ? db.select().from(usersTable).where(eq(usersTable.totpEnabled, true))
-      : db.select().from(usersTable)
+      ? baseQuery.where(eq(usersTable.totpEnabled, true))
+      : baseQuery
   ).orderBy(desc(usersTable.createdAt));
 
   const condCounts = await db.select({
@@ -156,7 +169,7 @@ router.get("/users", async (req, res) => {
 
   const condMap = new Map(condCounts.map(c => [c.userId, { count: Number(c.activeCount), maxSeverity: c.maxSeverityLabel }]));
 
-  let enrichedUsers = users.map((u) => ({
+  let enrichedUsers = rows.map(({ user: u, vendorProfile, riderProfile }) => ({
     ...stripUser(u),
     walletBalance: parseFloat(u.walletBalance ?? "0"),
     createdAt: u.createdAt.toISOString(),
@@ -164,6 +177,21 @@ router.get("/users", async (req, res) => {
     conditionCount: condMap.get(u.id)?.count || 0,
     maxConditionSeverity: condMap.get(u.id)?.maxSeverity || null,
     isMpinLocked: !!(u.walletPinLockedUntil && u.walletPinLockedUntil.getTime() > Date.now()),
+    vendorProfile: vendorProfile?.userId != null ? {
+      storeName: vendorProfile.storeName,
+      businessType: vendorProfile.businessType,
+      businessName: vendorProfile.businessName,
+      ntn: vendorProfile.ntn,
+      storeCategory: vendorProfile.storeCategory,
+      storeIsOpen: vendorProfile.storeIsOpen,
+    } : null,
+    riderProfile: riderProfile?.userId != null ? {
+      vehicleType: riderProfile.vehicleType,
+      vehiclePlate: riderProfile.vehiclePlate,
+      drivingLicense: riderProfile.drivingLicense,
+      vehicleRegNo: riderProfile.vehicleRegNo,
+      documents: riderProfile.documents,
+    } : null,
   }));
 
   if (conditionTier === "has_conditions") {

@@ -220,11 +220,12 @@ async function profileReplit() {
   const replitDomain = process.env.REPLIT_DEV_DOMAIN || "";
   const expoDomain = process.env.REPLIT_EXPO_DEV_DOMAIN || replitDomain;
 
+  const apiProxyTarget = `http://127.0.0.1:${apiPort}`;
   const services = [
     { name: "api", filter: "@workspace/api-server", script: "dev", env: { PORT: apiPort, NODE_ENV: "development" } },
-    { name: "admin", filter: "@workspace/admin", script: "dev", env: { PORT: adminPort, BASE_PATH: "/admin/" } },
-    { name: "vendor", filter: "@workspace/vendor-app", script: "dev", env: { PORT: vendorPort, BASE_PATH: "/vendor/" } },
-    { name: "rider", filter: "@workspace/rider-app", script: "dev", env: { PORT: riderPort, BASE_PATH: "/rider/" } },
+    { name: "admin", filter: "@workspace/admin", script: "dev", env: { PORT: adminPort, BASE_PATH: "/admin/", VITE_API_PROXY_TARGET: apiProxyTarget } },
+    { name: "vendor", filter: "@workspace/vendor-app", script: "dev", env: { PORT: vendorPort, BASE_PATH: "/vendor/", VITE_API_PROXY_TARGET: apiProxyTarget } },
+    { name: "rider", filter: "@workspace/rider-app", script: "dev", env: { PORT: riderPort, BASE_PATH: "/rider/", VITE_API_PROXY_TARGET: apiProxyTarget } },
     { name: "ajkmart", filter: "@workspace/ajkmart", script: "dev:web", env: { PORT: ajkPort, BASE_PATH: "/", EXPO_PUBLIC_DOMAIN: expoDomain || `localhost:${apiPort}` } },
   ];
 

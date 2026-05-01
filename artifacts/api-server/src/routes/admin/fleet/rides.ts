@@ -30,6 +30,15 @@ import { sendSuccess, sendCreated, sendError, sendNotFound, sendValidationError 
 type AdminReq = AdminRequest & Request & { adminId?: string; adminName?: string };
 
 const router = Router();
+
+function requireAdminRole(req: AdminRequest, res: Response): boolean {
+  if (req.adminRole !== "admin") {
+    res.status(403).json({ success: false, error: "Admin role required" });
+    return false;
+  }
+  return true;
+}
+
 router.get("/rides", async (_req: Request, res: Response) => {
   try {
     const rides = await FleetService.getRidesList(200);
@@ -614,7 +623,8 @@ router.patch("/riders/:id/online", async (req: Request, res: Response) => {
 });
 
 /* ── GET /admin/revenue-trend — 7-day rolling revenue + counts for dashboard sparklines ── */
-router.get("/revenue-trend", async (_req: Request, res: Response) => {
+router.get("/revenue-trend", async (req: AdminRequest, res: Response) => {
+  if (!requireAdminRole(req, res)) return;
   const now = new Date();
   const dayPromises = Array.from({ length: 7 }, (_, idx) => {
     const i = 6 - idx;
@@ -653,7 +663,8 @@ router.get("/revenue-trend", async (_req: Request, res: Response) => {
 });
 
 /* ── GET /admin/leaderboard — top-5 vendors and riders ── */
-router.get("/leaderboard", async (_req: Request, res: Response) => {
+router.get("/leaderboard", async (req: AdminRequest, res: Response) => {
+  if (!requireAdminRole(req, res)) return;
   const vendors = await db.select({
     id:     usersTable.id,
     name:   vendorProfilesTable.storeName,
@@ -665,7 +676,7 @@ router.get("/leaderboard", async (_req: Request, res: Response) => {
   .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
   .leftJoin(ordersTable, and(eq(ordersTable.vendorId, usersTable.id), eq(ordersTable.status, "delivered")))
   .where(ilike(usersTable.roles, "%vendor%"))
-  .groupBy(usersTable.id, vendorProfilesTable.storeName)
+  .groupBy(usersTable.id, usersTable.name, usersTable.phone, vendorProfilesTable.storeName)
   .orderBy(sql`coalesce(sum(${ordersTable.total}),0) desc`)
   .limit(5);
 
@@ -679,7 +690,7 @@ router.get("/leaderboard", async (_req: Request, res: Response) => {
   .from(usersTable)
   .leftJoin(ridesTable, and(eq(ridesTable.riderId, usersTable.id), eq(ridesTable.status, "completed")))
   .where(ilike(usersTable.roles, "%rider%"))
-  .groupBy(usersTable.id)
+  .groupBy(usersTable.id, usersTable.name, usersTable.phone)
   .orderBy(sql`count(${ridesTable.id}) desc`)
   .limit(5);
 
@@ -690,7 +701,8 @@ router.get("/leaderboard", async (_req: Request, res: Response) => {
 });
 
 /* ── GET /admin/dashboard-export — export dashboard stats + 7-day trend as JSON ── */
-router.get("/dashboard-export", async (_req: Request, res: Response) => {
+router.get("/dashboard-export", async (req: AdminRequest, res: Response) => {
+  if (!requireAdminRole(req, res)) return;
   const now = new Date();
   const [[userCount], [orderCount], [rideCount], [revenue], [rideRev]] = await Promise.all([
     db.select({ count: count() }).from(usersTable),

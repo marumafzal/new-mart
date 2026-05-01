@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader, StatCard } from "@/components/shared";
 import { Users, ShoppingBag, Car, Pill, Box, Package, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard } from "lucide-react";
 import { Link } from "wouter";
@@ -83,10 +83,20 @@ export default function Dashboard() {
   const { data, isLoading, dataUpdatedAt } = useStats();
   const { data: trendData } = useRevenueTrend();
   const { data: lbData }    = useLeaderboard();
+  const { data: systemStats } = useQuery({
+    queryKey: ["admin-system-stats"],
+    queryFn: async () => {
+      const result = await fetcher("/system/stats");
+      return (result && typeof result === "object" && "stats" in result) ? (result as any).stats : result;
+    },
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
 
   const handleRefresh = useCallback(async () => {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["admin-stats"] }),
+      qc.invalidateQueries({ queryKey: ["admin-system-stats"] }),
       qc.invalidateQueries({ queryKey: ["admin-revenue-trend"] }),
       qc.invalidateQueries({ queryKey: ["admin-leaderboard"] }),
     ]);
@@ -151,9 +161,20 @@ export default function Dashboard() {
   const riders  = lbData?.riders  || [];
 
   const statsData       = data as Record<string, unknown> | undefined;
+  const systemStatsData = systemStats as Record<string, unknown> | undefined;
   const activeSosCount  = typeof statsData?.activeSos    === "number" ? statsData.activeSos    : 0;
   const pendingOrders   = typeof statsData?.pendingOrders === "number" ? statsData.pendingOrders : 0;
   const activeRides     = typeof statsData?.activeRides  === "number" ? statsData.activeRides  : 0;
+  const totalRiders     = typeof systemStatsData?.totalRiders === "number"
+    ? systemStatsData.totalRiders
+    : typeof systemStatsData?.riderProfiles === "number"
+      ? systemStatsData.riderProfiles
+      : 0;
+  const totalVendors    = typeof systemStatsData?.totalVendors === "number"
+    ? systemStatsData.totalVendors
+    : typeof systemStatsData?.vendorProfiles === "number"
+      ? systemStatsData.vendorProfiles
+      : 0;
 
   const lastUpdated = dataUpdatedAt ? updatedAgo(dataUpdatedAt) : "";
 
@@ -244,6 +265,29 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Link>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="rounded-2xl border-border/50 shadow-sm bg-white">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-muted-foreground">Total Riders</div>
+              <Users className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div className="text-3xl font-bold text-foreground">{totalRiders.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-2">From rider profiles and completed ride counts</p>
+          </CardContent>
+        </Card>
+        <Card className="rounded-2xl border-border/50 shadow-sm bg-white">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-muted-foreground">Total Vendors</div>
+              <Package className="w-5 h-5 text-orange-600" />
+            </div>
+            <div className="text-3xl font-bold text-foreground">{totalVendors.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-2">From vendor profiles in the system</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Revenue Breakdown */}

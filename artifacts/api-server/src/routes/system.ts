@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -28,7 +28,7 @@ import { count, lt, eq } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { invalidateSettingsCache } from "../middleware/security.js";
 import { adminAuth } from "./admin.js";
-import { DEFAULT_PLATFORM_SETTINGS } from "./admin-shared.js";
+import { DEFAULT_PLATFORM_SETTINGS, type AdminRequest } from "./admin-shared.js";
 import { sendSuccess, sendError, sendNotFound } from "../lib/response.js";
 
 const DEMO_WALLET_BALANCE = "1000";
@@ -58,6 +58,14 @@ const TABLE_MAP: Record<string, any> = {
 };
 
 const router: IRouter = Router();
+
+function requireAdminRole(req: AdminRequest, res: Response): boolean {
+  if (req.adminRole !== "admin") {
+    res.status(403).json({ success: false, error: "Admin role required" });
+    return false;
+  }
+  return true;
+}
 
 /* ── Admin auth guard — uses the same JWT/secret middleware as the rest of admin routes ── */
 router.use(adminAuth);
@@ -297,7 +305,9 @@ async function reseedProducts(): Promise<{ mart: number; food: number }> {
 ═══════════════════════════════════════════════════════════════════════════ */
 
 /* GET /admin/system/stats */
-router.get("/stats", async (_req, res) => {
+router.get("/stats", async (req: AdminRequest, res: Response) => {
+  if (!requireAdminRole(req, res)) return;
+
   const [users]         = await db.select({ c: count() }).from(usersTable);
   const [orders]        = await db.select({ c: count() }).from(ordersTable);
   const [rides]         = await db.select({ c: count() }).from(ridesTable);
@@ -317,6 +327,9 @@ router.get("/stats", async (_req, res) => {
   const [riderProfiles] = await db.select({ c: count() }).from(riderProfilesTable);
   const [serviceZones]  = await db.select({ c: count() }).from(serviceZonesTable);
 
+  const vendorCount = Number(vendorProfiles?.c ?? 0);
+  const riderCount = Number(riderProfiles?.c ?? 0);
+
   res.json({
     stats: {
       users:          Number(users?.c  ?? 0),
@@ -331,8 +344,10 @@ router.get("/stats", async (_req, res) => {
       promos:         Number(promos?.c    ?? 0),
       flashDeals:     Number(flashDeals?.c ?? 0),
       banners:        Number(banners?.c   ?? 0),
-      vendorProfiles: Number(vendorProfiles?.c ?? 0),
-      riderProfiles:  Number(riderProfiles?.c ?? 0),
+      vendorProfiles: vendorCount,
+      totalVendors:   vendorCount,
+      riderProfiles:  riderCount,
+      totalRiders:    riderCount,
       serviceZones:   Number(serviceZones?.c ?? 0),
       adminAccounts:  Number(adminAccounts?.c ?? 0),
       settings:       Number(settings?.c  ?? 0),
@@ -640,7 +655,7 @@ router.post("/seed-demo", async (_req, res) => {
         approvalStatus: "approved",
         isActive: true,
         isOnline: u.isOnline ?? false,
-      });
+      } as any);
     }
     counts.users = DEMO_USERS.length;
 

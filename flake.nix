@@ -10,7 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        node = pkgs.nodejs-24_x;
+        node = pkgs.nodejs_22;
         pnpm = pkgs.nodePackages.pnpm;
         corepack = pkgs.nodePackages.corepack;
       in {

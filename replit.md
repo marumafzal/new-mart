@@ -2,7 +2,7 @@
 
 ## Overview
 
-AJKMart is a multi-service super-app platform serving the AJK (Azad Jammu & Kashmir) region of Pakistan. The platform provides a unified experience for multiple verticals: e-commerce (Mart), food delivery, ride-hailing (bike/car/rickshaw), pharmacy, parcel delivery, and inter-city van transport. The system consists of four user-facing applications (customer mobile/web, rider PWA, vendor portal, admin panel) backed by a single Node.js API server with PostgreSQL data storage.
+AJKMart is a multi-service super-app platform serving the AJK (Azad Jammu & Kashmir) region of Pakistan. The platform provides a unified experience for multiple verticals: e-commerce (Mart), food delivery, ride-hailing (bike/car/rickshaw), pharmacy, parcel delivery, inter-city van transport, school transport, and weather information. The system consists of four user-facing applications (customer mobile/web, rider PWA, vendor portal, admin panel) backed by a single Node.js API server with PostgreSQL data storage.
 
 The repository is organized as a pnpm workspace monorepo with shared libraries for database schema, API client, validation, and i18n. The primary goal is to ship a production-grade, low-resource-friendly experience suitable for slow networks and budget devices common in the target region.
 
@@ -16,166 +16,256 @@ Preferred communication style: Simple, everyday language.
 
 The repository uses **pnpm exclusively** (enforced via a `preinstall` hook that rejects npm/yarn). The workspace is split into:
 
-- `lib/*` — Shared libraries (`db`, `api-client-react`, `api-zod`, `auth-utils`, `i18n`) consumed via `@workspace/*` path aliases. These are built first and consumed in their `dist` form by apps.
-- `artifacts/*` — Deployable applications (`api-server`, `admin`, `rider-app`, `vendor-app`, `ajkmart`, `sandbox`).
-- `scripts/` — Development control (`dev-ctl.mjs`) and environment-specific launchers (`replit`, `codespace`, `vps`, `local`).
+- `lib/*` — Shared libraries:
+  - `db` — Drizzle ORM schema + migrations
+  - `api-client-react` — React Query API client hooks
+  - `api-zod` — Zod request/response schemas shared between server and clients
+  - `api-spec` — API specification
+  - `auth-utils` — JWT helpers, token utilities
+  - `i18n` — Trilingual translation strings (English / Urdu / Roman Urdu)
+  - `admin-timing-shared` — Admin timing utilities
+  - `phone-utils` — Phone number formatting/validation
+  - `service-constants` — Shared service-level constants
+  - `integrations/gemini_ai_integrations` — Google Gemini AI integration wrapper
+  - `integrations-gemini-ai` — Gemini AI integration package
+- `artifacts/*` — Deployable applications (`api-server`, `admin`, `rider-app`, `vendor-app`, `ajkmart`, `mockup-sandbox`).
+- `scripts/` — Development control (`dev-ctl.mjs`) and environment-specific launchers.
 
-TypeScript uses project references with a `tsconfig.base.json`, `customConditions: ["workspace"]`, and a path alias `@workspace/* -> ./lib/*/dist`. The root `typecheck` script builds library references first, then per-package typechecks.
+TypeScript uses project references with a `tsconfig.base.json`, `customConditions: ["workspace"]`, and a path alias `@workspace/* -> ./lib/*/dist`.
 
-### Applications
+### Applications & Ports
 
-1. **api-server** (Node.js/Express) — Single backend serving all clients on port 8080. Routes organized by domain (auth, orders, rides, pharmacy, vendor, rider, admin, wallet, payments, maps, platform-config, etc.). Uses Drizzle ORM, Zod for validation, Socket.IO for real-time events.
-2. **admin** (React + Vite) — Admin command-center panel with sidebar navigation, dashboard, operations/inventory/financials/safety/config modules. Designed with a "Command Center" aesthetic (Slate sidebar, Indigo accents, Lucide icons, glassmorphism header).
-3. **rider-app** (React + Vite, PWA) — Rider-facing web app with Leaflet maps, GPS tracking, order/ride acceptance, wallet, earnings, deposits.
-4. **vendor-app** (React + Vite, Wouter router) — Vendor portal for product/inventory/order management, served under `/vendor/` base path.
-5. **ajkmart** (Expo / React Native + Expo Router) — Customer mobile super-app with web build support. Uses `expo-router`, `expo-secure-store`, `expo-local-authentication` (biometrics), `expo-image`, deep linking for magic-link auth.
+| App | Port | Base Path | Description |
+|-----|------|-----------|-------------|
+| api-server | 8080 | / | Main API server (also runs on 5000 via "Start application" workflow) |
+| admin | 23744 | /admin/ | Admin command-center panel |
+| rider-app | 22969 | /rider/ | Rider PWA (React + Vite + Capacitor) |
+| vendor-app | 21463 | /vendor/ | Vendor portal (React + Vite + Wouter) |
+| ajkmart (Expo) | 20716 | / | Customer mobile/web app |
+| mockup-sandbox | 8081 | /__mockup | Component preview server for Canvas |
 
-### Backend Architecture
+### Backend Architecture — API Server
 
-- **Framework**: Express with Zod request validation, JWT-based auth (15min access + 30-day refresh tokens), CSRF, rate limiting, audit logging.
-- **Real-time**: Socket.IO for order ACKs, rider GPS broadcasts (throttled), admin notifications, ride dispatch events.
-- **Auth**: Multi-method authentication system — Phone OTP, Email OTP, Username+Password, Google/Facebook OAuth, magic links, TOTP-based 2FA with backup codes, biometric (mobile only). Method visibility is admin-toggleable via platform config.
-- **Hybrid Wallet Model**: For cash rides/orders, platform commission is deducted from rider wallet (rider keeps full cash). For wallet-paid rides, rider gets their share credited. Riders must maintain `rider_min_balance` to accept cash jobs. Manual deposit + admin-verified top-ups.
-- **Atomic Operations**: Wallet deduction + order creation wrapped in single Drizzle transactions. Two-way ACK pattern between client and server for order confirmation.
-- **Platform Config**: A central `/api/platform-config` endpoint exposes admin-controlled settings (feature toggles, pricing defaults, service colors, map center, currency, regex formats, OTP/session TTLs, rate limits, image quality, etc.). Clients fetch on startup and use config values with hardcoded fallbacks.
+Routes in `artifacts/api-server/src/routes/`:
+- `auth.ts` — Multi-method authentication (OTP, password, OAuth, magic links, TOTP)
+- `orders.ts`, `products.ts`, `categories.ts`, `variants.ts` — E-commerce
+- `rides.ts` — Ride-hailing (bike/car/rickshaw dispatch, bidding, GPS)
+- `pharmacy.ts` — Pharmacy vertical
+- `parcel.ts` — Parcel delivery
+- `van.ts` — Inter-city van service
+- `school.ts` — School transport routes
+- `vendor.ts`, `public-vendors.ts` — Vendor-facing and public vendor APIs
+- `rider.ts` — Rider-facing APIs (jobs, wallet, earnings, deposits)
+- `wallet.ts`, `payments.ts` — Wallet management, top-ups, withdrawals
+- `maps.ts`, `locations.ts` — Geocoding, routing, live location
+- `platform-config.ts` — Admin-controlled feature flags + settings
+- `notifications.ts`, `push.ts` — Push notification registration (FCM + VAPID), in-app alerts
+- `reviews.ts`, `ratings.ts` — User reviews and ride ratings
+- `recommendations.ts` — Personalized product recommendations
+- `search-analytics.ts` — Search event logging + zero-result analytics
+- `promotions.ts`, `banners.ts`, `popups.ts`, `flash-deals.ts` — Marketing tools
+- `deep-links-public.ts`, `deep-links.ts` — Deep link generation and management
+- `delivery-eligibility.ts` — Delivery zone and availability checks
+- `kyc.ts` — KYC document submission and admin review
+- `uploads.ts` — Image upload with auto-compression (Sharp)
+- `addresses.ts`, `saved-addresses.ts` — Address management
+- `wishlist.ts` — Customer wishlist
+- `communication.ts` — SMS/WhatsApp/Email sending
+- `support-chat.ts` — Customer support chat
+- `sos.ts` — SOS/emergency alerts
+- `weather-config.ts` — Weather feature (feature-flag gated server-side)
+- `stats.ts`, `system.ts` — Platform stats, system health
+- `health.ts` — Health check endpoint
+- `webhooks.ts`, `legal.ts`, `error-reports.ts` — Misc
+
+Admin sub-routes in `routes/admin/`:
+- Core admin: `admin-auth-v2.ts`, `admin.ts`, `admin-shared.ts`
+- Operations: `orders.ts`, `rides.ts` (fleet sub-route)
+- Finance: `finance/wallets.ts`, `payments.ts`
+- Fleet: `fleet/index.ts`, `fleet/rides.ts`, `fleet/zones.ts`
+- System: `system/index.ts`, `system/auth.ts`, `system/rbac.ts`, `system/conditions.ts`, `system/users.ts`
+- Content: `content.ts`, `banners.ts`, `popups.ts`, `faq.ts`, `deep-links.ts`, `qr-codes.ts`, `release-notes.ts`
+- Users: `user-addresses.ts`, `whitelist.ts`, `kyc.ts`, `conditions.ts`
+- Config: `settings.ts`, `sms-gateways.ts`, `webhook-registrations.ts`, `weather-config.ts`
+- Analytics: `search-analytics.ts`, `wishlist-analytics.ts`, `experiments.ts`
+- Safety: `chat-monitor.ts`, `otp.ts`, `delivery-access.ts`
+- Misc: `communication.ts`, `launch.ts`, `loyalty.ts`, `promotions.ts`, `support-chat.ts`
+
+Services in `artifacts/api-server/src/services/`:
+- `admin-seed.service.ts` — Super admin seeding on boot
+- `admin-auth.service.ts`, `admin-user.service.ts`, `admin-password.service.ts` — Admin auth
+- `admin-audit.service.ts`, `admin-password-watch.service.ts` — Security auditing
+- `admin-finance.service.ts`, `admin-fleet.service.ts` — Finance/fleet management
+- `admin-notification.service.ts` — Admin push/socket notifications
+- `permissions.service.ts` — RBAC permission checks
+- `email.ts`, `sms.ts`, `smsGateway.ts`, `whatsapp.ts` — Communication services
+- `firebase.ts` — Firebase Admin SDK (FCM push notifications)
+- `totp.ts` — TOTP 2FA implementation
+- `password.ts` — Password hashing/validation
+- `contentModeration.ts`, `communicationAI.ts` — AI-powered moderation (Gemini)
+- `sqlMigrationRunner.ts` — In-process SQL migration runner
+
+### Authentication & Security
+
+- **Multi-method auth**: Phone OTP, Email OTP, Username+Password, Google OAuth, Facebook OAuth, Magic Links, TOTP 2FA with backup codes, Biometric (mobile). Method visibility per-role, admin-toggleable.
+- **JWT**: 15-minute access tokens + 30-day refresh tokens. Admin uses separate JWT secret.
+- **RBAC**: Granular role/permission system with admin_role_presets.
+- **Rate limiting**, **CSRF**, **helmet** security headers.
+- **Audit logging**: auth_audit_log table tracks all auth events.
+- **Password watch**: admin-password-watch.service scans and reconciles on boot.
+- **reCAPTCHA v3** on auth submissions (client-side).
+
+### Database Schema (key tables)
+
+Schema files in `lib/db/src/schema/`:
+- Core: `users`, `vendor_profiles`, `rider_profiles`, `admin_accounts`, `admin_sessions`, `admin_role_presets`
+- Auth: `refresh_tokens`, `pending_otps`, `auth_audit_log`, `magic_link_tokens`, `user_sessions`
+- Orders: `orders`, `order_items`, `products`, `categories`, `variants`, `inventory`
+- Rides: `rides`, `ride_bids`, `ride_event_logs`, `ride_notified_riders`, `ride_ratings`, `ride_service_types`
+- Wallets: `wallet_transactions`, `rider_penalties`
+- Location: `live_locations`, `location_history`, `location_logs`, `saved_addresses`, `service_zones`
+- Content: `banners`, `popups`, `flash_deals`, `campaigns`, `promotions`
+- Analytics: `search_logs`, `user_interactions`, `ab_experiments`
+- Config: `platform_settings`, `sms_gateways`, `weather_config`, `webhook_registrations`
+- Safety: `kyc_verifications`, `sos_alerts`, `chat_reports`, `whitelist_users`
+- Misc: `faqs`, `terms_versions`, `consent_log`, `deep_links`, `school_routes`, `van_service`, `error_reports`, `system_snapshots`, `idempotency_keys`, `stock_subscriptions`, `wishlist`, `vendor_plans`, `vendor_schedules`
 
 ### Frontend Architecture
 
-- **Customer App (Expo)**: Lazy-loaded service modules gated by platform config feature flags — disabled services don't load code at all. Network-aware image loading via NetInfo + expo-image. React Query cache persisted to AsyncStorage for offline resilience. Bento-style home grid that dynamically adapts when services are toggled. Disabled services completely hidden (not greyed-out).
-- **State Management**: React Context (AuthContext, CartContext, PlatformConfigContext, RiderLocationContext) plus React Query for server state.
-- **i18n**: Trilingual (English / Urdu / Roman Urdu) via shared `lib/i18n` package.
-- **Design System**: Lucide icons across web apps; Ionicons in Expo. Slate/Indigo palette for admin; emerald for rider; brand gradient for customer. Skeleton loaders, bottom sheets on mobile, accessible labels, configurable font scaling.
+**Admin Panel** (`artifacts/admin/src/`):
+- Pages (40+): dashboard, riders, vendors, orders, rides, kyc, transactions, wallet-transfers, users, products, categories, banners, promotions, flash-deals, popups, deep-links, qr-codes, settings (10 tabs), auth-methods, launch-control, otp-control, sms-gateways, roles-permissions, chat-monitor, support-chat, error-monitor, sos-alerts, live-riders-map, search-analytics, wishlist-insights, experiments, loyalty, broadcast, communication, faq-management, webhook-manager, parcel, van, pharmacy, school, etc.
+- Shared components: `PageHeader`, `StatCard`, `FilterBar`, `ActionBar`, `CommandPalette` (⌘K), `WalletAdjustModal`, `ServiceZonesManager`, `UniversalMap`.
+- Settings has 10 top-level tabs with global live search (Cmd/Ctrl+F).
 
-### Data Layer
+**Rider App** (`artifacts/rider-app/src/`):
+- Pages: Home, Active, History, Earnings, Wallet, Chat, Notifications, Profile, SecuritySettings, VanDriver, Login, Register, ForgotPassword.
+- Push notifications: FCM (native via `@capacitor/push-notifications`) + VAPID (PWA).
+- FCM deep-linking: notification tap navigates rider to `/active` screen.
+- Auto-compression of delivery proof photos before upload (Sharp on server side).
+- Capacitor shell for native Android/iOS builds.
 
-- **ORM**: Drizzle. Schema lives in `lib/db/src/schema/` split per domain (users, orders, products, rides, wallets, refresh_tokens, pending_otps, auth_audit_log, magic_link_tokens, error_reports, platform_settings, etc.).
-- **Database**: PostgreSQL (via `pg` Pool). May be added later if not yet provisioned — Drizzle schema can exist without an active Postgres instance during development.
-- **Migrations**: Managed via Drizzle Kit (`db:push` / `db:migrate`).
+**Vendor App** (`artifacts/vendor-app/src/`):
+- Pages: Dashboard, Orders, Products, Store, Campaigns, Promos, Wallet, Analytics, Reviews, Notifications, Profile, Chat, Login.
+- Push notifications: FCM (native) + VAPID. Deep-link to /orders on order notification tap.
+- FCM token auto-refresh on rotation.
+
+**Customer App — AJKMart Expo** (`artifacts/ajkmart/`):
+- Expo Router, expo-router for file-based routing.
+- Service sections: mart, food, pharmacy, parcel, rides, categories, orders, cart, chat, help, onboarding, auth.
+- Lazy-loaded service modules gated by platform config feature flags.
+- Bento-style home with StatsBar, ServiceGrid, QuickActions, TrendingSection, BannerCarousel, FlashDeals.
+- Push notifications via Expo push tokens.
+- Network-aware image loading, React Query AsyncStorage persistence.
+- Note: Expo web in Replit requires `EXPO_PUBLIC_DOMAIN` + `--host lan` flags. CORS "Unauthorized request" errors from Replit's proxy are cosmetic (Metro still serves the bundle). App may SIGKILL under memory pressure on first load.
+
+### Push Notifications Architecture
+
+- **FCM (Native)**: `@capacitor/push-notifications` for rider-app and vendor-app native builds. `firebase-admin` on server sends FCM messages. Deep links embedded in notification data payload.
+- **VAPID (Web/PWA)**: Web Push API with service worker (`sw.js`). VAPID keys in env.
+- **Token Lifecycle**: Auto-refresh on token rotation (tokenRefresh listener). Server deletes old FCM rows before inserting new token.
+- **Cold-start handling**: Pending tap data captured at module load, consumed after auth rehydrates.
+- **Vendor notifications**: New order → push notify vendor → deep link to /orders.
+- **Rider notifications**: Ride dispatch → push notify rider → deep link to /active.
+
+### Real-time
+
+- **Socket.IO**: Order ACKs, rider GPS broadcasts (throttled), admin live alerts, ride dispatch events, support chat.
+- **GPS**: Rider location broadcasted to admin live map and to customers tracking orders/rides.
+
+### Platform Config System
+
+Central `/api/platform-config` endpoint (public, no auth) returns all admin-controlled settings:
+- Feature flags (enable/disable each service vertical)
+- Pricing defaults, commission rates, min balances
+- Auth method visibility per role
+- Map center coordinates, service zone boundaries
+- OTP/session TTLs, rate limit thresholds
+- Image quality settings
+- Currency, regex validation patterns
+- Weather feature toggle (also enforced server-side via `requireFeatureEnabled` middleware)
 
 ### Development Workflow
 
-- `dev-ctl.mjs` provides per-service start/stop/status commands (`pnpm start:api`, `start:admin`, `start:rider`, `start:vendor`, `start:ajkmart`, `start:sandbox`, `start:all`).
-- Environment-specific launchers (`replit-start`, `codespace-start`, `vps-start`, `local-start`) handle env-specific port and proxy configuration.
-- All apps support hot reload via Vite/Expo dev servers.
-- Error tracking via central `error_reports` table with severity classification, surfaced through admin panel.
+All workflows configured in `.replit`:
+- `artifacts/api-server: API Server` → port 8080
+- `Start application` → port 5000 (both run same api-server code)
+- `artifacts/admin: web` → port 23744
+- `artifacts/rider-app: web` → port 22969
+- `artifacts/vendor-app: web` → port 21463
+- `artifacts/ajkmart: expo` → port 20716
+- `artifacts/mockup-sandbox: Component Preview Server` → port 8081
 
-### Key Architectural Decisions
-
-- **Single API server vs microservices**: Chosen for simplicity, lower hosting cost, and easier transaction consistency across services. Rationale: target market is regional, scale demands moderate.
-- **pnpm workspace over Nx/Turborepo**: Lower complexity, sufficient for this project size; build references handled via TypeScript project refs.
-- **Expo for customer app**: Single codebase for iOS/Android/Web; trade-off is web bundle requires shims for native-only modules.
-- **Admin-driven configuration**: Almost everything (pricing, fees, timeouts, feature flags, auth methods, vehicle types, service zones, currency) is admin-controllable via platform settings to avoid code redeploys for business changes.
-- **Manual payment verification**: Wallet top-ups and COD remittances use bank transfer + admin verification rather than gateway integration, matching local payment habits and avoiding gateway fees during initial rollout.
-
-## External Dependencies
-
-### Core Runtime & Frameworks
-- **Node.js** (API server) with **Express**, **Socket.IO**, **Drizzle ORM**, **Zod**.
-- **PostgreSQL** via `pg` driver (provisioned separately; SSL mode configurable per environment).
-- **React 19** + **Vite** for admin/rider/vendor web apps.
-- **Wouter** router (vendor app); **React Router** / native expo-router elsewhere.
-- **Expo SDK** with **expo-router**, **expo-secure-store**, **expo-local-authentication**, **expo-image**, **expo-auth-session**, **expo-camera**, **expo-store-review**, **expo-linking**.
-- **EAS CLI** for native builds.
-- **Capacitor** (referenced for rider native shell — Android/iOS).
+Environment variables in `.replit [userenv.shared]`:
+- `DATABASE_URL` — Neon PostgreSQL connection string
+- `JWT_SECRET`, `ADMIN_JWT_SECRET`, `ADMIN_SECRET` — Auth secrets
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_CONTACT_EMAIL` — Push notification keys
+- `GEMINI_API_KEY` — Google Gemini AI key
+- `PORT` — Default 8080
 
 ### Admin Account Seeding
 
-On every API server boot, `seedDefaultSuperAdmin` runs first, followed by
-`reconcileSeededSuperAdmin`. Behaviour:
+On every API server boot, `seedDefaultSuperAdmin` runs, then `reconcileSeededSuperAdmin`:
+- No admin accounts → creates super admin with `ADMIN_SEED_PASSWORD` (default `Toqeerkhan@123.com`), sets `default_credentials = true`.
+- Existing row with `must_change_password = true` (legacy) → reconcile re-hashes password, clears flag.
+- Otherwise → no-op.
 
-- **No admin accounts in DB** → creates a single super admin using
-  `ADMIN_SEED_PASSWORD` (default `Toqeerkhan@123.com`). The row is
-  flagged `default_credentials = true` and `must_change_password = false`.
-  The SPA reads `defaultCredentials` from auth responses and surfaces an
-  OPTIONAL post-login popup (`FirstLoginCredentialsDialog`) that lets
-  the super-admin update their username and/or password. Skipping the
-  popup keeps the defaults working — no route is gated.
-- **Existing admin row with `must_change_password = true`** (legacy
-  installs from the previous forced-rotation flow) → the reconcile step
-  re-hashes the documented default password, clears the flag, and sets
-  `default_credentials = true`. Idempotent: skipped once the admin has
-  rotated their password.
-- **Otherwise** → no-op (`[admin-seed] skipped — at least one admin
-  account already exists`).
+The `FirstLoginCredentialsDialog` in the admin SPA shows an **optional** post-login popup for updating credentials. No routes are gated on it.
 
-The legacy `mpc` (must-change-password) JWT claim and
-`FORCE_PASSWORD_CHANGE` 403 gate have been removed. The
-`admin_accounts.default_credentials` boolean column (migration `0047`)
-drives the new flow and is automatically cleared whenever the admin
-self-edits their password (`/api/admin/auth/change-password`) or
-username (`PATCH /api/admin/system/admin-accounts/:id`).
+Configurable via env: `ADMIN_SEED_EMAIL` (default `admin@ajkmart.local`), `ADMIN_SEED_USERNAME` (default `admin`), `ADMIN_SEED_NAME` (default `Super Admin`).
 
-Configurable via env (`ADMIN_SEED_EMAIL` defaults to `admin@ajkmart.local`,
-`ADMIN_SEED_USERNAME` to `admin`, `ADMIN_SEED_NAME` to
-`Super Admin`). `ADMIN_SEED_PASSWORD` is **optional** — if unset, the
-documented default `Toqeerkhan@123.com` is used so the credentials shown
-on the login page always work out-of-the-box. Operators may override
-`ADMIN_SEED_PASSWORD` via Replit Secrets, or simply rotate the
-credentials through the post-login popup once signed in.
+### Key Architectural Decisions
 
-### Authentication & Security
-- **@react-oauth/google** (web Google sign-in).
-- **Facebook SDK** (JS for web, expo-auth-session provider for mobile).
-- **JWT** (access + refresh tokens), **bcrypt**-style password hashing, **TOTP** (otpauth URIs) for 2FA, hashed backup codes.
-- **reCAPTCHA v3** (invisible) on auth submissions.
+- **Single API server**: Simpler transactions, lower cost for regional scale.
+- **pnpm workspace**: Lower complexity than Nx/Turborepo; TypeScript project refs for builds.
+- **Expo for customer app**: Single codebase iOS/Android/Web.
+- **Admin-driven config**: Pricing, fees, timeouts, flags all admin-settable without redeploys.
+- **Manual payment verification**: JazzCash/EasyPaisa/Bank Transfer with admin-verified transaction IDs. No gateway API calls.
+- **Hybrid wallet**: Cash jobs deduct platform commission from rider wallet; wallet-paid jobs credit rider share.
+- **Feature-flag gating**: Disabled services completely hidden (not greyed); server enforces via `requireFeatureEnabled`.
 
-### Maps & Location
-- **Leaflet** (rider/admin web maps) with custom marker icon fix.
-- **Reverse geocoding & routing** via maps service routes (street-level precision).
-- **NetInfo** for network-quality detection.
+## External Dependencies
 
-### Real-time & State
-- **Socket.IO** server + clients for order ACKs, rider location broadcasts, admin live alerts.
-- **TanStack React Query** with AsyncStorage persistence (mobile) for offline cache.
+### Runtime & Frameworks
+- **Node.js 20** + Express 5, Socket.IO, Drizzle ORM, Zod
+- **PostgreSQL 16** via Neon (managed, SSL)
+- **React 19** + Vite 7 (admin, rider-app, vendor-app)
+- **Expo SDK 54** + expo-router 6 (ajkmart)
+- **Capacitor 7** (rider-app + vendor-app native shell)
+- **@capacitor/push-notifications 7** (FCM for native apps)
+- **firebase-admin 13** (server-side FCM sending)
 
-### Payment & Wallet
-- Manual integration with **JazzCash**, **EasyPaisa**, **Bank Transfer** — no gateway API calls; admin verifies transaction IDs.
+### Auth & Security
+- `jsonwebtoken`, `bcrypt`, `bcryptjs`, `otpauth` (TOTP)
+- `@react-oauth/google`, Facebook JS SDK
+- `helmet`, `express-rate-limit`, `cookie-parser`, `cors`
 
-### Notifications
-- **Push notifications** via Expo push tokens (mobile); WebSocket events for in-app realtime alerts.
-- **SMS / WhatsApp / Email OTP** delivery (provider abstracted in services layer).
+### AI & Communication
+- `@google/genai` (Gemini AI — content moderation, AI features)
+- `openai` (OpenAI integration — key needed via env)
+- `nodemailer` (email OTP/magic links)
+- `twilio` (SMS OTP — key needed via env)
+- `web-push` (VAPID push notifications)
+- `firebase-admin` (FCM push notifications)
+
+### Media & Maps
+- `sharp` (server-side image compression)
+- `multer` (file uploads)
+- `Leaflet` (rider/admin web maps)
+- `qrcode` (QR code generation)
 
 ### Tooling
-- **TypeScript 5.9**, **Prettier 3.8**.
-- **pnpm** (enforced via preinstall hook).
-- **Drizzle Kit** for schema migrations.
-- **Sentry** (lazy-loaded for error reporting).
+- **TypeScript 5.9**, **Prettier 3.8**, **tsx 4.21**
+- **Drizzle Kit** for schema migrations
+- **pnpm 10** (enforced)
 
-### Testing (admin app)
-- **Vitest** unit tests for shared helpers in `artifacts/admin/tests/*.test.ts`
-  (safeJson, escapeHtml, sanitizeMarkerHtml, highlightHtml).
-- **Integration tests** in `artifacts/admin/tests/integration/*.test.tsx`
-  using `@testing-library/react`, `@testing-library/user-event`, `jsdom`,
-  and `msw` for HTTP mocking. Covers admin auth (login + token refresh +
-  logout), settings persistence (`SystemSection` demo-backup save), and
-  CSV export with blob URL revocation. Run with
-  `pnpm --filter @workspace/admin test` (full suite < 15s).
-### Recent Polish (Apr 2026)
-- **Admin chrome modernization** — All 40+ admin pages now use `PageHeader`
-  from `artifacts/admin/src/components/shared/` for consistent title/icon/
-  subtitle/actions chrome. Three new shared primitives added:
-  `StatCard` (metric tiles with icon, trend, onClick filtering),
-  `FilterBar` (search + filter controls), `ActionBar` (bulk action row).
-  High-traffic pages (riders, vendors, KYC, account-conditions, FAQ) now
-  use `StatCard` grids. Duplicate settings surfaces in `/app-management`
-  replaced with `ManageInSettingsLink`. Pre-existing `methodIcon` function
-  was missing from `DepositRequests.tsx` and `Withdrawals.tsx` — added.
-  Typecheck and build both pass with zero errors.
-- **Auth Methods page** (`/admin/auth-methods`) — unified per-role login
-  toggles for Phone OTP, Email OTP, Username/Password, Magic Link, Google
-  OAuth, Facebook OAuth, 2FA (TOTP), and Biometric. 8 methods × 3 roles
-  (Customer/Rider/Vendor) matrix with bulk row toggles, OAuth credential
-  inputs, search, sticky save bar, and role usage stats. Uses existing
-  `platform_settings` JSON values (`{"customer":"on","rider":"on",
-  "vendor":"on"}`) — no backend changes required. Server-side
-  `isAuthMethodEnabled(settings, key, role)` already enforces per-role
-  access in `routes/auth.ts`.
-- **Settings global search** — cross-section live search input in the
-  Settings sidebar (desktop) and mobile drawer. Type 2+ chars to filter
-  any setting by key/label across all 10 top-level groups; clicking a
-  result switches to the right tab, smooth-scrolls to the sub-section,
-  and briefly flashes it (`ajkm-section-flash` keyframe). Cmd/Ctrl+F
-  focuses the search field while on the Settings page.
-- **Command Palette (⌘K) coverage** — added searchIndex entries for
-  `auth-methods`, `launch-control`, `otp-control`, and `sms-gateways`
-  pages with English/Urdu/Roman-Urdu keywords.
+### Testing (admin)
+- **Vitest** unit tests: `artifacts/admin/tests/*.test.ts`
+- **Integration tests**: `artifacts/admin/tests/integration/*.test.tsx` with `@testing-library/react`, `msw`
+- Run: `pnpm --filter @workspace/admin test`
+
+## Known Issues / Notes
+
+- **Expo (ajkmart) web**: In the Replit proxied environment, Expo CLI's CORS middleware rejects requests from the Replit proxy domain, logging "Unauthorized request" errors. This is cosmetic — Metro still serves the bundle and the app loads. If the workflow exits with SIGKILL, it's a memory pressure issue; restart the workflow.
+- **@capacitor/push-notifications**: Must be installed in `artifacts/rider-app` and `artifacts/vendor-app` node_modules (pnpm workspace places it there). If Vite complains about missing `@capacitor/push-notifications`, run `pnpm --filter @workspace/rider-app add @capacitor/push-notifications` and restart the workflows.
+- **Admin port conflict**: Admin dev server tries port 23744 first; if in use, falls back to 23745. The `.replit` port config maps both (3000→23744, 3001→23745).
+- **Neon DB cold start**: First request after idle may be slow while the Neon serverless DB wakes up.

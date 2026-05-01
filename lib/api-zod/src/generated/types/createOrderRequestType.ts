@@ -12,4 +12,6 @@ export type CreateOrderRequestType =
 export const CreateOrderRequestType = {
   mart: "mart",
   food: "food",
+  pharmacy: "pharmacy",
+  parcel: "parcel",
 } as const;

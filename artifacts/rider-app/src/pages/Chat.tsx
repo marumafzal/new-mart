@@ -44,7 +44,7 @@ export default function Chat() {
     if (!remoteAudioRef.current) {
       const audio = new Audio();
       audio.autoplay = true;
-      audio.playsinline = true;
+      audio.setAttribute("playsinline", "true");
       remoteAudioRef.current = audio;
     }
   }, []);

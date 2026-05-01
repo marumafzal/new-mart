@@ -38,7 +38,7 @@ export function AddressesModal({ visible, userId, token, onClose }: { visible: b
   const load = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
-    try { const r = await fetch(`${API}/addresses`, { headers: authHdrs }); const d = unwrapApiResponse(await r.json()); setList(d.addresses || []); }
+    try { const r = await fetch(`${API}/addresses`, { headers: authHdrs }); const d = unwrapApiResponse<{ addresses?: Address[] }>(await r.json()); setList(d.addresses ?? []); }
     catch (err) {
       if (__DEV__) console.warn("[Profile] Addresses load failed:", err instanceof Error ? err.message : String(err));
       showToast("Could not load addresses — tap to refresh", "error");

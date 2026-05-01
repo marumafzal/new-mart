@@ -7,7 +7,7 @@ import { db } from "@workspace/db";
 import { smsGatewaysTable } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { generateId } from "../../lib/id.js";
-import { adminAuth } from "../admin.js";
+import { adminAuth } from "../admin-shared.js";
 import { sendSuccess, sendError, sendNotFound } from "../../lib/response.js";
 
 const router = Router();

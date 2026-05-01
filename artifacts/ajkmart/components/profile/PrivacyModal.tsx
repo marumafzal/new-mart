@@ -68,8 +68,8 @@ export function PrivacyModal({ visible, userId, token, onClose }: { visible: boo
     try {
       const r = await fetch(`${API}/settings`, { headers: authHdrs });
       if (!r.ok) throw new Error("Settings load failed");
-      const d = unwrapApiResponse(await r.json());
-      const loaded = { notifOrders: d.notifOrders, notifWallet: d.notifWallet, notifDeals: d.notifDeals, notifRides: d.notifRides, locationSharing: d.locationSharing };
+      const d = unwrapApiResponse<{ notifOrders?: boolean; notifWallet?: boolean; notifDeals?: boolean; notifRides?: boolean; locationSharing?: boolean }>(await r.json());
+      const loaded: Record<string, boolean> = { notifOrders: !!d.notifOrders, notifWallet: !!d.notifWallet, notifDeals: !!d.notifDeals, notifRides: !!d.notifRides, locationSharing: !!d.locationSharing };
       cfgRef.current = loaded;
       setCfg(loaded);
     } catch {

@@ -285,7 +285,9 @@ router.patch("/orders/:id/status", async (req, res) => {
         for (const { id: riderId } of onlineRiders) {
           emitRiderNewRequest(riderId, { type: "order_ready", requestId: orderId, summary: `Order ready for pickup` });
         }
-      } catch {}
+      } catch (err) {
+        logger.warn({ orderId, err: err instanceof Error ? err.message : String(err) }, "[vendor] Failed to notify riders about ready order");
+      }
     })();
   }
 
@@ -1072,7 +1074,9 @@ router.post("/delivery-access/request", async (req, res) => {
         body: `${vendor?.storeName || vendor?.name || "Vendor"} has requested delivery access for ${serviceType || "all"} service.`,
         type: "system",
       });
-    } catch {}
+    } catch (err) {
+      logger.warn({ vendorId, serviceType, err: err instanceof Error ? err.message : String(err) }, "[vendor] Failed to create delivery access notification");
+    }
 
     sendCreated(res, { id, status: "pending" });
   } catch (e: any) {

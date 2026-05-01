@@ -383,10 +383,10 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
   useEffect(() => {
     fetch(`${API_BASE}/rides/payment-methods`)
       .then((r) => r.json())
-      .then(unwrapApiResponse)
+      .then((j) => unwrapApiResponse<{ methods?: Array<{ key?: string; id?: string; label?: string; name?: string }> }>(j))
       .then((rideData) => {
         if (rideData?.methods?.length) {
-          const mapped = rideData.methods.map((m: any) => ({ id: m.key ?? m.id, label: m.label ?? m.name }));
+          const mapped = rideData.methods.map((m) => ({ id: (m.key ?? m.id) ?? "", label: (m.label ?? m.name) ?? "" }));
           setPayMethods(mapped);
           setPayMethod(mapped[0]!.id);
         }
@@ -471,8 +471,8 @@ export function RideBookingForm({ onBooked, prefillPickup, prefillDrop, prefillT
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((r) => r.json())
-      .then(unwrapApiResponse)
-      .then((d) => { if (d?.debtBalance > 0) setDebtBalance(d.debtBalance); })
+      .then((j) => unwrapApiResponse<{ debtBalance?: number }>(j))
+      .then((d) => { if ((d?.debtBalance ?? 0) > 0) setDebtBalance(d.debtBalance ?? 0); })
       .catch(() => {});
   }, [user?.id]);
 

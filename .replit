@@ -20,157 +20,25 @@ env = { "CI" = "true" }
 runButton = "Project"
 
 [[workflows.workflow]]
-name = "artifacts/api-server: API Server"
-author = "agent"
-mode = "parallel"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "3B4_FFSkEVBkAeYMFRJ2e"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run dev"
-cwd = "./artifacts/api-server"
-waitForPort = 8080
-
-[workflows.workflow.tasks.env]
-PORT = "8080"
-
-[[workflows.workflow]]
-name = "artifacts/rider-app: web"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "artifacts/rider-app"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/rider-app run dev"
-cwd = "./artifacts/rider-app"
-waitForPort = 22969
-router = "path"
-
-[workflows.workflow.tasks.env]
-PORT = "22969"
-BASE_PATH = "/rider/"
-
-[[workflows.workflow]]
-name = "artifacts/mockup-sandbox: Component Preview Server"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "XegfDyZt7HqfW2Bb8Ghoy"
-isCanvasWorkflow = true
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/mockup-sandbox run dev"
-cwd = "./artifacts/mockup-sandbox"
-waitForPort = 8081
-
-[workflows.workflow.tasks.env]
-PORT = "8081"
-BASE_PATH = "/__mockup"
-
-[[workflows.workflow]]
-name = "artifacts/vendor-app: web"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "artifacts/vendor-app"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/vendor-app run dev"
-cwd = "./artifacts/vendor-app"
-waitForPort = 21463
-router = "path"
-
-[workflows.workflow.tasks.env]
-PORT = "21463"
-BASE_PATH = "/vendor/"
-
-[[workflows.workflow]]
-name = "artifacts/ajkmart: expo"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "artifacts/ajkmart"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/ajkmart run dev:web"
-cwd = "./artifacts/ajkmart"
-waitForPort = 20716
-router = "expo-domain"
-
-[workflows.workflow.tasks.env]
-PORT = "20716"
-BASE_PATH = "/"
-
-[[workflows.workflow]]
-name = "artifacts/admin: web"
-author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "console"
-artifactId = "artifacts/admin"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "PORT=23744 BASE_PATH=/admin/ pnpm --filter @workspace/admin run dev"
-waitForPort = 23744
-
-[[workflows.workflow]]
 name = "Project"
 mode = "parallel"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "artifacts/admin: web"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "API Server"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Start application"
-
-[[workflows.workflow]]
-name = "API Server"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd artifacts/api-server && pnpm run dev"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=5000 NODE_ENV=development pnpm --filter @workspace/api-server run dev"
-waitForPort = 5000
+args = "pnpm run replit-start"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -212,14 +80,6 @@ id = "module:nodejs-24/languageServer:typescript-language-server"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 8081
-externalPort = 8081
 
 [[ports]]
 localPort = 20716

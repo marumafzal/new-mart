@@ -1,8 +1,9 @@
+import type { TranslationKey } from "@workspace/i18n";
 import { Zap, Radio } from "lucide-react";
 
 interface RequestListHeaderProps {
   totalRequests: number;
-  T: (key: string) => string;
+  T: (key: TranslationKey) => string;
 }
 
 export function RequestListHeader({ totalRequests, T }: RequestListHeaderProps) {

@@ -44,6 +44,8 @@ export default function Chat() {
   const [callTimer, setCallTimer] = useState(0);
   const [muted, setMuted] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const showError = (msg: string) => { setErrorToast(msg); setTimeout(() => setErrorToast(null), 4000); };
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -119,7 +121,9 @@ export default function Chat() {
       setInput("");
       loadConversations();
       setTimeout(() => scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight), 100);
-    } catch {}
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Failed to send message. Please try again.");
+    }
     setSending(false);
   };
 
@@ -182,7 +186,11 @@ export default function Chat() {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socketRef.current?.emit("comm:call:offer", { callId: data.callId, targetUserId: calleeId, sdp: offer });
-    } catch {}
+    } catch (err) {
+      endCall();
+      const isPermission = err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError");
+      showError(isPermission ? "Microphone access denied. Please allow microphone access to make calls." : "Could not start call. Please try again.");
+    }
   };
 
   const answerCall = async () => {
@@ -241,6 +249,13 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-full bg-white">
+      {/* Error Toast */}
+      {errorToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-semibold max-w-xs text-center">
+          {errorToast}
+        </div>
+      )}
+
       {/* Incoming Call Overlay */}
       {incomingCall && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">

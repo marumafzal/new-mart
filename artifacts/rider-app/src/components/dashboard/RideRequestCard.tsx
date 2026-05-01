@@ -1,3 +1,4 @@
+import type { TranslationKey } from "@workspace/i18n";
 import { useState } from "react";
 import {
   CheckCircle,
@@ -40,7 +41,7 @@ interface RideRequestCardProps {
   anyAcceptPending: boolean;
   /** ISO timestamp from server response envelope for clock-offset correction */
   serverTime?: string | null;
-  T: (key: string) => string;
+  T: (key: TranslationKey) => string;
 }
 
 export function RideRequestCard({

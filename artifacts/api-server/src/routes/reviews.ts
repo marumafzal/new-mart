@@ -25,7 +25,8 @@ async function vendorAuth(req: Request, res: Response, next: NextFunction) {
     sendUnauthorized(res, "Invalid or expired session", "غلط یا ختم شدہ سیشن۔"); return;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
-  if (!user || !user.isActive || user.isBanned) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
+  if (!user || user.isDeleted) { sendUnauthorized(res, "Account not found", "اکاؤنٹ نہیں ملا۔"); return; }
+  if (!user.isActive || user.isBanned) { sendForbidden(res, "Access denied", "رسائی سے انکار۔"); return; }
   const dbRoles = (user.roles || user.roles || "").split(",").map((r: string) => r.trim());
   if (!dbRoles.includes("vendor")) { sendForbidden(res, "Vendor role required", "وینڈر کا کردار ضروری ہے۔"); return; }
   req.vendorId = user.id;

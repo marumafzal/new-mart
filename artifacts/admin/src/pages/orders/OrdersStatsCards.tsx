@@ -1,6 +1,7 @@
 import { TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/format";
+import type { TranslationKey } from "@workspace/i18n";
 
 interface OrdersStatsCardsProps {
   totalCount: number;
@@ -8,7 +9,7 @@ interface OrdersStatsCardsProps {
   activeCount: number;
   deliveredCount: number;
   totalRevenue: number;
-  T: (key: string) => string;
+  T: (key: TranslationKey) => string;
 }
 
 export function OrdersStatsCards({ totalCount, pendingCount, activeCount, deliveredCount, totalRevenue, T }: OrdersStatsCardsProps) {

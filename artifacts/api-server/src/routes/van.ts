@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { and, asc, desc, eq, sql, inArray, count } from "drizzle-orm";
+import { and, asc, desc, eq, gte, sql, inArray, count } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   vanRoutesTable, vanVehiclesTable, vanSchedulesTable, vanBookingsTable,

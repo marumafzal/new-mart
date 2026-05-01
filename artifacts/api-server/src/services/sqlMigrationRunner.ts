@@ -39,13 +39,16 @@ export async function runSqlMigrations() {
         const { rows } = await pool.query("SELECT 1 FROM _schema_migrations WHERE filename = $1", [file]);
         if (rows.length) continue;
         const sql = fs.readFileSync(path.join(migrationsDir, file), "utf8");
-        await pool.query(sql);
+        try {
+          await pool.query(sql);
+        } catch (err) {
+          console.error(`[migrations] FAILED applying ${file}`, err);
+          throw err;
+        }
         await pool.query("INSERT INTO _schema_migrations (filename) VALUES ($1)", [file]);
         console.log(`[migrations] Applied ${file}`);
       }
     }
-  } catch (err) {
-    console.error("[migrations] Failed", err);
   } finally {
     await pool.end();
   }

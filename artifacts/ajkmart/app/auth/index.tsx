@@ -23,6 +23,7 @@ import { useToast } from "@/context/ToastContext";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { normalizePhone, isValidPakistaniPhone, buildPhoneValidator } from "@/utils/phone";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useOTPBypass } from "@/hooks/useOTPBypass";
 
 import {
   OtpDigitInput,
@@ -65,6 +66,13 @@ export default function AuthScreen() {
   const { config: platformCfg } = usePlatformConfig();
   const { showToast } = useToast();
   const authCfg = platformCfg.auth;
+
+  /* Reads the global "OTPs are suspended" flag the admin can flip from the
+     OTP Control panel. When `bypassActive` is true, any 6-digit code is
+     accepted server-side, so we render a banner telling the user that —
+     otherwise they'd be staring at the input wondering why nothing was
+     SMS'd to them. */
+  const { bypassActive: otpBypassActive, bypassMessage: otpBypassMessage } = useOTPBypass();
   const appName = platformCfg.platform.appName;
   const appTagline = platformCfg.platform.appTagline;
   const phoneHint = platformCfg.regional?.phoneHint ?? "03XXXXXXXXX";
@@ -1094,6 +1102,15 @@ export default function AuthScreen() {
                 <Text style={styles.sectionTitle}>{T("enterOtp")}</Text>
                 <Text style={styles.sectionSubtitle}>{T("otpSentToPhone")} +92 {phone}</Text>
 
+                {otpBypassActive && (
+                  <View style={styles.bypassBanner}>
+                    <Ionicons name="information-circle" size={16} color={C.primary} />
+                    <Text style={styles.bypassBannerText}>
+                      {otpBypassMessage || "No OTP required right now — enter any 6 digits to continue."}
+                    </Text>
+                  </View>
+                )}
+
                 {otpChannel ? <ChannelBadge channel={otpChannel} /> : null}
                 <FallbackChannelButtons
                   channels={fallbackChannels}
@@ -1151,6 +1168,15 @@ export default function AuthScreen() {
                 </TouchableOpacity>
                 <Text style={styles.sectionTitle}>{T("enterEmailOtp")}</Text>
                 <Text style={styles.sectionSubtitle}>{T("otpSentToEmail")} {email}</Text>
+
+                {otpBypassActive && (
+                  <View style={styles.bypassBanner}>
+                    <Ionicons name="information-circle" size={16} color={C.primary} />
+                    <Text style={styles.bypassBannerText}>
+                      {otpBypassMessage || "No OTP required right now — enter any 6 digits to continue."}
+                    </Text>
+                  </View>
+                )}
 
                 {otpChannel === "email" ? <ChannelBadge channel="email" /> : null}
 
@@ -1455,6 +1481,19 @@ const styles = StyleSheet.create({
   },
   backToHomeTxt: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: "rgba(255,255,255,0.9)" },
   backRowText: { ...typography.bodyMedium, color: C.primary },
+  bypassBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: C.primary + "15",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: C.primary + "33",
+  },
+  bypassBannerText: { ...typography.caption, color: C.primary, flex: 1, lineHeight: 18 },
 
   footer: { backgroundColor: C.surface, paddingHorizontal: spacing.xxl, paddingTop: 10, alignItems: "center" },
   footerText: { ...typography.caption, color: C.textMuted, textAlign: "center" },

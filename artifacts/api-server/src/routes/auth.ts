@@ -237,10 +237,32 @@ const router: IRouter = Router();
    GET /auth/config
    Public endpoint — returns auth mode + enabled method flags so
    frontend apps can show/hide login UI panels without hardcoding.
+   Also returns OTP bypass status for frontend UI notifications.
 ══════════════════════════════════════════════════════════════ */
 router.get("/config", async (_req, res) => {
   try {
     const settings = await getCachedSettings();
+    
+    /* ── Check if OTP bypass is currently active (global) ── */
+    const otpGlobalDisabledUntilStr = settings["otp_global_disabled_until"];
+    const now = new Date();
+    let otpBypassActive = false;
+    let otpBypassExpiresAt: string | null = null;
+    
+    if (otpGlobalDisabledUntilStr) {
+      try {
+        const disabledUntil = new Date(otpGlobalDisabledUntilStr);
+        if (disabledUntil > now) {
+          otpBypassActive = true;
+          otpBypassExpiresAt = disabledUntil.toISOString();
+        }
+      } catch (e) {
+        logger.error({ error: e }, "[/auth/config] Failed to parse OTP bypass timestamp");
+      }
+    }
+    
+    const bypassMessage = settings["otp_bypass_message"] ?? null;
+    
     res.json({
       auth_mode:             settings["auth_mode"]             ?? "OTP",
       firebase_enabled:      settings["firebase_enabled"]      ?? "off",
@@ -248,9 +270,94 @@ router.get("/config", async (_req, res) => {
       auth_email_enabled:    settings["auth_email_enabled"]    ?? "on",
       auth_google_enabled:   settings["auth_google_enabled"]   ?? "on",
       auth_facebook_enabled: settings["auth_facebook_enabled"] ?? "off",
+      otpBypassActive,
+      otpBypassExpiresAt,
+      bypassMessage,
     });
-  } catch {
-    res.json({ auth_mode: "OTP", firebase_enabled: "off", auth_otp_enabled: "on", auth_email_enabled: "on", auth_google_enabled: "on", auth_facebook_enabled: "off" });
+  } catch (e) {
+    logger.error({ error: e }, "[/auth/config] Failed to get config");
+    res.json({ 
+      auth_mode: "OTP", 
+      firebase_enabled: "off", 
+      auth_otp_enabled: "on", 
+      auth_email_enabled: "on", 
+      auth_google_enabled: "on", 
+      auth_facebook_enabled: "off",
+      otpBypassActive: false,
+      otpBypassExpiresAt: null,
+      bypassMessage: null,
+    });
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   GET /auth/otp-status?phone=...
+   Lightweight phone-specific bypass query for frontend apps.
+   Runs the same bypass checks as send-otp (global setting,
+   per-user otp_bypass_until, whitelist) without generating or
+   sending an OTP.
+   Returns { bypassActive, bypassExpiresAt, message }
+══════════════════════════════════════════════════════════════ */
+router.get("/otp-status", async (req, res) => {
+  try {
+    const rawPhone = (req.query.phone as string | undefined) ?? "";
+    if (!rawPhone || rawPhone.length < 7) {
+      res.status(400).json({ error: "phone query parameter is required" });
+      return;
+    }
+
+    const phone = canonicalizePhone(rawPhone);
+    const settings = await getCachedSettings();
+    const now = new Date();
+
+    let bypassActive = false;
+    let bypassExpiresAt: string | null = null;
+    let message: string | null = (settings["otp_bypass_message"] as string | undefined) ?? null;
+
+    /* Priority 1: per-user bypass */
+    const [userRow] = await db
+      .select({ otpBypassUntil: usersTable.otpBypassUntil })
+      .from(usersTable)
+      .where(eq(usersTable.phone, phone))
+      .limit(1);
+
+    if (userRow?.otpBypassUntil && userRow.otpBypassUntil > now) {
+      bypassActive = true;
+      bypassExpiresAt = userRow.otpBypassUntil.toISOString();
+    }
+
+    /* Priority 2: global OTP bypass flag */
+    if (!bypassActive && settings["security_otp_bypass"] === "on") {
+      bypassActive = true;
+      bypassExpiresAt = null;
+    }
+
+    /* Priority 3: timed global disable */
+    if (!bypassActive) {
+      const disabledUntilStr = settings["otp_global_disabled_until"];
+      if (disabledUntilStr) {
+        const disabledUntil = new Date(disabledUntilStr);
+        if (disabledUntil > now) {
+          bypassActive = true;
+          bypassExpiresAt = disabledUntil.toISOString();
+        }
+      }
+    }
+
+    /* Priority 4: whitelist bypass */
+    if (!bypassActive) {
+      const whitelistCode = await getWhitelistBypass(phone);
+      if (whitelistCode !== null) {
+        bypassActive = true;
+        bypassExpiresAt = null;
+        message = null;
+      }
+    }
+
+    res.json({ bypassActive, bypassExpiresAt, message });
+  } catch (e) {
+    logger.error({ error: e }, "[/auth/otp-status] Failed");
+    res.json({ bypassActive: false, bypassExpiresAt: null, message: null });
   }
 });
 
@@ -665,14 +772,29 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
   if (existingBypass) {
     // no user notification — bypass is silent by admin design
     writeAuthAuditLog("otp_send_bypassed", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
-    res.json({ otpRequired: false, message: "OTP sent successfully", channel: "sms", fallbackChannels: [] });
+    const bypassUntil = existingUser[0]!.otpBypassUntil!;
+    res.json({
+      otpRequired: false,
+      bypass: true,
+      expiresAt: bypassUntil.toISOString(),
+      message: (settings["otp_bypass_message"] as string | undefined) ?? null,
+      channel: "sms",
+      fallbackChannels: [],
+    });
     return;
   }
 
   /* ── Global OTP bypass: when enabled in Danger Zone, skip OTP for all users ── */
   if (settings["security_otp_bypass"] === "on") {
     writeAuthAuditLog("otp_send_global_bypassed", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
-    res.json({ otpRequired: false, message: "OTP sent successfully", channel: "sms", fallbackChannels: [] });
+    res.json({
+      otpRequired: false,
+      bypass: true,
+      expiresAt: null,
+      message: (settings["otp_bypass_message"] as string | undefined) ?? null,
+      channel: "sms",
+      fallbackChannels: [],
+    });
     return;
   }
 
@@ -682,7 +804,14 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
     const otpGlobalDisabledUntilSend = new Date(otpGlobalDisabledUntilStrSend);
     if (otpGlobalDisabledUntilSend > new Date()) {
       writeAuthAuditLog("otp_send_global_bypassed", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone, reason: "timed_disable" } });
-      res.json({ otpRequired: false, message: "OTP sent successfully", channel: "sms", fallbackChannels: [] });
+      res.json({
+        otpRequired: false,
+        bypass: true,
+        expiresAt: otpGlobalDisabledUntilSend.toISOString(),
+        message: (settings["otp_bypass_message"] as string | undefined) ?? null,
+        channel: "sms",
+        fallbackChannels: [],
+      });
       return;
     }
   }
@@ -710,10 +839,15 @@ router.post("/send-otp", verifyCaptcha, sharedValidateBody(sendOtpSchema), async
       .where(eq(usersTable.phone, phone));
   }
 
-  /* If whitelisted, skip SMS entirely and return early */
+  /* If whitelisted, skip SMS entirely and return bypass shape */
   if (whitelistBypass) {
     writeAuthAuditLog("otp_send_whitelist_bypass", { ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
-    res.json({ otpRequired: true, message: "OTP sent successfully", channel: "whitelist", fallbackChannels: [] });
+    res.json({
+      otpRequired: false,
+      bypass: true,
+      expiresAt: null,
+      message: (settings["otp_bypass_message"] as string | undefined) ?? "OTP verification is temporarily bypassed for your number.",
+    });
     return;
   }
 
@@ -927,15 +1061,16 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
       .where(eq(pendingOtpsTable.phone, phone))
       .limit(1);
 
-    /* During global disable, allow new-user registration even with no pending OTP row
-       (send-otp short-circuited and never created a pending entry). */
-    const globalBypassForNew = settings["security_otp_bypass"] === "on" || isTimedGlobalDisableActive;
+    /* During global disable or whitelist bypass, allow new-user registration even
+       with no pending OTP row (send-otp short-circuited and never created a pending entry). */
+    const whitelistBypassNew = await getWhitelistBypass(phone);
+    const globalBypassForNew = settings["security_otp_bypass"] === "on" || isTimedGlobalDisableActive || whitelistBypassNew !== null;
     if (!pending && !globalBypassForNew) {
       res.status(404).json({ error: "User not found. Please request a new OTP." });
       return;
     }
 
-    /* Verify OTP from pending_otps — skip validation if global bypass is enabled */
+    /* Verify OTP from pending_otps — skip validation if global or whitelist bypass is enabled */
     const otpValid = globalBypassForNew || !!(pending && pending.otpHash === hashOtp(otp) && new Date() < pending.otpExpiry);
     if (!otpValid) {
       /* Increment failed attempts */
@@ -1107,6 +1242,17 @@ router.post("/verify-otp", verifyCaptcha, sharedValidateBody(verifyOtpSchema), a
         if (!isTimedGlobalDisableActive) {
           writeAuthAuditLog("login_global_otp_bypass", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
         }
+        return { id: user.id, lastLoginAt: now };
+      }
+
+      /* ── Whitelist bypass path: accept any OTP code for whitelisted phones ── */
+      const whitelistCode = await getWhitelistBypass(phone);
+      if (whitelistCode !== null) {
+        await tx.update(usersTable)
+          .set({ phoneVerified: true, lastLoginAt: now, updatedAt: now })
+          .where(eq(usersTable.phone, phone));
+        addAuditEntry({ action: "user_login_whitelist_bypass", ip, details: `Whitelist bypass login for ${phone}`, result: "success" });
+        writeAuthAuditLog("login_whitelist_bypass", { userId: user.id, ip, userAgent: req.headers["user-agent"] ?? undefined, metadata: { phone } });
         return { id: user.id, lastLoginAt: now };
       }
 

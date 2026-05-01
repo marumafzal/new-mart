@@ -161,7 +161,9 @@ export async function unblockIP(ip: string) {
   blockedIPsCache.delete(ip);
   try {
     await db.delete(rateLimitsTable).where(eq(rateLimitsTable.key, `blocked_ip:${ip}`));
-  } catch {}
+  } catch (err) {
+    logger.warn({ ip, err: err instanceof Error ? err.message : String(err) }, "[security] unblockIP DB delete failed");
+  }
 }
 
 export async function isIPBlocked(ip: string): Promise<boolean> {
@@ -173,7 +175,9 @@ export async function isIPBlocked(ip: string): Promise<boolean> {
       blockedIPsCache.add(ip);
       return true;
     }
-  } catch {}
+  } catch (err) {
+    logger.warn({ ip, err: err instanceof Error ? err.message : String(err) }, "[security] isIPBlocked DB query failed");
+  }
   return false;
 }
 
@@ -185,7 +189,8 @@ export async function getBlockedIPList(): Promise<string[]> {
     const ips = rows.map(r => r.key.replace("blocked_ip:", ""));
     for (const ip of ips) blockedIPsCache.add(ip);
     return ips;
-  } catch {
+  } catch (err) {
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, "[security] getBlockedIPList DB query failed, returning cache");
     return Array.from(blockedIPsCache);
   }
 }
@@ -535,7 +540,9 @@ export async function recordFailedAttempt(key: string, maxAttempts: number, lock
 export async function resetAttempts(key: string) {
   try {
     await db.delete(rateLimitsTable).where(eq(rateLimitsTable.key, key));
-  } catch {}
+  } catch (err) {
+    logger.warn({ key, err: err instanceof Error ? err.message : String(err) }, "[security] resetAttempts DB delete failed");
+  }
 }
 
 export async function unlockPhone(phone: string) {
@@ -823,9 +830,14 @@ export async function customerAuth(req: Request, res: Response, next: NextFuncti
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
+  if (user.isDeleted) {
+    writeAuthAuditLog("auth_denied_deleted", { userId: user.id, ip });
+    res.status(401).json({ success: false, code: "ACCOUNT_DELETED", error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" });
+    return;
+  }
   if (user.isBanned) {
     writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip });
-    res.status(403).json({ success: false, error: "Your account has been suspended. Contact support.", message: "آپ کا اکاؤنٹ معطل کر دیا گیا ہے۔ سپورٹ سے رابطہ کریں۔" });
+    res.status(403).json({ success: false, code: "ACCOUNT_BANNED", error: "Your account has been suspended. Contact support.", message: "آپ کا اکاؤنٹ معطل کر دیا گیا ہے۔ سپورٹ سے رابطہ کریں۔" });
     return;
   }
   if (!user.isActive) {
@@ -876,9 +888,13 @@ export async function riderAuth(req: Request, res: Response, next: NextFunction)
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
+  if (user.isDeleted) {
+    writeAuthAuditLog("auth_denied_deleted", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
+    res.status(401).json({ success: false, code: "ACCOUNT_DELETED", error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return;
+  }
   if (user.isBanned) {
     writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
-    res.status(403).json({ success: false, code: "AUTH_REQUIRED", error: "Account is banned.", message: "اکاؤنٹ پابندی شدہ ہے۔" }); return;
+    res.status(403).json({ success: false, code: "ACCOUNT_BANNED", error: "Account is banned.", message: "اکاؤنٹ پابندی شدہ ہے۔" }); return;
   }
   if (!user.isActive) {
     writeAuthAuditLog("auth_denied_inactive", { userId: user.id, ip, metadata: { url: req.url, role: "rider" } });
@@ -934,9 +950,14 @@ export async function anyUserAuth(req: Request, res: Response, next: NextFunctio
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
   if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
+  if (user.isDeleted) {
+    writeAuthAuditLog("auth_denied_deleted", { userId: user.id, ip });
+    res.status(401).json({ success: false, code: "ACCOUNT_DELETED", error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" });
+    return;
+  }
   if (user.isBanned) {
     writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip });
-    res.status(403).json({ success: false, error: "Your account has been suspended. Contact support.", message: "آپ کا اکاؤنٹ معطل کر دیا گیا ہے۔ سپورٹ سے رابطہ کریں۔" });
+    res.status(403).json({ success: false, code: "ACCOUNT_BANNED", error: "Your account has been suspended. Contact support.", message: "آپ کا اکاؤنٹ معطل کر دیا گیا ہے۔ سپورٹ سے رابطہ کریں۔" });
     return;
   }
   if (!user.isActive) {
@@ -997,10 +1018,15 @@ export function requireRole(
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
     if (!user) { res.status(401).json({ success: false, error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" }); return; }
+    if (user.isDeleted) {
+      writeAuthAuditLog("auth_denied_deleted", { userId: user.id, ip, metadata: { url: req.url } });
+      res.status(401).json({ success: false, code: "ACCOUNT_DELETED", error: "Account not found.", message: "اکاؤنٹ نہیں ملا۔" });
+      return;
+    }
 
     if (user.isBanned) {
       writeAuthAuditLog("auth_denied_banned", { userId: user.id, ip, metadata: { url: req.url } });
-      res.status(403).json({ success: false, error: "Account is banned. Please contact support.", message: "اکاؤنٹ پابندی شدہ ہے۔ براہ کرم سپورٹ سے رابطہ کریں۔" });
+      res.status(403).json({ success: false, code: "ACCOUNT_BANNED", error: "Account is banned. Please contact support.", message: "اکاؤنٹ پابندی شدہ ہے۔ براہ کرم سپورٹ سے رابطہ کریں۔" });
       return;
     }
 

@@ -1600,14 +1600,57 @@ export const useToggleSmsGateway = () => {
 // OTP WHITELIST (Per-identity bypass for testers)
 // ══════════════════════════════════════════════════════
 
+/* Mirrors the row shape returned from `GET /admin/whitelist`. Keeping it
+   here means consumers (the OTP Control page, future hooks, tests) all
+   share one definition instead of redeclaring `any` shapes. */
+export interface OtpWhitelistEntry {
+  id: string;
+  identifier: string;
+  label?: string;
+  bypassCode: string;
+  isActive: boolean;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OtpWhitelistResponse {
+  entries: OtpWhitelistEntry[];
+  total?: number;
+}
+
+export interface AddOtpWhitelistInput {
+  identifier: string;
+  label?: string;
+  bypassCode?: string;
+  expiresAt?: string;
+}
+
+export interface UpdateOtpWhitelistInput {
+  id: string;
+  label?: string;
+  bypassCode?: string;
+  isActive?: boolean;
+  expiresAt?: string | null;
+}
+
 export const useOtpWhitelist = () =>
-  useQuery({ queryKey: ["admin-otp-whitelist"], queryFn: () => fetcher("/whitelist"), refetchInterval: 30_000 });
+  /* The generic on `useQuery` removes the `any` that previously leaked
+     into every consumer of `entries`. */
+  useQuery<OtpWhitelistResponse>({
+    queryKey: ["admin-otp-whitelist"],
+    queryFn: () => fetcher("/admin/whitelist"),
+    refetchInterval: 30_000,
+  });
 
 export const useAddOtpWhitelist = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { identifier: string; label?: string; bypassCode?: string; expiresAt?: string }) =>
-      fetcher("/whitelist", { method: "POST", body: JSON.stringify(data) }),
+    /* Was POSTing to `/whitelist`, which doesn't exist on the admin
+       router — every "Add" call would 404. Aligned with the route in
+       `artifacts/api-server/src/routes/admin/otp.ts`. */
+    mutationFn: (data: AddOtpWhitelistInput) =>
+      fetcher("/admin/whitelist", { method: "POST", body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-otp-whitelist"] }),
   });
 };
@@ -1615,7 +1658,8 @@ export const useAddOtpWhitelist = () => {
 export const useUpdateOtpWhitelist = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: any) => fetcher(`/whitelist/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    mutationFn: ({ id, ...data }: UpdateOtpWhitelistInput) =>
+      fetcher(`/admin/whitelist/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-otp-whitelist"] }),
   });
 };
@@ -1623,7 +1667,7 @@ export const useUpdateOtpWhitelist = () => {
 export const useDeleteOtpWhitelist = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => fetcher(`/whitelist/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => fetcher(`/admin/whitelist/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-otp-whitelist"] }),
   });
 };

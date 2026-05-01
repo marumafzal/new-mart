@@ -1,3 +1,4 @@
+import type { TranslationKey } from "@workspace/i18n";
 import { CheckCircle, MapPin, Navigation, X, XCircle } from "lucide-react";
 import { AcceptCountdown } from "./AcceptCountdown";
 import { RequestAge } from "./RequestAge";
@@ -19,7 +20,7 @@ interface OrderRequestCardProps {
   anyAcceptPending: boolean;
   /** ISO timestamp from the server response envelope for clock-offset correction */
   serverTime?: string | null;
-  T: (key: string) => string;
+  T: (key: TranslationKey) => string;
 }
 
 export function OrderRequestCard({

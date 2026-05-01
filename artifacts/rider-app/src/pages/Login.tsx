@@ -9,8 +9,9 @@ import { tDual, type TranslationKey } from "@workspace/i18n";
 import { TwoFactorVerify, MagicLinkSender, executeCaptcha, loadGoogleGSIToken, loadFacebookAccessToken, formatPhoneForApi, canonicalizePhone, useAuthConfig } from "@workspace/auth-utils";
 import {
   Phone, Mail, User, Bike, Clock, Lightbulb, Eye, EyeOff,
-  ArrowLeft, Loader2, Shield, Wrench, AlertCircle,
+  ArrowLeft, Loader2, Shield, Wrench, AlertCircle, X,
 } from "lucide-react";
+import { useOTPBypass } from "../hooks/useOTPBypass";
 
 type LoginMethod = "phone" | "email" | "username" | "google" | "facebook" | "magicLink";
 type Step = "continue" | "input" | "otp" | "pending" | "rejected" | "2fa";
@@ -90,6 +91,9 @@ export default function Login() {
   const checkIdentifierAbort = useRef<AbortController | null>(null);
 
   const [phone, setPhone] = useState("");
+  const { bypassActive: otpBypassActive, bypassMessage: otpBypassMessage, remainingSeconds: bypassRemainingSeconds } = useOTPBypass(
+    method === "phone" && phone.length >= 10 ? formatPhoneForApi(phone) : undefined
+  );
   const [otp, setOtp] = useState("");
   const [devOtp, setDevOtp] = useState("");
 
@@ -123,6 +127,7 @@ export default function Login() {
 
   const [otpCooldown, setOtpCooldown] = useState(0);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [bypassBannerDismissed, setBypassBannerDismissed] = useState(false);
 
   const startCooldown = (sec = 60) => {
     setOtpCooldown(sec);
@@ -218,6 +223,8 @@ export default function Login() {
           const r = await api.sendOtp(formatPhoneForApi(normalized), captchaToken);
           if (r.otpRequired === false) {
             if (r.token) { await doLogin(r as AuthResponse); setLoading(false); return; }
+            setStep("otp");
+            setBypassBannerDismissed(false);
             const bypass = await api.verifyOtp(formatPhoneForApi(normalized), "000000", getDeviceFingerprint());
             await doLogin(bypass);
             setLoading(false); return;
@@ -410,6 +417,8 @@ export default function Login() {
       const res = await api.sendOtp(formatPhoneForApi(phone), captchaToken, channel);
       if (res.otpRequired === false) {
         if (res.token) { await doLogin(res as AuthResponse); setLoading(false); return; }
+        setStep("otp");
+        setBypassBannerDismissed(false);
         const bypass = await api.verifyOtp(formatPhoneForApi(phone), "000000", getDeviceFingerprint());
         await doLogin(bypass);
         setLoading(false); return;
@@ -613,9 +622,9 @@ export default function Login() {
 
   if (config.platform.appStatus === "maintenance") {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute top-[-20%] right-[-10%] w-72 h-72 rounded-full bg-white/[0.02]" />
-        <div className="absolute bottom-[-15%] left-[-10%] w-64 h-64 rounded-full bg-amber-500/[0.04]" />
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute -top-24 -left-24 w-80 h-80 bg-white/5 rounded-full pointer-events-none" />
+        <div className="absolute -bottom-16 -right-16 w-64 h-64 bg-orange-400/10 rounded-full pointer-events-none" />
         <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative z-10">
           <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5">
             <Wrench size={36} className="text-amber-500" />
@@ -640,14 +649,16 @@ export default function Login() {
 
   if (step === "2fa") {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute top-[-20%] right-[-10%] w-72 h-72 rounded-full bg-white/[0.02]" />
-        <div className="absolute bottom-[-15%] left-[-10%] w-64 h-64 rounded-full bg-green-500/[0.04]" />
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute -top-24 -left-24 w-80 h-80 bg-white/5 rounded-full pointer-events-none" />
         <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl relative z-10">
           <button onClick={() => { setStep("input"); setTwoFaPending(null); setGlobalTwoFaPending(false); }}
-            className="text-gray-900 text-sm font-semibold mb-4 flex items-center gap-1">
-            <ArrowLeft size={14} /> {T("back")}
+            className="text-gray-700 text-sm font-semibold mb-5 flex items-center gap-1.5 hover:text-black">
+            <ArrowLeft size={15} /> {T("back")}
           </button>
+          <div className="w-16 h-16 bg-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Shield size={30} className="text-gray-800" />
+          </div>
           <TwoFactorVerify
             onVerify={handle2faVerify}
             onBackupCode={handle2faBackup}
@@ -662,9 +673,8 @@ export default function Login() {
 
   if (step === "pending") {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute top-[-20%] right-[-10%] w-72 h-72 rounded-full bg-white/[0.02]" />
-        <div className="absolute bottom-[-15%] left-[-10%] w-64 h-64 rounded-full bg-green-500/[0.04]" />
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute -top-24 -left-24 w-80 h-80 bg-white/5 rounded-full pointer-events-none" />
         <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative z-10">
           <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5">
             <Clock size={40} className="text-amber-500" />
@@ -677,10 +687,10 @@ export default function Login() {
             <Lightbulb size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
             <p className="text-amber-700 text-xs font-medium">{T("alreadyApproved")}</p>
           </div>
-          <button onClick={() => { setStep("input"); setError(null); }} className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+          <button onClick={() => { setStep("input"); setError(null); }}
+            className="w-full h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl transition-colors text-sm flex items-center justify-center gap-2 shadow-sm shadow-gray-500/30">
             <ArrowLeft size={15} /> {T("backToLogin")}
           </button>
-          <p className="text-gray-400 text-xs mt-3">{T("alreadyApproved") || "If admin has approved your account, go back and log in again."}</p>
         </div>
       </div>
     );
@@ -688,9 +698,8 @@ export default function Login() {
 
   if (step === "rejected") {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="absolute top-[-20%] right-[-10%] w-72 h-72 rounded-full bg-white/[0.02]" />
-        <div className="absolute bottom-[-15%] left-[-10%] w-64 h-64 rounded-full bg-red-500/[0.04]" />
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="absolute -top-24 -left-24 w-80 h-80 bg-white/5 rounded-full pointer-events-none" />
         <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative z-10">
           <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-5">
             <Shield size={40} className="text-red-500" />
@@ -705,7 +714,8 @@ export default function Login() {
               <p className="text-red-600 text-xs">{loginRejectionReason}</p>
             </div>
           )}
-          <button onClick={() => { setStep("input"); setLoginRejectionReason(null); setError(null); }} className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+          <button onClick={() => { setStep("input"); setLoginRejectionReason(null); setError(null); }}
+            className="w-full h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl transition-colors text-sm flex items-center justify-center gap-2 shadow-sm shadow-gray-500/30">
             <ArrowLeft size={15} /> {T("backToLogin")}
           </button>
         </div>
@@ -717,384 +727,553 @@ export default function Login() {
   const hasMagicLink = auth.magicLink;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-gray-800 flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute top-[-20%] right-[-10%] w-72 h-72 rounded-full bg-white/[0.02]" />
-      <div className="absolute bottom-[-15%] left-[-10%] w-64 h-64 rounded-full bg-green-500/[0.04]" />
-      <div className="absolute top-[30%] left-[5%] w-40 h-40 rounded-full bg-white/[0.015]" />
+    <div className="min-h-screen flex flex-col lg:flex-row" style={{ paddingTop: "env(safe-area-inset-top,0px)" }}>
 
-      <div className="w-full max-w-sm relative z-10">
-        <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-white/[0.08] backdrop-blur-sm border border-white/[0.06] rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-2xl">
-            <Bike size={40} className="text-white" />
+      <div className="hidden lg:flex lg:w-2/5 xl:w-[45%] bg-gradient-to-br from-gray-950 via-gray-900 to-black flex-col justify-between p-10 relative overflow-hidden flex-shrink-0">
+        <div className="absolute -top-24 -right-24 w-80 h-80 bg-white/10 rounded-full pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-yellow-400/20 rounded-full pointer-events-none" />
+        <div className="absolute top-1/3 right-0 w-40 h-40 bg-white/5 rounded-full pointer-events-none" />
+
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/20 shadow-lg">
+            <Bike size={24} className="text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white">{T("riderPortal")}</h1>
-          <p className="text-white/40 mt-1">{appName} {T("deliveryPartner")}</p>
+          <div>
+            <p className="text-white font-extrabold text-xl leading-tight">{appName}</p>
+            <p className="text-gray-300 text-sm font-medium">{T("riderPortal")}</p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-3xl p-6 shadow-2xl">
-          {config.content.riderNotice && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 flex items-start gap-2">
-              <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-              <p className="text-amber-700 text-xs font-medium leading-relaxed">{config.content.riderNotice}</p>
-            </div>
-          )}
-          {isLockedOut && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-center">
-              <Shield size={24} className="text-red-500 mx-auto mb-2" />
-              <p className="text-sm font-bold text-red-700 mb-1">{T("accountLocked")}</p>
-              <p className="text-xs text-red-600">
-                {T("accountLockedMsg")} {formatLockoutTime(lockoutRemaining)}
-              </p>
-              <div className="mt-2 text-2xl font-mono font-bold text-red-700">
-                {Math.floor(lockoutRemaining / 60).toString().padStart(2, "0")}:{(lockoutRemaining % 60).toString().padStart(2, "0")}
+        <div className="relative z-10">
+          <h1 className="text-5xl font-extrabold text-white leading-tight mb-4">
+            Deliver Smart.<br /><span className="text-orange-300">Earn More.</span>
+          </h1>
+          <p className="text-gray-100 text-lg font-medium mb-10 leading-relaxed">
+            Join {appName} as a delivery partner and unlock flexible earnings, real-time tracking, and more.
+          </p>
+          <div className="space-y-3">
+            {[
+              { icon: "⚡", title: "Instant Earnings", desc: "Get paid after every delivery" },
+              { icon: "🗺️", title: "Real-time Navigation", desc: "Optimized routes to maximize trips" },
+              { icon: "🕐", title: "Flexible Schedule", desc: "Work whenever it suits you" },
+              { icon: "🏆", title: "Performance Bonuses", desc: "Earn more with top ratings" },
+            ].map(f => (
+              <div key={f.title} className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/10">
+                <span className="text-xl flex-shrink-0">{f.icon}</span>
+                <div>
+                  <p className="text-white font-bold text-sm">{f.title}</p>
+                  <p className="text-gray-300 text-xs">{f.desc}</p>
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
 
-          {step === "continue" && (
-            <>
-              <h2 className="text-xl font-bold text-gray-800 mb-1">Welcome 👋</h2>
-              <p className="text-sm text-gray-500 mb-5">Enter your phone, email, or username to continue</p>
-              <label className="text-xs font-bold text-gray-400 mb-1.5 block uppercase tracking-wider">Phone / Email / Username</label>
-              <input
-                type="text"
-                placeholder="+923001234567 or email or username"
-                value={identifier}
-                onChange={e => setIdentifier(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && checkIdentifier()}
-                className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 transition-all mb-4"
-                autoFocus
-              />
-              {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl"><p className="text-red-600 text-sm font-medium">{error}</p></div>}
-              <button onClick={checkIdentifier} disabled={loading || isLockedOut}
-                className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 text-sm">
-                {loading ? <><Loader2 size={18} className="animate-spin" /> Checking...</> : "Continue →"}
-              </button>
-              {(hasSocial || hasMagicLink) && (
-                <>
-                  <div className="flex items-center gap-3 my-4">
-                    <div className="flex-1 h-px bg-gray-200" />
-                    <span className="text-xs text-gray-400 font-medium">{T("orContinueWith")}</span>
-                    <div className="flex-1 h-px bg-gray-200" />
+        <div className="relative z-10">
+          <p className="text-gray-400 text-sm">© {new Date().getFullYear()} {appName} · Delivery Partner Program</p>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col bg-slate-50">
+
+        {/* Mobile hero header */}
+        <div className="lg:hidden bg-gradient-to-br from-gray-950 to-gray-900 px-6 pt-10 pb-12 relative overflow-hidden flex-shrink-0">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full -translate-y-16 translate-x-16 pointer-events-none" />
+          <div className="absolute -bottom-10 left-0 w-40 h-40 bg-yellow-400/25 rounded-full pointer-events-none" />
+          <div className="relative z-10 flex items-center gap-3 mb-2">
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center border border-white/30">
+              <Bike size={24} className="text-white" />
+            </div>
+            <div>
+              <p className="text-white font-extrabold text-xl">{appName}</p>
+              <p className="text-gray-300 text-sm">{T("riderPortal")}</p>
+            </div>
+          </div>
+          <p className="relative z-10 text-gray-100 text-sm font-medium">Deliver smarter. Earn more.</p>
+        </div>
+
+        {/* Form area */}
+        <div className="flex-1 flex items-start lg:items-center justify-center px-5 py-6 lg:p-10 -mt-6 lg:mt-0">
+          <div className="w-full max-w-md">
+
+            {/* Desktop heading */}
+            <div className="hidden lg:block mb-7">
+              <h2 className="text-3xl font-extrabold text-gray-900">
+                {step === "continue" ? "Welcome back 👋" : step === "otp" ? "Check your messages" : "Sign in"}
+              </h2>
+              <p className="text-gray-500 mt-1.5">
+                {step === "continue" ? "Enter your details to access the rider portal" :
+                 step === "otp" ? "Enter the 6-digit code we sent you" : ""}
+              </p>
+            </div>
+
+            {/* Notice banner */}
+            {config.content.riderNotice && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-4 flex items-start gap-2.5">
+                <AlertCircle size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-amber-700 text-sm font-medium leading-relaxed">{config.content.riderNotice}</p>
+              </div>
+            )}
+
+            {/* Lockout banner */}
+            {isLockedOut && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield size={18} className="text-red-500 flex-shrink-0" />
+                  <p className="text-sm font-bold text-red-700">{T("accountLocked")}</p>
+                </div>
+                <p className="text-xs text-red-600 mb-2">{T("accountLockedMsg")} {formatLockoutTime(lockoutRemaining)}</p>
+                <div className="text-2xl font-mono font-bold text-red-700 text-center bg-red-100 rounded-xl py-2">
+                  {Math.floor(lockoutRemaining / 60).toString().padStart(2, "0")}:{(lockoutRemaining % 60).toString().padStart(2, "0")}
+                </div>
+              </div>
+            )}
+
+            {/* White form card */}
+            <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 lg:p-8">
+
+              {step === "continue" && (
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-1 lg:hidden">Welcome back 👋</h2>
+                  <p className="text-sm text-gray-500 mb-5 lg:hidden">Enter your credentials to continue</p>
+
+                  <div className="mb-4">
+                    <label className="text-xs font-bold text-gray-400 mb-2 block uppercase tracking-wider">Phone / Email / Username</label>
+                    <div className="relative">
+                      <User size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="+923001234567 · email · username"
+                        value={identifier}
+                        onChange={e => setIdentifier(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && checkIdentifier()}
+                        className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-700 focus:border-transparent transition-all"
+                        autoFocus
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
+
+                  {error && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5">
+                      <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+                      <p className="text-red-600 text-sm font-medium">{error}</p>
+                    </div>
+                  )}
+
+                  <button onClick={checkIdentifier} disabled={loading || isLockedOut}
+                    className="w-full h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 text-sm shadow-sm shadow-gray-500/30">
+                    {loading ? <><Loader2 size={18} className="animate-spin" /> Checking...</> : <>Continue →</>}
+                  </button>
+
+                  {(hasSocial || hasMagicLink) && (
+                    <>
+                      <div className="flex items-center gap-3 my-5">
+                        <div className="flex-1 h-px bg-gray-200" />
+                        <span className="text-xs text-gray-400 font-medium">{T("orContinueWith")}</span>
+                        <div className="flex-1 h-px bg-gray-200" />
+                      </div>
+                      <div className="space-y-2.5">
+                        {auth.google && (
+                          <button onClick={handleSocialGoogle} disabled={loading || isLockedOut}
+                            className="w-full h-11 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2.5 disabled:opacity-60">
+                            <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" /></svg>
+                            {T("signInWithGoogle")}
+                          </button>
+                        )}
+                        {auth.facebook && (
+                          <button onClick={handleSocialFacebook} disabled={loading || isLockedOut}
+                            className="w-full h-11 bg-[#1877F2] hover:bg-[#166FE5] rounded-xl text-sm font-semibold text-white transition-colors flex items-center justify-center gap-2.5 disabled:opacity-60">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
+                            {T("signInWithFacebook")}
+                          </button>
+                        )}
+                        {auth.magicLink && (
+                          <div className="mt-1">
+                            <MagicLinkSender onSend={handleMagicLinkSend} title={T("magicLinkLogin")} subtitle={T("enterRegisteredEmail")} />
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  <div className="mt-5 text-center space-y-2">
+                    <Link to="/register" className="text-sm text-gray-500">
+                      New rider?{" "}
+                      <span className="text-gray-900 font-bold hover:underline">Register here</span>
+                    </Link>
+                    {(config.content.tncUrl || config.content.privacyUrl) && (
+                      <div className="mt-1 flex items-center justify-center gap-3 flex-wrap">
+                        {config.content.tncUrl && (
+                          <a href={config.content.tncUrl} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2">Terms &amp; Conditions</a>
+                        )}
+                        {config.content.tncUrl && config.content.privacyUrl && <span className="text-gray-300 text-xs">·</span>}
+                        {config.content.privacyUrl && (
+                          <a href={config.content.privacyUrl} target="_blank" rel="noopener noreferrer"
+                            className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2">Privacy Policy</a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {step === "input" && enabledMethods.length > 1 && (
+                <div className="mb-5">
+                  <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
+                    className="text-gray-700 text-sm font-semibold mb-4 flex items-center gap-1.5 hover:text-black transition-colors">
+                    <ArrowLeft size={14} /> Change identifier
+                  </button>
+                  <div className="flex gap-1 bg-gray-100 rounded-2xl p-1">
+                    {enabledMethods.map(m => (
+                      <button key={m} onClick={() => selectMethod(m)}
+                        className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                          method === m
+                            ? "bg-white text-gray-800 shadow-sm ring-1 ring-gray-200"
+                            : "text-gray-400 hover:text-gray-600"
+                        }`}>
+                        {m === "phone" ? <><Phone size={12} /> {T("phoneLabel")}</> : m === "email" ? <><Mail size={12} /> {T("email")}</> : <><User size={12} /> {T("username")}</>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {step === "input" && enabledMethods.length <= 1 && (
+                <button onClick={() => { setStep("continue"); clearError(); }}
+                  className="text-gray-700 text-sm font-semibold mb-4 flex items-center gap-1.5 hover:text-black transition-colors">
+                  <ArrowLeft size={14} /> Back
+                </button>
+              )}
+
+              {step === "otp" && (
+                <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
+                  className="text-gray-700 text-sm font-semibold mb-4 flex items-center gap-1.5 hover:text-black transition-colors">
+                  <ArrowLeft size={14} /> {T("back")}
+                </button>
+              )}
+
+              {method === "phone" && step === "input" && (
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-1">{T("phoneLogin")}</h2>
+                  <p className="text-sm text-gray-500 mb-4">{T("enterRegisteredPhone")}</p>
+                  <label className="text-xs font-bold text-gray-400 mb-2 block uppercase tracking-wider">Phone Number</label>
+                  <div className="flex gap-2 mb-1">
+                    <div className="h-12 px-3 bg-gray-100 border border-gray-200 rounded-xl flex items-center text-sm font-bold text-gray-700 select-none gap-1.5 flex-shrink-0">
+                      🇵🇰 <span>+92</span>
+                    </div>
+                    <div className="relative flex-1">
+                      <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input type="tel" placeholder={phoneHint} value={phone} onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                        className="w-full h-12 pl-9 pr-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-700 focus:border-transparent transition-all" autoFocus inputMode="numeric" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mb-4">Pakistan only (+92)</p>
+                  {showEmailFallback && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+                      <p className="text-xs text-amber-700 font-semibold mb-2">SMS not working? Use email OTP instead:</p>
+                      <div className="flex gap-2">
+                        <input type="email" placeholder="your@email.com" value={phoneFallbackEmail} onChange={e => setPhoneFallbackEmail(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && switchToEmailFallback()}
+                          className="flex-1 h-10 px-3 bg-white border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                        <button onClick={switchToEmailFallback} disabled={loading}
+                          className="h-10 px-3 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-black disabled:opacity-60 flex items-center gap-1">
+                          <Mail size={12} /> Send
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {method === "phone" && step === "otp" && (
+                <div>
+                  {otpBypassActive && !bypassBannerDismissed && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-4 flex items-start gap-2">
+                      <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-amber-800 text-xs font-semibold leading-relaxed">
+                          {otpBypassMessage || "OTP verification is temporarily disabled. You will be logged in automatically."}
+                        </p>
+                        {bypassRemainingSeconds > 0 && (
+                          <p className="text-amber-600 text-[10px] mt-0.5">
+                            Expires in {Math.floor(bypassRemainingSeconds / 60)}m {bypassRemainingSeconds % 60}s
+                          </p>
+                        )}
+                      </div>
+                      <button onClick={() => setBypassBannerDismissed(true)} className="text-amber-400 hover:text-amber-600 flex-shrink-0" aria-label="Dismiss">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )}
+                  <h2 className="text-xl font-bold text-gray-800 mb-1">{T("enterOtp")}</h2>
+                  <div className="flex items-center gap-2 mb-5">
+                    <p className="text-sm text-gray-500">+92{phone}</p>
+                    {otpChannel && (
+                      <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                        via {otpChannel === "whatsapp" ? "📱 WhatsApp" : otpChannel === "email" ? "✉️ Email" : "💬 SMS"}
+                      </span>
+                    )}
+                    {fallbackChannels.length > 0 && fallbackChannels.map(ch => (
+                      <button key={ch} onClick={() => { if (otpCooldown <= 0) sendPhoneOtp(ch); }}
+                        disabled={otpCooldown > 0}
+                        className="text-xs text-gray-800 hover:text-black font-bold disabled:opacity-40">
+                        · Via {ch === "whatsapp" ? "WhatsApp" : ch === "email" ? "Email" : "SMS"}
+                      </button>
+                    ))}
+                  </div>
+                  {devOtp && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 mb-4">
+                      <p className="text-xs text-orange-600 font-bold uppercase tracking-wide mb-0.5">{T("devOtp")}</p>
+                      <p className="text-orange-700 font-extrabold text-xl tracking-[0.4em]">{devOtp}</p>
+                    </div>
+                  )}
+
+                  {/* 6-box OTP cells */}
+                  <div className="relative mb-2">
+                    <div className="flex gap-2 justify-center pointer-events-none select-none" aria-hidden>
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className={`w-11 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold transition-all ${
+                          otp[i] ? "border-gray-700 bg-gray-100 text-gray-900" : "border-gray-200 bg-gray-50 text-gray-300"
+                        }`}>
+                          {otp[i] || "·"}
+                        </div>
+                      ))}
+                    </div>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" value={otp}
+                      onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                      className="absolute inset-0 opacity-0 w-full cursor-text" maxLength={6} autoFocus aria-label="Enter 6-digit OTP" />
+                  </div>
+                  <p className="text-center text-xs text-gray-400 mb-3">Tap above and type your 6-digit code</p>
+
+                  <button onClick={() => { if (otpCooldown === 0) sendPhoneOtp(); }} disabled={otpCooldown > 0}
+                    className="w-full text-sm text-gray-400 hover:text-gray-900 mb-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium">
+                    {otpCooldown > 0 ? `${T("resendOtp")} (${otpCooldown}s)` : T("resendOtp")}
+                  </button>
+
+                  {auth.emailOtp && !showEmailFallback && (
+                    <button onClick={() => setShowEmailFallback(true)} className="w-full text-xs text-amber-600 hover:text-amber-700 py-1 font-semibold transition-colors">
+                      Not receiving SMS? Use email OTP instead
+                    </button>
+                  )}
+                  {showEmailFallback && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      <p className="text-xs text-amber-700 font-semibold mb-2">Enter your email to receive OTP:</p>
+                      <div className="flex gap-2">
+                        <input type="email" placeholder="your@email.com" value={phoneFallbackEmail} onChange={e => setPhoneFallbackEmail(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && switchToEmailFallback()}
+                          className="flex-1 h-10 px-3 bg-white border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+                        <button onClick={switchToEmailFallback} disabled={loading}
+                          className="h-10 px-3 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-black disabled:opacity-60 flex items-center gap-1">
+                          <Mail size={12} /> Send
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {method === "email" && step === "input" && (
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-1">{T("emailLogin")}</h2>
+                  <p className="text-sm text-gray-500 mb-4">{T("enterRegisteredEmail")}</p>
+                  <label className="text-xs font-bold text-gray-400 mb-2 block uppercase tracking-wider">Email Address</label>
+                  <div className="relative mb-4">
+                    <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                      className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-700 focus:border-transparent transition-all" autoFocus />
+                  </div>
+                </div>
+              )}
+
+              {method === "email" && step === "otp" && (
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-1">{T("enterOtp")}</h2>
+                  <p className="text-sm text-gray-500 mb-1">{email}</p>
+                  {otpChannel === "email" && (
+                    <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full inline-block mb-4">via ✉️ Email</span>
+                  )}
+                  {emailDevOtp && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 mb-4">
+                      <p className="text-xs text-orange-600 font-bold uppercase tracking-wide mb-0.5">{T("devOtp")}</p>
+                      <p className="text-orange-700 font-extrabold text-xl tracking-[0.4em]">{emailDevOtp}</p>
+                    </div>
+                  )}
+
+                  {/* 6-box OTP cells */}
+                  <div className="relative mb-2">
+                    <div className="flex gap-2 justify-center pointer-events-none select-none" aria-hidden>
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className={`w-11 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold transition-all ${
+                          emailOtp[i] ? "border-gray-700 bg-gray-100 text-gray-900" : "border-gray-200 bg-gray-50 text-gray-300"
+                        }`}>
+                          {emailOtp[i] || "·"}
+                        </div>
+                      ))}
+                    </div>
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" value={emailOtp}
+                      onChange={e => setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                      className="absolute inset-0 opacity-0 w-full cursor-text" maxLength={6} autoFocus aria-label="Enter 6-digit email OTP" />
+                  </div>
+                  <p className="text-center text-xs text-gray-400 mb-3">Tap above and type your 6-digit code</p>
+
+                  <button onClick={() => { if (otpCooldown === 0) sendEmailOtpFn(); }} disabled={otpCooldown > 0}
+                    className="w-full text-sm text-gray-400 hover:text-gray-900 mb-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium">
+                    {otpCooldown > 0 ? `${T("resendOtp")} (${otpCooldown}s)` : T("resendOtp")}
+                  </button>
+                </div>
+              )}
+
+              {method === "username" && step === "input" && (
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 mb-1">{T("usernameLogin")}</h2>
+                  <p className="text-sm text-gray-500 mb-4">Phone, email, or username</p>
+                  <label className="text-xs font-bold text-gray-400 mb-2 block uppercase tracking-wider">Identifier</label>
+                  <div className="relative mb-3">
+                    <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input type="text" placeholder="Phone, email, or username" value={username} onChange={e => setUsername(e.target.value.trim())} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                      className="w-full h-12 pl-10 pr-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-700 focus:border-transparent transition-all" autoFocus />
+                  </div>
+                  <label className="text-xs font-bold text-gray-400 mb-2 block uppercase tracking-wider">{T("password")}</label>
+                  <div className="relative mb-4">
+                    <input type={showPwd ? "text" : "password"} placeholder={T("password")} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                      className="w-full h-12 px-4 pr-12 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-700 focus:border-transparent transition-all" />
+                    <button onClick={() => setShowPwd(v => !v)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                      {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {auth.lockoutEnabled && failedAttempts > 0 && !isLockedOut && (step === "input" || step === "otp") && (() => {
+                const remaining = auth.lockoutMaxAttempts - failedAttempts;
+                const alts: { m: LoginMethod; label: string; icon: ReactNode }[] = [];
+                if (method !== "phone" && auth.phoneOtp) alts.push({ m: "phone", label: "Phone OTP", icon: <Phone size={11} /> });
+                if (method !== "email" && auth.emailOtp) alts.push({ m: "email", label: "Email OTP", icon: <Mail size={11} /> });
+                if (method !== "username" && auth.usernamePassword) alts.push({ m: "username", label: "Password", icon: <User size={11} /> });
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-3">
+                    <p className="text-xs text-amber-700 font-semibold mb-1">
+                      ⚠️ {failedAttempts} {T("failedAttempts")} &middot; {remaining} remaining
+                    </p>
+                    {alts.length > 0 && (
+                      <>
+                        <p className="text-[10px] text-amber-600 mb-1.5">Try a different sign-in method:</p>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {alts.map(({ m, label, icon }) => (
+                            <button key={m} onClick={() => switchToMethod(m)}
+                              className="flex items-center gap-1 text-[11px] bg-white border border-amber-300 text-amber-800 rounded-lg px-2.5 py-1 font-semibold hover:bg-amber-100 transition-colors">
+                              {icon} {label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {step !== "continue" && error && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5">
+                  <AlertCircle size={15} className="text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-red-600 text-sm font-medium">{error}</p>
+                </div>
+              )}
+
+              {step === "input" && enabledMethods.includes(method as "phone" | "email" | "username") && (
+                <button onClick={handleSubmit} disabled={loading || isLockedOut}
+                  className="w-full h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 text-sm shadow-sm shadow-gray-500/30">
+                  {loading ? <><Loader2 size={18} className="animate-spin" /> {T("pleaseWait")}</> :
+                    method === "phone" ? T("sendOtp") :
+                    method === "email" ? T("sendEmailOtp") :
+                    T("login")}
+                </button>
+              )}
+
+              {step === "otp" && (
+                <button onClick={handleSubmit} disabled={loading || isLockedOut}
+                  className="w-full h-12 bg-gray-900 hover:bg-black text-white font-bold rounded-2xl transition-all disabled:opacity-60 flex items-center justify-center gap-2 text-sm shadow-sm shadow-gray-500/30">
+                  {loading ? <><Loader2 size={18} className="animate-spin" /> {T("pleaseWait")}</> : T("verifyAndLogin")}
+                </button>
+              )}
+
+              {step === "input" && (hasSocial || hasMagicLink) && (
+                <div className="mt-5">
+                  {enabledMethods.length > 0 && (
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex-1 h-px bg-gray-200" />
+                      <span className="text-xs text-gray-400 font-medium">{T("orContinueWith")}</span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                  )}
+                  <div className="space-y-2.5">
                     {auth.google && (
                       <button onClick={handleSocialGoogle} disabled={loading || isLockedOut}
-                        className="w-full h-11 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                        className="w-full h-11 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2.5 disabled:opacity-60">
                         <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" /></svg>
                         {T("signInWithGoogle")}
                       </button>
                     )}
                     {auth.facebook && (
                       <button onClick={handleSocialFacebook} disabled={loading || isLockedOut}
-                        className="w-full h-11 bg-[#1877F2] rounded-xl text-sm font-semibold text-white hover:bg-[#166FE5] transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                        className="w-full h-11 bg-[#1877F2] hover:bg-[#166FE5] rounded-xl text-sm font-semibold text-white transition-colors flex items-center justify-center gap-2.5 disabled:opacity-60">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
                         {T("signInWithFacebook")}
                       </button>
                     )}
                     {auth.magicLink && (
-                      <div className="mt-1">
+                      <div className="mt-2">
                         <MagicLinkSender onSend={handleMagicLinkSend} title={T("magicLinkLogin")} subtitle={T("enterRegisteredEmail")} />
                       </div>
                     )}
                   </div>
-                </>
-              )}
-
-              <div className="mt-4 text-center">
-                <Link to="/register" className="text-sm text-gray-500">
-                  New rider?{" "}
-                  <span className="text-gray-900 font-bold hover:underline">Register here</span>
-                </Link>
-                {(config.content.tncUrl || config.content.privacyUrl) && (
-                  <div className="mt-3 flex items-center justify-center gap-3 flex-wrap">
-                    {config.content.tncUrl && (
-                      <a href={config.content.tncUrl} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2">
-                        Terms &amp; Conditions
-                      </a>
-                    )}
-                    {config.content.tncUrl && config.content.privacyUrl && <span className="text-gray-300 text-xs">·</span>}
-                    {config.content.privacyUrl && (
-                      <a href={config.content.privacyUrl} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2">
-                        Privacy Policy
-                      </a>
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {step === "input" && enabledMethods.length > 1 && (
-            <>
-              <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
-                className="text-gray-900 text-sm font-semibold mb-4 flex items-center gap-1">
-                <ArrowLeft size={14} /> Change identifier
-              </button>
-              <div className="flex gap-1 bg-gray-100 rounded-full p-1 mb-5">
-                {enabledMethods.map(m => (
-                  <button
-                    key={m}
-                    onClick={() => selectMethod(m)}
-                    className={`flex-1 py-2 text-xs font-bold rounded-full transition-all flex items-center justify-center gap-1 ${method === m ? "bg-gray-900 text-white shadow-sm" : "text-gray-400"
-                      }`}
-                  >
-                    {m === "phone" ? <><Phone size={11} /> {T("phoneLabel")}</> : m === "email" ? <><Mail size={11} /> {T("email")}</> : <><User size={11} /> {T("username")}</>}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-
-          {step === "otp" && (
-            <button onClick={() => { setStep("continue"); clearError(); setDevOtp(""); setEmailDevOtp(""); }}
-              className="text-gray-900 text-sm font-semibold mb-4 flex items-center gap-1">
-              <ArrowLeft size={14} /> {T("back")}
-            </button>
-          )}
-
-          {method === "phone" && step === "input" && (
-            <>
-              <h2 className="text-xl font-bold text-gray-800 mb-1">{T("phoneLogin")}</h2>
-              <p className="text-sm text-gray-500 mb-4">{T("enterRegisteredPhone")}</p>
-              <div className="flex gap-2 mb-1">
-                <div className="h-12 px-3 bg-gray-100 border border-gray-200 rounded-xl flex items-center text-sm font-bold text-gray-700 select-none gap-1" title="Pakistan only">🇵🇰 +92</div>
-                <input type="tel" placeholder={phoneHint} value={phone} onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                  className="flex-1 h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" autoFocus inputMode="numeric" />
-              </div>
-              <p className="text-[10px] text-gray-400 mb-3">Pakistan only (+92)</p>
-              {showEmailFallback && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
-                  <p className="text-xs text-amber-700 font-semibold mb-2">SMS not working? Use email OTP instead:</p>
-                  <div className="flex gap-2">
-                    <input type="email" placeholder="your@email.com" value={phoneFallbackEmail} onChange={e => setPhoneFallbackEmail(e.target.value)}
-                      onKeyDown={e => e.key === "Enter" && switchToEmailFallback()}
-                      className="flex-1 h-10 px-3 bg-white border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"/>
-                    <button onClick={switchToEmailFallback} disabled={loading}
-                      className="h-10 px-3 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-gray-800 disabled:opacity-60 flex items-center gap-1">
-                      <Mail size={12}/> Send
-                    </button>
-                  </div>
                 </div>
               )}
-            </>
-          )}
-          {method === "phone" && step === "otp" && (
-            <>
-              <h2 className="text-xl font-bold text-gray-800 mb-1">{T("enterOtp")}</h2>
-              <p className="text-sm text-gray-500 mb-1">+92{phone}</p>
-              {otpChannel && (
-                <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                  <span className="text-xs font-semibold text-gray-400">
-                    via {otpChannel === "whatsapp" ? "📱 WhatsApp" : otpChannel === "email" ? "✉️ Email" : "💬 SMS"}
-                  </span>
-                  {fallbackChannels.length > 0 && fallbackChannels.map(ch => (
-                    <button key={ch} onClick={() => { if (otpCooldown <= 0) sendPhoneOtp(ch); }}
-                      disabled={otpCooldown > 0}
-                      className="text-xs text-gray-900 hover:text-gray-700 font-bold disabled:opacity-40">
-                      · Send via {ch === "whatsapp" ? "WhatsApp" : ch === "email" ? "Email" : "SMS"}
-                    </button>
-                  ))}
+
+              {step === "input" && (
+                <div className="mt-5 flex flex-col items-center gap-2">
+                  <Link href="/register" className="text-sm text-gray-600 font-medium hover:text-gray-900 transition-colors">
+                    {T("dontHaveAccount")} <span className="text-gray-900 font-bold">{T("register")}</span>
+                  </Link>
+                  {(auth.phoneOtp || auth.emailOtp || auth.usernamePassword) && (
+                    <Link href="/forgot-password" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+                      {T("forgotPassword")}
+                    </Link>
+                  )}
                 </div>
               )}
-              {devOtp && <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 mb-3"><p className="text-xs text-orange-600 font-bold uppercase tracking-wide mb-0.5">{T("devOtp")}</p><p className="text-orange-700 font-extrabold text-xl tracking-[0.4em]">{devOtp}</p></div>}
-              <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder={T("enterOtpDigits")} value={otp} onChange={e => setOtp(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                className="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-2xl font-bold tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-gray-900 mb-3" maxLength={6} autoFocus />
-              <button onClick={() => { if (otpCooldown === 0) sendPhoneOtp(); }} disabled={otpCooldown > 0}
-                className="w-full text-sm text-gray-400 hover:text-gray-900 mb-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed">
-                {otpCooldown > 0 ? `${T("resendOtp")} (${otpCooldown}s)` : T("resendOtp")}
-              </button>
-              {auth.emailOtp && !showEmailFallback && (
-                <button onClick={() => setShowEmailFallback(true)} className="w-full text-xs text-amber-600 hover:text-amber-700 py-1 font-semibold">
-                  Not receiving SMS? Use email OTP instead
-                </button>
-              )}
-              {showEmailFallback && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-1">
-                  <p className="text-xs text-amber-700 font-semibold mb-2">Enter your email to receive OTP:</p>
-                  <div className="flex gap-2">
-                    <input type="email" placeholder="your@email.com" value={phoneFallbackEmail} onChange={e => setPhoneFallbackEmail(e.target.value)}
-                      onKeyDown={e => e.key === "Enter" && switchToEmailFallback()}
-                      className="flex-1 h-10 px-3 bg-white border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"/>
-                    <button onClick={switchToEmailFallback} disabled={loading}
-                      className="h-10 px-3 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-gray-800 disabled:opacity-60 flex items-center gap-1">
-                      <Mail size={12}/> Send
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+            </div>
 
-          {method === "email" && step === "input" && (
-            <>
-              <h2 className="text-xl font-bold text-gray-800 mb-1">{T("emailLogin")}</h2>
-              <p className="text-sm text-gray-500 mb-4">{T("enterRegisteredEmail")}</p>
-              <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 mb-4" autoFocus />
-            </>
-          )}
-          {method === "email" && step === "otp" && (
-            <>
-              <h2 className="text-xl font-bold text-gray-800 mb-1">{T("enterOtp")}</h2>
-              <p className="text-sm text-gray-500 mb-1">{email}</p>
-              {otpChannel === "email" && (
-                <span className="text-xs font-semibold text-gray-400 mb-2 block">via ✉️ Email</span>
-              )}
-              {emailDevOtp && <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5 mb-3"><p className="text-xs text-orange-600 font-bold uppercase tracking-wide mb-0.5">{T("devOtp")}</p><p className="text-orange-700 font-extrabold text-xl tracking-[0.4em]">{emailDevOtp}</p></div>}
-              <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder={T("enterOtpDigits")} value={emailOtp} onChange={e => setEmailOtp(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                className="w-full h-14 px-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-2xl font-bold tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-gray-900 mb-3" maxLength={6} autoFocus />
-              <button onClick={() => { if (otpCooldown === 0) sendEmailOtpFn(); }} disabled={otpCooldown > 0}
-                className="w-full text-sm text-gray-400 hover:text-gray-900 mb-3 py-1 disabled:opacity-50 disabled:cursor-not-allowed">
-                {otpCooldown > 0 ? `${T("resendOtp")} (${otpCooldown}s)` : T("resendOtp")}
-              </button>
-            </>
-          )}
-
-          {method === "username" && step === "input" && (
-            <>
-              <h2 className="text-xl font-bold text-gray-800 mb-1">{T("usernameLogin")}</h2>
-              <p className="text-sm text-gray-500 mb-4">Phone, email, or username</p>
-              <input type="text" placeholder="Phone, email, or username" value={username} onChange={e => setUsername(e.target.value.trim())} onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 mb-3" autoFocus />
-              <div className="relative mb-4">
-                <input type={showPwd ? "text" : "password"} placeholder={T("password")} value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSubmit()}
-                  className="w-full h-12 px-4 pr-12 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
-                <button onClick={() => setShowPwd(v => !v)} className="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
-                  {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </>
-          )}
-
-          {auth.lockoutEnabled && failedAttempts > 0 && !isLockedOut && (step === "input" || step === "otp") && (() => {
-            const remaining = auth.lockoutMaxAttempts - failedAttempts;
-            const alts: { m: LoginMethod; label: string; icon: ReactNode }[] = [];
-            if (method !== "phone" && auth.phoneOtp) alts.push({ m: "phone", label: "Phone OTP", icon: <Phone size={11} /> });
-            if (method !== "email" && auth.emailOtp) alts.push({ m: "email", label: "Email OTP", icon: <Mail size={11} /> });
-            if (method !== "username" && auth.usernamePassword) alts.push({ m: "username", label: "Password", icon: <User size={11} /> });
-            return (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 mb-3">
-                <p className="text-xs text-amber-700 font-semibold mb-1">
-                  ⚠️ {failedAttempts} {T("failedAttempts")} &middot; {remaining} remaining
+            {/* Footer */}
+            <div className="mt-5 text-center space-y-1.5">
+              {(config.platform.supportPhone || config.platform.supportEmail) && (
+                <p className="text-gray-400 text-xs">
+                  Support:{" "}
+                  {config.platform.supportPhone && <span className="text-gray-500 font-semibold">{config.platform.supportPhone}</span>}
+                  {config.platform.supportPhone && config.platform.supportEmail && " · "}
+                  {config.platform.supportEmail && <span className="text-gray-500">{config.platform.supportEmail}</span>}
                 </p>
-                {alts.length > 0 && (
-                  <>
-                    <p className="text-[10px] text-amber-600 mb-1.5">Try a different sign-in method:</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {alts.map(({ m, label, icon }) => (
-                        <button key={m} onClick={() => switchToMethod(m)}
-                          className="flex items-center gap-1 text-[11px] bg-white border border-amber-300 text-amber-800 rounded-lg px-2.5 py-1 font-semibold hover:bg-amber-100 transition-colors">
-                          {icon} {label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-          {step !== "continue" && error && <p className="text-red-500 text-sm mb-3 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-
-          {step === "input" && enabledMethods.includes(method as "phone" | "email" | "username") && (
-            <button onClick={handleSubmit} disabled={loading || isLockedOut}
-              className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-              {loading ? <Loader2 size={18} className="animate-spin" /> : null}
-              {loading ? T("pleaseWait") :
-                method === "phone" ? T("sendOtp") :
-                  method === "email" ? T("sendEmailOtp") :
-                    T("login")
-              }
-            </button>
-          )}
-
-          {step === "otp" && (
-            <button onClick={handleSubmit} disabled={loading || isLockedOut}
-              className="w-full h-12 bg-gray-900 hover:bg-gray-800 text-white font-bold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-              {loading ? <Loader2 size={18} className="animate-spin" /> : null}
-              {loading ? T("pleaseWait") : T("verifyAndLogin")}
-            </button>
-          )}
-
-          {step === "input" && (hasSocial || hasMagicLink) && (
-            <div className="mt-5">
-              {enabledMethods.length > 0 && (
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex-1 h-px bg-gray-200" />
-                  <span className="text-xs text-gray-400 font-medium">{T("orContinueWith")}</span>
-                  <div className="flex-1 h-px bg-gray-200" />
+              )}
+              {(config.content.tncUrl || config.content.privacyUrl) && (
+                <div className="flex items-center justify-center gap-3">
+                  {config.content.tncUrl && (
+                    <a href={config.content.tncUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-gray-400 text-[11px] hover:text-gray-600 underline underline-offset-2">Terms</a>
+                  )}
+                  {config.content.tncUrl && config.content.privacyUrl && <span className="text-gray-300 text-[11px]">·</span>}
+                  {config.content.privacyUrl && (
+                    <a href={config.content.privacyUrl} target="_blank" rel="noopener noreferrer"
+                      className="text-gray-400 text-[11px] hover:text-gray-600 underline underline-offset-2">Privacy</a>
+                  )}
                 </div>
               )}
-              <div className="space-y-2">
-                {auth.google && (
-                  <button onClick={handleSocialGoogle} disabled={loading || isLockedOut}
-                    className="w-full h-11 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-                    <svg width="16" height="16" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" /><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" /><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" /><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" /></svg>
-                    {T("signInWithGoogle")}
-                  </button>
-                )}
-                {auth.facebook && (
-                  <button onClick={handleSocialFacebook} disabled={loading || isLockedOut}
-                    className="w-full h-11 bg-[#1877F2] rounded-xl text-sm font-semibold text-white hover:bg-[#166FE5] transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
-                    {T("signInWithFacebook")}
-                  </button>
-                )}
-                {auth.magicLink && (
-                  <div className="mt-2">
-                    <MagicLinkSender
-                      onSend={handleMagicLinkSend}
-                      title={T("magicLinkLogin")}
-                      subtitle={T("enterRegisteredEmail")}
-                    />
-                  </div>
-                )}
-              </div>
+              <p className="text-gray-400 text-[11px]">{T("onlyVerifiedRiders")}</p>
             </div>
-          )}
-
-          {step === "input" && (
-            <div className="mt-5 flex flex-col items-center gap-2">
-              <Link href="/register" className="text-sm text-gray-900 font-semibold hover:text-gray-700">
-                {T("dontHaveAccount")} {T("register")}
-              </Link>
-              {(auth.phoneOtp || auth.emailOtp || auth.usernamePassword) && (
-                <Link href="/forgot-password" className="text-sm text-gray-500 hover:text-gray-700">
-                  {T("forgotPassword")}
-                </Link>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-6 text-center space-y-2">
-          {(config.platform.supportPhone || config.platform.supportEmail) && (
-            <p className="text-white/40 text-xs">
-              Support:{" "}
-              {config.platform.supportPhone && <span className="text-white/60 font-semibold">{config.platform.supportPhone}</span>}
-              {config.platform.supportPhone && config.platform.supportEmail && " · "}
-              {config.platform.supportEmail && <span className="text-white/60">{config.platform.supportEmail}</span>}
-            </p>
-          )}
-          {(config.content.tncUrl || config.content.privacyUrl) && (
-            <div className="flex items-center justify-center gap-3">
-              {config.content.tncUrl && (
-                <a href={config.content.tncUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-white/30 text-[11px] hover:text-white/50 underline underline-offset-2">Terms</a>
-              )}
-              {config.content.tncUrl && config.content.privacyUrl && <span className="text-white/20 text-[11px]">·</span>}
-              {config.content.privacyUrl && (
-                <a href={config.content.privacyUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-white/30 text-[11px] hover:text-white/50 underline underline-offset-2">Privacy</a>
-              )}
-            </div>
-          )}
-          <p className="text-white/20 text-[11px]">{T("onlyVerifiedRiders")}</p>
+          </div>
         </div>
       </div>
     </div>
-  );   
+  );
 }

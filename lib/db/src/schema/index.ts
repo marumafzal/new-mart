@@ -80,6 +80,7 @@ export * from "./vendor_plans";
 export * from "./admin_role_presets";
 export * from "./sms_gateways";
 export * from "./whitelist_users";
+export * from "./otp_bypass_audit";
 export * from "./integration_test_history";
 export * from "./search_logs";
 

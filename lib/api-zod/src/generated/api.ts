@@ -211,7 +211,7 @@ export const GetOrdersResponse = zod.object({
  */
 export const CreateOrderBody = zod.object({
   userId: zod.string(),
-  type: zod.enum(["mart", "food"]),
+  type: zod.enum(["mart", "food", "pharmacy", "parcel"]),
   items: zod.array(
     zod.object({
       productId: zod.string(),

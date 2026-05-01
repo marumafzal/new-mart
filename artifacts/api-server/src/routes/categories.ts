@@ -60,7 +60,9 @@ router.get("/", validateQuery(listQuerySchema), async (req, res) => {
         sendSuccess(res, { categories: [] });
         return;
       }
-    } catch {}
+    } catch (err) {
+      logger.warn({ type, err: err instanceof Error ? err.message : String(err) }, "[categories] Failed to check platform settings for feature flag");
+    }
   }
 
   const conditions = [eq(categoriesTable.isActive, true)];

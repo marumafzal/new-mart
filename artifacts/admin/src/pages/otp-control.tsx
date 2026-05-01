@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, type ElementType, type ReactNode } from "react";
 import { PageHeader } from "@/components/shared";
 import {
   Shield, RefreshCw, CheckCircle2, XCircle, Loader2,
@@ -12,14 +12,38 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useOtpWhitelist, useAddOtpWhitelist, useUpdateOtpWhitelist, useDeleteOtpWhitelist } from "@/hooks/use-admin";
 
+/* Single source of truth for the bypass-code shape. The backend
+   (`artifacts/api-server/src/routes/admin/otp.ts`) uses the same regex —
+   keeping them aligned avoids "valid on the client, rejected on the
+   server" surprises. */
+const BYPASS_CODE_REGEX = /^[0-9]{6}$/;
+
+/* Typed shape for errors thrown by the `fetcher` helper. */
+interface ApiError {
+  status?: number;
+  message?: string;
+}
+
+function isApiError(value: unknown): value is ApiError {
+  return typeof value === "object" && value !== null && ("status" in value || "message" in value);
+}
+
+function errorMessage(value: unknown, fallback = "Something went wrong"): string {
+  if (isApiError(value) && typeof value.message === "string" && value.message.length > 0) {
+    return value.message;
+  }
+  if (value instanceof Error) return value.message;
+  return fallback;
+}
+
 async function api(method: string, path: string, body?: unknown) {
   try {
     return await fetcher(path, {
       method,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-  } catch (e: any) {
-    if (e?.status === 401) return null;
+  } catch (e: unknown) {
+    if (isApiError(e) && e.status === 401) return null;
     throw e;
   }
 }
@@ -53,17 +77,67 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" });
 }
 
-type OTPStatus = { isGloballyDisabled: boolean; disabledUntil: string | null; activeBypassCount: number };
-type UserRow   = { id: string; name: string | null; phone: string | null; email?: string | null; otpBypassUntil?: string | null };
-type AuditRow  = { id: string; event: string; userId: string | null; phone: string | null; name: string | null; ip: string; result: string | null; createdAt: string };
+function generateBypassCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+type OTPStatus = { isGloballyDisabled: boolean; disabledUntil: string | null; activeBypassCount: number };
+
+/* `email` and `otpBypassUntil` are returned by the API for every row, just
+   sometimes as null. Optional + nullable was redundant and let `undefined`
+   sneak through our null checks. */
+type UserRow = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  otpBypassUntil: string | null;
+};
+
+type OtpWhitelistEntry = {
+  id: string;
+  identifier: string;
+  label?: string;
+  bypassCode: string;
+  isActive: boolean;
+  expiresAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/* The audit feed only contains the OTP-bypass family of events; widen
+   the union if/when new event types are added on the server. */
+type OtpAuditEvent = "login_otp_bypass" | "login_global_otp_bypass" | "otp_send_bypassed";
+
+type AuditRow = {
+  id: string;
+  event: OtpAuditEvent;
+  createdAt: string;
+  ip: string;
+  userId?: string | null;
+  phone?: string | null;
+  name?: string | null;
+};
+
+/* Robust "is the bypass still in effect?" check. `new Date(invalid)` returns
+   an Invalid Date whose `.getTime()` is NaN, and any comparison with NaN is
+   false — that silently masked malformed dates as "expired" instead of
+   surfacing them. We treat invalid input as "not active" but flag it via
+   `isFinite` so callers can decide. */
+function isBypassActive(otpBypassUntil: string | null | undefined): boolean {
+  if (!otpBypassUntil) return false;
+  const ts = new Date(otpBypassUntil).getTime();
+  if (Number.isNaN(ts)) return false;
+  return ts > Date.now();
+}
+
+function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div className={`rounded-2xl border border-border bg-white p-5 ${className}`}>{children}</div>
   );
 }
 
-function SectionTitle({ icon: Icon, label, color }: { icon: React.ElementType; label: string; color: string }) {
+function SectionTitle({ icon: Icon, label, color }: { icon: ElementType; label: string; color: string }) {
   return (
     <div className={`flex items-center gap-2 mb-4 ${color}`}>
       <Icon className="w-4 h-4" />
@@ -86,6 +160,9 @@ export default function OtpControl() {
   const [users, setUsers]             = useState<UserRow[]>([]);
   const [searching, setSearching]     = useState(false);
   const [bypassMins, setBypassMins]   = useState<Record<string, string>>({});
+  /* In-flight search request — cancelled when a newer keystroke fires
+     so a slow earlier response can't overwrite the latest results. */
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   /* ── Audit log state ── */
   const [auditRows, setAuditRows]     = useState<AuditRow[]>([]);
@@ -95,7 +172,7 @@ export default function OtpControl() {
   const loadStatus = useCallback(async () => {
     setStatusLoading(true);
     try {
-      const d = await api("GET", "/otp/status");
+      const d = await api("GET", "/admin/otp/status");
       if (d?.data) setStatus(d.data);
     } finally { setStatusLoading(false); }
   }, []);
@@ -104,10 +181,10 @@ export default function OtpControl() {
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
     try {
-      const d = await api("GET", "/otp/audit?page=1");
+      const d = await api("GET", "/admin/otp/audit?page=1");
       if (d?.data?.entries) {
         const bypass = (d.data.entries as AuditRow[]).filter(e =>
-          e.event === "login_otp_bypass" || e.event === "login_global_otp_bypass"
+          e.event === "login_otp_bypass" || e.event === "login_global_otp_bypass" || e.event === "otp_send_bypassed"
         ).slice(0, 20);
         setAuditRows(bypass);
       }
@@ -126,7 +203,7 @@ export default function OtpControl() {
   /* ── Global suspension actions ── */
   const suspend = async (mins: number) => {
     if (!mins || mins <= 0) return;
-    const d = await api("POST", "/otp/disable", { minutes: mins });
+    const d = await api("POST", "/admin/otp/disable", { minutes: mins });
     if (d?.data) {
       toast({ title: "OTP Suspended", description: `All OTPs suspended for ${mins} minute(s).` });
       loadStatus(); loadAudit();
@@ -136,7 +213,7 @@ export default function OtpControl() {
   };
 
   const restore = async () => {
-    await api("DELETE", "/otp/disable");
+    await api("DELETE", "/admin/otp/disable");
     toast({ title: "OTPs Restored", description: "Global OTP suspension lifted." });
     loadStatus(); loadAudit();
   };
@@ -144,41 +221,89 @@ export default function OtpControl() {
   /* ── Per-user bypass actions ── */
   const searchUsers = useCallback(async () => {
     if (!query.trim() || query.trim().length < 2) return;
+
+    /* Cancel any earlier search before firing this one. Without this, a
+       slow first request that resolves AFTER a faster second request
+       would overwrite the latest results — the classic "stale response"
+       race when typing quickly into a debounced search box. */
+    searchAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    searchAbortRef.current = ctrl;
+
     setSearching(true);
     try {
-      const d = await fetcher(`/users/search?q=${encodeURIComponent(query)}&limit=20`);
+      const d = await fetcher(
+        `/users/search?q=${encodeURIComponent(query)}&limit=20`,
+        { signal: ctrl.signal },
+      );
+      if (ctrl.signal.aborted) return;
       setUsers((d?.users ?? []).map((u: UserRow) => ({
-        id: u.id, name: u.name, phone: u.phone, email: u.email, otpBypassUntil: u.otpBypassUntil,
+        id: u.id,
+        name: u.name,
+        phone: u.phone,
+        email: u.email ?? null,
+        otpBypassUntil: u.otpBypassUntil ?? null,
       })));
-    } finally { setSearching(false); }
-  }, [query]);
+    } catch (e: unknown) {
+      /* AbortError is the expected outcome of a superseded request — swallow it. */
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      if (isApiError(e) && (e as { name?: string }).name === "AbortError") return;
+      toast({ title: "Search failed", description: errorMessage(e, "Could not load users."), variant: "destructive" });
+    } finally {
+      if (searchAbortRef.current === ctrl) {
+        searchAbortRef.current = null;
+        setSearching(false);
+      }
+    }
+  }, [query, toast]);
 
   useEffect(() => {
     const t = setTimeout(() => { if (query.trim().length >= 2) searchUsers(); }, 400);
     return () => clearTimeout(t);
   }, [query, searchUsers]);
 
+  /* On unmount, abort any in-flight search so React doesn't try to set
+     state on a torn-down component. */
+  useEffect(() => () => { searchAbortRef.current?.abort(); }, []);
+
   const grantBypass = async (userId: string, mins: number) => {
-    const d = await api("POST", `/users/${userId}/otp/bypass`, { minutes: mins });
-    if (d?.data?.bypassUntil) {
-      toast({ title: "Bypass Granted", description: `OTP bypass active for ${mins} minute(s).` });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, otpBypassUntil: d.data.bypassUntil } : u));
-      loadStatus();
-    } else {
-      toast({ title: "Error", description: d?.error ?? "Failed", variant: "destructive" });
+    try {
+      const d = await api("POST", `/admin/users/${userId}/otp/bypass`, { minutes: mins });
+      if (d?.data?.bypassUntil) {
+        toast({ title: "Bypass Granted", description: `OTP bypass active for ${mins} minute(s).` });
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, otpBypassUntil: d.data.bypassUntil } : u));
+        loadStatus();
+      } else {
+        toast({ title: "Error", description: d?.error ?? "Failed", variant: "destructive" });
+      }
+    } catch (e: unknown) {
+      /* Surface the new 409 conflict path so the admin sees the existing
+         bypass instead of silently overwriting it. */
+      if (isApiError(e) && e.status === 409) {
+        toast({
+          title: "Bypass already active",
+          description: errorMessage(e, "User already has an active OTP bypass."),
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({ title: "Error", description: errorMessage(e, "Failed to grant bypass."), variant: "destructive" });
     }
   };
 
   const cancelBypass = async (userId: string) => {
-    await api("DELETE", `/users/${userId}/otp/bypass`);
+    await api("DELETE", `/admin/users/${userId}/otp/bypass`);
     toast({ title: "Bypass Removed" });
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, otpBypassUntil: null } : u));
     loadStatus();
   };
 
-  const eventLabel: Record<string, string> = {
+  /* Keyed by `OtpAuditEvent` so adding a new event in the union forces us
+     to add a label here — no more silent fallback to the raw enum string. */
+  const eventLabel: Record<OtpAuditEvent, string> = {
     login_otp_bypass: "Per-user bypass",
     login_global_otp_bypass: "Global suspension",
+    otp_send_bypassed: "OTP send bypassed",
   };
 
   return (
@@ -252,8 +377,22 @@ export default function OtpControl() {
                 className="w-28 h-8 text-xs" min={1} max={10080}
               />
               <Button variant="outline" size="sm" className="border-red-300 text-red-700 hover:bg-red-50 h-8"
-                onClick={() => { const m = parseInt(customMinutes, 10); if (m > 0) suspend(m); }}
-                disabled={!customMinutes || parseInt(customMinutes, 10) <= 0 || statusLoading}>
+                onClick={() => {
+                  /* `parseInt("abc", 10)` returns NaN, and `NaN > 0` is silently
+                     false — so the previous code accepted gibberish without a
+                     peep. Now we explicitly tell the user what's wrong. */
+                  const m = parseInt(customMinutes, 10);
+                  if (Number.isNaN(m) || m <= 0) {
+                    toast({
+                      title: "Invalid duration",
+                      description: "Enter a whole number of minutes greater than 0.",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  suspend(m);
+                }}
+                disabled={!customMinutes || statusLoading}>
                 Suspend
               </Button>
             </div>
@@ -285,7 +424,7 @@ export default function OtpControl() {
         {users.length > 0 && (
           <div className="space-y-2">
             {users.map(user => {
-              const bypassActive = !!(user.otpBypassUntil && new Date(user.otpBypassUntil) > new Date());
+              const bypassActive = isBypassActive(user.otpBypassUntil);
               return (
                 <div key={user.id} className="rounded-xl border border-border bg-muted/20 p-3">
                   <div className="flex items-center justify-between mb-2">
@@ -408,47 +547,80 @@ function WhitelistSection() {
 
   const [identifier, setIdentifier] = useState("");
   const [label, setLabel] = useState("");
-  const [bypassCode, setBypassCode] = useState("000000");
+  const [bypassCode, setBypassCode] = useState(() => generateBypassCode());
   const [expiresAt, setExpiresAt] = useState("");
   const [adding, setAdding] = useState(false);
 
-  const entries: any[] = data?.entries ?? [];
+  const entries: Array<OtpWhitelistEntry> = data?.entries ?? [];
 
   async function handleAdd() {
-    if (!identifier.trim()) { toast({ title: "Identifier required", variant: "destructive" }); return; }
+    if (!identifier.trim()) {
+      toast({ title: "Identifier required", variant: "destructive" });
+      return;
+    }
+
+    const code = bypassCode?.trim() || generateBypassCode();
+    if (!BYPASS_CODE_REGEX.test(code)) {
+      toast({ title: "Invalid bypass code", description: "Use a 6-digit numeric code.", variant: "destructive" });
+      return;
+    }
+
     setAdding(true);
     try {
-      await addEntry.mutateAsync({ identifier: identifier.trim(), label: label.trim() || undefined, bypassCode: bypassCode || "000000", expiresAt: expiresAt || undefined });
-      toast({ title: "Added to whitelist" });
-      setIdentifier(""); setLabel(""); setBypassCode("000000"); setExpiresAt("");
-    } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      await addEntry.mutateAsync({
+        identifier: identifier.trim(),
+        label: label.trim() || undefined,
+        bypassCode: code,
+        /* `<input type="datetime-local">` returns a *naive* "YYYY-MM-DDTHH:mm"
+           string with no timezone. Sending that as-is meant the server parsed
+           it as UTC, while the admin meant their local time — so an entry the
+           admin set to expire at 5pm PKT would actually expire at 10pm PKT.
+           Reattaching the local timezone via `Date` -> `toISOString()` makes
+           the wire format unambiguous. */
+        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
+      });
+      toast({ title: "Added to whitelist", description: `Bypass code ${code} is active.` });
+      setIdentifier("");
+      setLabel("");
+      setBypassCode(generateBypassCode());
+      setExpiresAt("");
+    } catch (e: unknown) {
+      toast({ title: "Error", description: errorMessage(e, "Could not add whitelist entry."), variant: "destructive" });
     } finally { setAdding(false); }
   }
 
-  async function handleToggle(entry: any) {
-    try { await updateEntry.mutateAsync({ id: entry.id, isActive: !entry.isActive }); }
-    catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
+  async function handleToggle(entry: OtpWhitelistEntry) {
+    try {
+      await updateEntry.mutateAsync({ id: entry.id, isActive: !entry.isActive });
+      /* Previously the toggle had no success feedback, so the admin couldn't
+         tell whether the click had registered until the list re-rendered. */
+      toast({
+        title: entry.isActive ? "Whitelist entry disabled" : "Whitelist entry enabled",
+        description: entry.identifier,
+      });
+    } catch (e: unknown) {
+      toast({ title: "Error", description: errorMessage(e, "Could not update whitelist entry."), variant: "destructive" });
+    }
   }
 
   async function handleDelete(id: string, identifier: string) {
     if (!confirm(`Remove "${identifier}" from whitelist?`)) return;
     try { await deleteEntry.mutateAsync(id); toast({ title: "Removed from whitelist" }); }
-    catch (e: any) { toast({ title: "Error", description: e.message, variant: "destructive" }); }
+    catch (e: unknown) { toast({ title: "Error", description: errorMessage(e, "Could not delete entry."), variant: "destructive" }); }
   }
 
   return (
     <Card>
       <SectionTitle icon={ListChecks} label="OTP Whitelist — Per-Identity Bypass" color="text-indigo-700" />
       <p className="text-xs text-muted-foreground mb-4">
-        Phones or emails added here bypass real SMS. They accept the configured bypass code (default: <code className="bg-muted px-1 rounded">000000</code>) without sending a real OTP. Perfect for App Store reviewers and testers.
+        Phones or emails added here bypass real SMS. They accept the configured 6-digit bypass code without sending a real OTP. Perfect for App Store reviewers and testers.
       </p>
 
       {/* Add form */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 p-3 rounded-xl bg-muted/30 border">
         <Input className="rounded-xl h-9 text-sm" placeholder="Phone or email (identifier)" value={identifier} onChange={e => setIdentifier(e.target.value)} />
         <Input className="rounded-xl h-9 text-sm" placeholder="Label (e.g. Apple Reviewer)" value={label} onChange={e => setLabel(e.target.value)} />
-        <Input className="rounded-xl h-9 text-sm" placeholder="Bypass code (default: 000000)" value={bypassCode} onChange={e => setBypassCode(e.target.value)} />
+        <Input className="rounded-xl h-9 text-sm" placeholder="Bypass code (6 digits)" value={bypassCode} onChange={e => setBypassCode(e.target.value)} />
         <Input className="rounded-xl h-9 text-sm" type="datetime-local" placeholder="Expires (optional)" value={expiresAt} onChange={e => setExpiresAt(e.target.value)} />
         <div className="md:col-span-2">
           <Button size="sm" className="rounded-xl gap-1.5 w-full" onClick={handleAdd} disabled={adding}>
@@ -464,7 +636,7 @@ function WhitelistSection() {
         <div className="text-center py-6 text-sm text-muted-foreground">No whitelist entries yet.</div>
       ) : (
         <div className="space-y-2">
-          {entries.map((entry: any) => (
+          {entries.map((entry: OtpWhitelistEntry) => (
             <div key={entry.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm ${entry.isActive ? "bg-indigo-50/50 border-indigo-200" : "bg-muted/20 border-border opacity-60"}`}>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold truncate">{entry.identifier}</p>

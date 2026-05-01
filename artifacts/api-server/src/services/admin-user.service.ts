@@ -21,7 +21,7 @@ import {
   platformSettingsTable,
   authAuditLogTable,
 } from "@workspace/db/schema";
-import { eq, and, sql, inArray, desc } from "drizzle-orm";
+import { eq, and, sql, inArray, desc, gt } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
 import { hashPassword, validatePasswordStrength, verifyAdminSecret } from "./password.js";
 import { recordAdminPasswordSnapshot } from "./admin-password-watch.service.js";
@@ -78,7 +78,7 @@ export class UserService {
     let canonPhone: string | null = null;
     if (trimPhone) {
       canonPhone = canonicalizePhone(trimPhone);
-      if (!/^3\d{9}$/.test(canonPhone)) {
+      if (!canonPhone || !/^3\d{9}$/.test(canonPhone)) {
         throw new Error("Phone must be a valid Pakistani mobile number");
       }
 
@@ -86,7 +86,7 @@ export class UserService {
       const [existing] = await db
         .select({ id: usersTable.id })
         .from(usersTable)
-        .where(eq(usersTable.phone, canonPhone))
+        .where(eq(usersTable.phone, canonPhone as string))
         .limit(1);
       if (existing) {
         throw new Error("A user with this phone number already exists");
@@ -457,10 +457,18 @@ export class UserService {
    * Get OTP status
    */
   static async getOtpStatus() {
-    const settings = await getPlatformSettings();
-    const disabledUntilStr = settings["otp_global_disabled_until"];
-    const disabledUntil = disabledUntilStr ? new Date(disabledUntilStr) : null;
-    const isGloballyDisabled = !!(disabledUntil && disabledUntil > new Date());
+    const now = new Date();
+
+    const activeDisable = await db.query.platformSettingsTable.findFirst({
+      where: and(
+        eq(platformSettingsTable.key, "otp_global_disabled_until"),
+        gt(platformSettingsTable.value, now.toISOString()),
+      ),
+      columns: { value: true },
+    });
+
+    const disabledUntil = activeDisable ? new Date(activeDisable.value) : null;
+    const isGloballyDisabled = !!disabledUntil;
 
     const [{ bypassCount }] = await db
       .select({ bypassCount: sql<number>`COUNT(*)::int` })

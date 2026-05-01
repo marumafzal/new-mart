@@ -220,7 +220,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setIsValidating(false);
         return { valid: false, cartChanged: false };
       }
-      const data = unwrapApiResponse(await res.json());
+      const data = unwrapApiResponse<{ valid?: boolean; items?: unknown[]; removed?: string[]; priceChanges?: Array<{ name: string; oldPrice: number; newPrice: number }> }>(await res.json());
       /* Discard stale response — user modified the cart while this request was in-flight */
       if (cartGenRef.current !== genAtStart) {
         setIsValidating(false);
@@ -229,15 +229,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!data.valid) {
         let cartChanged = false;
         if (Array.isArray(data.items)) {
-          save(data.items);
+          save(data.items as Parameters<typeof save>[0]);
           cartChanged = true;
         }
         const messages: string[] = [];
-        if (data.removed?.length > 0) {
-          messages.push(`Removed (unavailable): ${data.removed.join(", ")}`);
+        if ((data.removed?.length ?? 0) > 0) {
+          messages.push(`Removed (unavailable): ${data.removed!.join(", ")}`);
         }
-        if (data.priceChanges?.length > 0) {
-          const changes = data.priceChanges.map((c: any) => `${c.name}: ${currencySymbol}${c.oldPrice} → ${currencySymbol}${c.newPrice}`).join("\n");
+        if ((data.priceChanges?.length ?? 0) > 0) {
+          const changes = data.priceChanges!.map((c) => `${c.name}: ${currencySymbol}${c.oldPrice} → ${currencySymbol}${c.newPrice}`).join("\n");
           messages.push(`Prices updated:\n${changes}`);
         }
         if (messages.length > 0) {
@@ -381,7 +381,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         headers: tkn ? { Authorization: `Bearer ${tkn}` } : {},
       });
       if (res.ok) {
-        const d = unwrapApiResponse(await res.json());
+        const d = unwrapApiResponse<{ order?: { id?: string; status?: string }; id?: string; status?: string }>(await res.json());
         const order = d.order || d;
         /* Only resolve if the order has moved past "pending" — prevents prematurely
            clearing the cart while the backend is still processing payment. */
@@ -389,7 +389,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           "confirmed", "preparing", "ready", "on_the_way", "picked_up",
           "out_for_delivery", "delivered", "completed",
         ];
-        if (order && order.id && ACKNOWLEDGED_STATUSES.includes(order.status)) {
+        if (order && order.id && order.status && ACKNOWLEDGED_STATUSES.includes(order.status)) {
           resolveOrderAck(oid);
           return true;
         }

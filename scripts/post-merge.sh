@@ -3,6 +3,10 @@ set -e
 
 pnpm install --no-frozen-lockfile
 
+# Build library packages so TypeScript declaration files are up to date
+pnpm --filter @workspace/db build
+pnpm --filter @workspace/phone-utils build
+
 # Run pending SQL migrations manually (non-interactive, no drizzle-kit push)
 # This avoids drizzle-kit's interactive prompts about column renames
 MIGRATION_DIR="lib/db/migrations"

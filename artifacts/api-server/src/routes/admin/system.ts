@@ -685,6 +685,9 @@ const auditLogHandler = async (req: import("express").Request, res: import("expr
       .from(adminActionAuditLogTable)
       .where(where);
 
+    const adminAlias = adminAccountsTable;
+    const userAlias  = usersTable;
+
     const rows = await db
       .select({
         id:               adminActionAuditLogTable.id,
@@ -693,13 +696,16 @@ const auditLogHandler = async (req: import("express").Request, res: import("expr
         details:          adminActionAuditLogTable.details,
         ip:               adminActionAuditLogTable.ip,
         adminId:          adminActionAuditLogTable.adminId,
-        adminName:        adminActionAuditLogTable.adminName,
+        // Prefer denormalized name; fall back to live join if missing
+        adminName:        sql<string | null>`COALESCE(${adminActionAuditLogTable.adminName}, ${adminAlias.name})`,
         affectedUserId:   adminActionAuditLogTable.affectedUserId,
-        affectedUserName: adminActionAuditLogTable.affectedUserName,
+        affectedUserName: sql<string | null>`COALESCE(${adminActionAuditLogTable.affectedUserName}, ${userAlias.name}, ${userAlias.phone})`,
         affectedUserRole: adminActionAuditLogTable.affectedUserRole,
         timestamp:        adminActionAuditLogTable.createdAt,
       })
       .from(adminActionAuditLogTable)
+      .leftJoin(adminAlias, eq(adminActionAuditLogTable.adminId, adminAlias.id))
+      .leftJoin(userAlias, eq(adminActionAuditLogTable.affectedUserId, userAlias.id))
       .where(where)
       .orderBy(desc(adminActionAuditLogTable.createdAt))
       .limit(limit)

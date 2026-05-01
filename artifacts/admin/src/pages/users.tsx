@@ -1257,10 +1257,15 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
   const kycRecord = kycData?.records?.[0] ?? null;
   const kycId = kycRecord?.id ?? null;
 
-  const docs: { label: string; url: string }[] = [];
-  if (kycRecord?.frontIdPhoto) docs.push({ label: "CNIC Front", url: kycRecord.frontIdPhoto });
-  if (kycRecord?.backIdPhoto)  docs.push({ label: "CNIC Back",  url: kycRecord.backIdPhoto });
-  if (kycRecord?.selfiePhoto)  docs.push({ label: "Selfie",     url: kycRecord.selfiePhoto });
+  const kycPhotos: { label: string; url: string }[] = [];
+  if (kycRecord?.frontIdPhoto) kycPhotos.push({ label: "CNIC Front", url: kycRecord.frontIdPhoto });
+  if (kycRecord?.backIdPhoto)  kycPhotos.push({ label: "CNIC Back",  url: kycRecord.backIdPhoto });
+  if (kycRecord?.selfiePhoto)  kycPhotos.push({ label: "Selfie",     url: kycRecord.selfiePhoto });
+
+  // Fall back to legacy documents embedded on the user object when no KYC API record exists
+  const legacyDocs = parseUserDocuments(user);
+  const docs: { label: string; url: string }[] =
+    kycPhotos.length > 0 ? kycPhotos : legacyDocs.files.map(d => ({ label: d.label, url: d.url }));
 
   const allChecked = ["cnic_legible", "photo_match", "details_correct", "not_expired"].every(k => checklist[k]);
 

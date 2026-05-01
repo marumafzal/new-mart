@@ -1609,7 +1609,7 @@ export const useAdminResetOtp = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) =>
-      fetcher(`/users/${userId}/reset-otp`, { method: "POST", body: "{}" }),
+      fetcher(`/users/${userId}/otp/reset`, { method: "POST", body: "{}" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-users"], exact: false });
     },
@@ -1695,7 +1695,7 @@ export const useRevokeUserSession = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ userId, sessionId }: { userId: string; sessionId: string }) =>
-      fetcher(`/users/${userId}/sessions/${sessionId}`, { method: "DELETE" }),
+      fetcher(`/users/${userId}/sessions/revoke`, { method: "POST", body: JSON.stringify({ sessionId }) }),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ["admin-user-sessions", vars.userId] }),
   });
 };
@@ -1703,7 +1703,8 @@ export const useRevokeUserSession = () => {
 export const useRevokeAllUserSessions = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) => fetcher(`/users/${userId}/sessions`, { method: "DELETE" }),
+    mutationFn: (userId: string) =>
+      fetcher(`/users/${userId}/sessions/revoke`, { method: "POST", body: "{}" }),
     onSuccess: (_data, userId) => qc.invalidateQueries({ queryKey: ["admin-user-sessions", userId] }),
   });
 };

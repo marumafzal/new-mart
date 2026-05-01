@@ -627,6 +627,29 @@ router.post("/users/:id/2fa/disable", async (req, res) => {
   sendSuccess(res, { success: true, message: `2FA disabled for user ${user.name ?? user.phone}` });
 });
 
+/* ── PATCH /admin/users/:id/kyc-approve — Admin marks user KYC as verified ── */
+router.patch("/users/:id/kyc-approve", async (req, res) => {
+  const userId = req.params["id"]!;
+  const adminReq = req as AdminRequest;
+
+  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, kycStatus: usersTable.kycStatus })
+    .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { sendNotFound(res, "User not found"); return; }
+
+  await db.update(usersTable).set({ kycStatus: "verified", updatedAt: new Date() }).where(eq(usersTable.id, userId));
+
+  addAuditEntry({
+    action: "kyc_approve",
+    ip: getClientIp(req),
+    adminId: adminReq.adminId,
+    details: `Admin approved KYC for user ${userId} (${user.phone})`,
+    result: "success",
+  });
+
+  const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  sendSuccess(res, { success: true, user: { ...stripUser(updated!), walletBalance: parseFloat(String(updated!.walletBalance)) } });
+});
+
 router.post("/users/:id/reset-wallet-pin", async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);

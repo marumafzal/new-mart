@@ -122,7 +122,7 @@ export class UserService {
       }
     }
 
-    const validRoles = ["customer", "rider", "vendor"];
+    const validRoles = ["customer", "rider", "vendor", "admin"];
     const userRole = validRoles.includes(input.role || "") ? input.role : "customer";
 
     // Hash temporary password if provided

@@ -250,7 +250,7 @@ export interface CreateUserInput {
   email?: string;
   username?: string;
   tempPassword?: string;
-  role?: "customer" | "rider" | "vendor";
+  role?: "customer" | "rider" | "vendor" | "admin";
   city?: string;
   area?: string;
 }

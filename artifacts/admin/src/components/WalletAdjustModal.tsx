@@ -84,12 +84,20 @@ export function WalletAdjustModal({ mode, subject, onClose }: WalletAdjustModalP
   const subjectName = subject.storeName || subject.name || subject.phone || "—";
   const titleLabel = mode === "vendor" ? "Vendor Wallet" : mode === "rider" ? "Rider Wallet" : "Customer Wallet";
 
+  const [noteError, setNoteError] = useState(false);
+
   const handleSubmit = () => {
     const amt = Number(amount);
     if (!amt || amt <= 0) {
       toast({ title: T("amountInvalid"), variant: "destructive" });
       return;
     }
+    if (mode === "customer" && !note.trim()) {
+      setNoteError(true);
+      toast({ title: "Audit note required", description: "Please enter a reason for this top-up.", variant: "destructive" });
+      return;
+    }
+    setNoteError(false);
     if (overdraw) {
       toast({ title: T("amountInvalid"), description: "Wallet balance is insufficient.", variant: "destructive" });
       return;
@@ -157,13 +165,16 @@ export function WalletAdjustModal({ mode, subject, onClose }: WalletAdjustModalP
           </div>
 
           <div>
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide block mb-1.5">Note (optional)</label>
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wide block mb-1.5">
+              Audit Note {mode === "customer" ? <span className="text-red-500">*</span> : <span className="font-normal text-muted-foreground">(optional)</span>}
+            </label>
             <Input
-              placeholder="e.g. Weekly settlement"
+              placeholder={mode === "customer" ? "Required — e.g. Refund for failed order, promotional credit" : "e.g. Weekly settlement"}
               value={note}
-              onChange={e => setNote(e.target.value)}
-              className="h-11 rounded-xl"
+              onChange={e => { setNote(e.target.value); if (noteError) setNoteError(false); }}
+              className={`h-11 rounded-xl ${noteError ? "border-red-400 focus:ring-red-300" : ""}`}
             />
+            {noteError && <p className="text-xs text-red-600 mt-1">Audit note is required for customer top-ups.</p>}
           </div>
 
           {overdraw && (
@@ -177,7 +188,7 @@ export function WalletAdjustModal({ mode, subject, onClose }: WalletAdjustModalP
             <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancel</Button>
             <Button
               onClick={handleSubmit}
-              disabled={anyPending || !amount || overdraw}
+              disabled={anyPending || !amount || overdraw || (mode === "customer" && !note.trim())}
               className={`flex-1 rounded-xl text-white ${
                 isDebit ? "bg-red-500 hover:bg-red-600" : "bg-green-600 hover:bg-green-700"
               }`}

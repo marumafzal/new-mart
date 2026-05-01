@@ -50,7 +50,13 @@ function SkeletonRow() {
   );
 }
 
+function formatStatus(s: string): string {
+  if (!s) return "";
+  return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function UserActivityModal({ userId, userName, user: userData, onClose }: { userId: string; userName: string; user: any; onClose: () => void }) {
+  const [, navigate] = useLocation();
   const { data, isLoading, isError } = useUserActivity(userId);
   const userRoles = (userData.roles || userData.role || "customer").split(",").filter(Boolean);
   const isRider  = userRoles.includes("rider");
@@ -162,8 +168,13 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                     <div key={o.id} className="flex justify-between items-center text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <div><span className="font-mono font-bold text-xs">{o.id.slice(-6).toUpperCase()}</span><span className="ml-2 text-muted-foreground capitalize">{o.type}</span></div>
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getStatusColor(o.status)}`}>{o.status.replace('_',' ')}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(o.status)}`}>{formatStatus(o.status)}</span>
                         <span className="font-bold">{formatCurrency(o.total)}</span>
+                        <button
+                          onClick={() => { onClose(); navigate(`/orders?id=${o.id}`); }}
+                          className="text-[#1A56DB] hover:underline text-xs font-semibold"
+                          title="View order"
+                        >→</button>
                       </div>
                     </div>
                   ))}
@@ -178,8 +189,13 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                     <div key={r.id} className="flex justify-between items-center text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <div><span className="font-mono font-bold text-xs">{r.id.slice(-6).toUpperCase()}</span><span className="ml-2 text-muted-foreground capitalize">{r.type}</span><span className="ml-2 text-muted-foreground">{r.distance}km</span></div>
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getStatusColor(r.status)}`}>{r.status.replace('_',' ')}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(r.status)}`}>{formatStatus(r.status)}</span>
                         <span className="font-bold">{formatCurrency(r.fare)}</span>
+                        <button
+                          onClick={() => { onClose(); navigate(`/rides?id=${r.id}`); }}
+                          className="text-emerald-600 hover:underline text-xs font-semibold"
+                          title="View ride"
+                        >→</button>
                       </div>
                     </div>
                   ))}
@@ -194,7 +210,7 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                     <div key={p.id} className="flex justify-between text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <span className="font-mono text-xs">{p.id.slice(-6).toUpperCase()}</span>
                       <div className="flex gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getStatusColor(p.status)}`}>{p.status}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(p.status)}`}>{formatStatus(p.status)}</span>
                         <span className="font-bold">{formatCurrency(p.total)}</span>
                       </div>
                     </div>
@@ -210,7 +226,7 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                     <div key={p.id} className="flex justify-between text-sm bg-muted/30 rounded-xl px-3 py-2 hover:bg-muted/50 transition-colors">
                       <span className="font-mono text-xs">{p.id.slice(-6).toUpperCase()}</span>
                       <div className="flex gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getStatusColor(p.status)}`}>{p.status}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getStatusColor(p.status)}`}>{formatStatus(p.status)}</span>
                         <span className="font-bold">{formatCurrency(p.fare)}</span>
                       </div>
                     </div>
@@ -250,13 +266,16 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [city,         setCity]         = useState("");
   const [area,         setArea]         = useState("");
   const [errors,       setErrors]       = useState<Record<string, string>>({});
-  const [createdTempPassword, setCreatedTempPassword] = useState<string | null>(null);
+  const [createdUser, setCreatedUser]   = useState<{ tempPassword?: string; phone?: string; role?: string } | null>(null);
+  const [showAdminConfirm, setShowAdminConfirm] = useState(false);
+  const [pendingAdminSubmit, setPendingAdminSubmit] = useState(false);
 
   const reset = () => {
     setName(""); setPhone(""); setEmail("");
     setUsername(""); setTempPassword("");
     setRole("customer"); setCity(""); setArea("");
-    setErrors({}); setCreatedTempPassword(null);
+    setErrors({}); setCreatedUser(null);
+    setShowAdminConfirm(false); setPendingAdminSubmit(false);
   };
 
   const validate = (): boolean => {
@@ -287,7 +306,7 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = () => {
+  const doSubmit = () => {
     if (!validate()) return;
     const payload: CreateUserInput = { role };
     if (name.trim())         payload.name         = name.trim();
@@ -299,13 +318,11 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
     if (area.trim())         payload.area         = area.trim();
     createUser.mutate(payload, {
       onSuccess: () => {
-        if (tempPassword.trim()) {
-          setCreatedTempPassword(tempPassword.trim());
-        } else {
-          toast({ title: "User created", description: name.trim() || phone.trim() || "New user added successfully." });
-          reset();
-          onClose();
-        }
+        setCreatedUser({
+          tempPassword: tempPassword.trim() || undefined,
+          phone: phone.trim() || undefined,
+          role,
+        });
       },
       onError: (e: Error) => {
         const msg = e.message?.toLowerCase() ?? "";
@@ -318,9 +335,18 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
     });
   };
 
+  const handleSubmit = () => {
+    if (!validate()) return;
+    if (role === "admin" && !pendingAdminSubmit) {
+      setShowAdminConfirm(true);
+      return;
+    }
+    doSubmit();
+  };
+
   const handleClose = () => { reset(); onClose(); };
 
-  if (createdTempPassword) {
+  if (createdUser) {
     return (
       <Dialog open={open} onOpenChange={o => { if (!o) handleClose(); }}>
         <DialogContent className="max-w-md rounded-2xl">
@@ -330,19 +356,68 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-1">
-            <p className="text-sm text-muted-foreground">User account has been created. Share the temporary password below with the user — they will be prompted to change it on first login.</p>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
-              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Temporary Password</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 font-mono text-base font-bold text-amber-900 bg-amber-100 px-3 py-2 rounded-lg select-all">{createdTempPassword}</code>
-                <Button size="sm" variant="outline" className="rounded-lg" onClick={() => { navigator.clipboard?.writeText(createdTempPassword); toast({ title: "Copied!" }); }}>
-                  <Copy className="w-4 h-4" />
-                </Button>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-1.5">
+              {createdUser.phone && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Phone className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="text-muted-foreground">Phone:</span>
+                  <span className="font-mono font-bold">{createdUser.phone}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2 text-sm">
+                <UserIcon className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="text-muted-foreground">Role:</span>
+                <span className="font-semibold capitalize">{createdUser.role}</span>
               </div>
             </div>
+            {createdUser.tempPassword ? (
+              <>
+                <p className="text-sm text-muted-foreground">Share the temporary password below with the user — they will be prompted to change it on first login.</p>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Temporary Password</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 font-mono text-base font-bold text-amber-900 bg-amber-100 px-3 py-2 rounded-lg select-all">{createdUser.tempPassword}</code>
+                    <Button size="sm" variant="outline" className="rounded-lg" onClick={() => { navigator.clipboard?.writeText(createdUser!.tempPassword!); toast({ title: "Copied!" }); }}>
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">User account has been created. They can log in using their phone number and OTP.</p>
+            )}
             <Button className="w-full rounded-xl bg-[#1A56DB] hover:bg-[#1A56DB]/90 text-white" onClick={handleClose}>
               Done
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (showAdminConfirm) {
+    return (
+      <Dialog open={open} onOpenChange={o => { if (!o) { setShowAdminConfirm(false); } }}>
+        <DialogContent className="max-w-sm rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-purple-700">
+              <Shield className="w-5 h-5" /> Create Admin Account?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-1">
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-3">
+              <p className="text-sm text-purple-800">You are about to create an <strong>Admin</strong> account. Admin users have elevated privileges and full access to the admin panel.</p>
+              <p className="text-sm text-purple-700 mt-2 font-semibold">Are you sure you want to proceed?</p>
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setShowAdminConfirm(false)}>Cancel</Button>
+              <Button
+                className="flex-1 rounded-xl bg-purple-700 hover:bg-purple-800 text-white gap-2"
+                onClick={() => { setShowAdminConfirm(false); setPendingAdminSubmit(true); doSubmit(); }}
+              >
+                <Shield className="w-4 h-4" /> Yes, Create Admin
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -443,8 +518,14 @@ function CreateUserDialog({ open, onClose }: { open: boolean; onClose: () => voi
                 <SelectItem value="customer">Customer</SelectItem>
                 <SelectItem value="rider">Rider</SelectItem>
                 <SelectItem value="vendor">Vendor</SelectItem>
+                <SelectItem value="admin">Admin (Elevated Access)</SelectItem>
               </SelectContent>
             </Select>
+            {role === "admin" && (
+              <p className="text-xs text-purple-700 font-semibold flex items-center gap-1 mt-1">
+                <Shield className="w-3.5 h-3.5" /> Admin users have full panel access — you will be asked to confirm
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -597,7 +678,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
 
   /* ── Sessions ── */
   const [showSessions, setShowSessions] = useState(false);
-  const { data: sessionsData, isLoading: sessionsLoading } = useAdminUserSessions(showSessions ? user.id : null);
+  const { data: sessionsData, isLoading: sessionsLoading, refetch: refetchSessions } = useAdminUserSessions(showSessions ? user.id : null);
   const revokeSession = useRevokeUserSession();
   const revokeAll = useRevokeAllUserSessions();
 
@@ -950,7 +1031,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
                         onClick={() => setShowMpinResetConfirm(true)}
                         disabled={resetWalletPinMutation.isPending}
                       >
-                        {resetWalletPinMutation.isPending ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Resetting...</> : "Reset MPIN"}
+                        {resetWalletPinMutation.isPending ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Resetting...</> : isLocked ? "Unlock/Reset MPIN" : "Reset MPIN"}
                       </Button>
                     )}
                   </div>
@@ -1013,7 +1094,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
                       className="text-red-500 hover:text-red-600 hover:bg-red-50 text-xs px-2 h-7 shrink-0"
                       disabled={revokeSession.isPending}
                       onClick={() => revokeSession.mutate({ userId: user.id, sessionId: s.id }, {
-                        onSuccess: () => toast({ title: "Session revoked" }),
+                        onSuccess: () => { toast({ title: "Session revoked" }); refetchSessions(); },
                         onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
                       })}
                     >
@@ -1028,7 +1109,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
                     className="w-full text-xs text-red-600 border-red-200 hover:bg-red-50 rounded-lg"
                     disabled={revokeAll.isPending}
                     onClick={() => revokeAll.mutate(user.id, {
-                      onSuccess: () => toast({ title: "All sessions revoked", description: "User will be logged out on all devices." }),
+                      onSuccess: () => { toast({ title: "All sessions revoked", description: "User will be logged out on all devices." }); refetchSessions(); },
                       onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
                     })}
                   >
@@ -1125,11 +1206,22 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 
 function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
   const correctionMutation = useRequestUserCorrection();
+  const qc = useQueryClient();
   const { toast } = useToast();
   const [corrField, setCorrField] = useState("");
   const [corrNote, setCorrNote]   = useState("");
   const [showCorrForm, setShowCorrForm] = useState(false);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
+
+  const kycApproveMutation = useMutation({
+    mutationFn: () => fetcher(`/users/${user.id}/kyc-approve`, { method: "PATCH", body: "{}" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({ title: "KYC Approved", description: "User's KYC status has been set to verified." });
+      onClose();
+    },
+    onError: (e: any) => toast({ title: "KYC approval failed", description: e.message, variant: "destructive" }),
+  });
 
   const parsed = parseUserDocuments(user);
   const docs = parsed.files;
@@ -1241,6 +1333,28 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
           )}
         </div>
 
+        {user.kycStatus === "verified" ? (
+          <div className="mt-4 flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-emerald-800">KYC Already Verified</p>
+              <p className="text-xs text-emerald-600">This user's KYC has already been approved.</p>
+            </div>
+          </div>
+        ) : (
+          <Button
+            className="mt-4 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+            onClick={() => kycApproveMutation.mutate()}
+            disabled={!allChecked || kycApproveMutation.isPending}
+          >
+            {kycApproveMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Approving...</>
+            ) : (
+              <><CheckCircle2 className="w-4 h-4" /> {allChecked ? "Approve KYC" : "Complete checklist to approve"}</>
+            )}
+          </Button>
+        )}
+
         {!showCorrForm ? (
           <button onClick={() => setShowCorrForm(true)} className="mt-4 text-xs text-amber-600 flex items-center gap-1 hover:underline font-semibold">
             <AlertCircle className="w-3.5 h-3.5" /> Request document correction
@@ -1271,11 +1385,58 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
 }
 
 function AddressBookModal({ user, onClose }: { user: any; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const { data, isLoading } = useQuery({
     queryKey: ["admin-user-addresses", user.id],
     queryFn: () => fetcher(`/users/${user.id}/addresses`),
   });
   const addresses = data?.addresses || [];
+
+  const [editingId, setEditingId]   = useState<string | null>(null);
+  const [editLabel, setEditLabel]   = useState("");
+  const [editAddr,  setEditAddr]    = useState("");
+  const [editCity,  setEditCity]    = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newLabel, setNewLabel]     = useState("");
+  const [newAddr,  setNewAddr]      = useState("");
+  const [newCity,  setNewCity]      = useState("");
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["admin-user-addresses", user.id] });
+
+  const updateMut = useMutation({
+    mutationFn: ({ addressId, label, address, city }: { addressId: string; label: string; address: string; city: string }) =>
+      fetcher(`/users/${user.id}/addresses/${addressId}`, { method: "PATCH", body: JSON.stringify({ label, address, city }) }),
+    onSuccess: () => { invalidate(); setEditingId(null); toast({ title: "Address updated" }); },
+    onError: (e: any) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (addressId: string) =>
+      fetcher(`/users/${user.id}/addresses/${addressId}`, { method: "DELETE" }),
+    onSuccess: () => { invalidate(); setDeleteConfirmId(null); toast({ title: "Address deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
+  });
+
+  const createMut = useMutation({
+    mutationFn: ({ label, address, city }: { label: string; address: string; city: string }) =>
+      fetcher(`/users/${user.id}/addresses`, { method: "POST", body: JSON.stringify({ label, address, city }) }),
+    onSuccess: () => {
+      invalidate();
+      setShowAddForm(false);
+      setNewLabel(""); setNewAddr(""); setNewCity("");
+      toast({ title: "Address added" });
+    },
+    onError: (e: any) => toast({ title: "Failed to add", description: e.message, variant: "destructive" }),
+  });
+
+  const startEdit = (addr: any) => {
+    setEditingId(addr.id);
+    setEditLabel(addr.label || "");
+    setEditAddr(addr.address || "");
+    setEditCity(addr.city || "");
+  };
 
   return (
     <MobileDrawer
@@ -1286,8 +1447,8 @@ function AddressBookModal({ user, onClose }: { user: any; onClose: () => void })
     >
       {isLoading ? (
         <div className="flex items-center justify-center py-10"><Loader2 className="w-6 h-6 animate-spin" /></div>
-      ) : addresses.length === 0 ? (
-        <div className="text-center py-10 text-muted-foreground">
+      ) : addresses.length === 0 && !showAddForm ? (
+        <div className="text-center py-8 text-muted-foreground">
           <MapPin className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm">No saved addresses</p>
         </div>
@@ -1295,17 +1456,88 @@ function AddressBookModal({ user, onClose }: { user: any; onClose: () => void })
         <div className="space-y-3 mt-2">
           {addresses.map((addr: any) => (
             <div key={addr.id} className={`rounded-xl border p-3 ${addr.isDefault ? "border-teal-300 bg-teal-50" : "border-border bg-muted/20"}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-bold text-foreground">{addr.label}</span>
-                {addr.isDefault && (
-                  <Badge variant="outline" className="text-[10px] text-teal-600 border-teal-200 bg-teal-50">DEFAULT</Badge>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">{addr.address}</p>
-              <p className="text-xs text-muted-foreground mt-1">{addr.city}</p>
+              {editingId === addr.id ? (
+                <div className="space-y-2">
+                  <Input value={editLabel} onChange={e => setEditLabel(e.target.value)} placeholder="Label (e.g. Home)" className="h-9 rounded-lg text-sm" />
+                  <Input value={editAddr} onChange={e => setEditAddr(e.target.value)} placeholder="Full address" className="h-9 rounded-lg text-sm" />
+                  <Input value={editCity} onChange={e => setEditCity(e.target.value)} placeholder="City (optional)" className="h-9 rounded-lg text-sm" />
+                  <div className="flex gap-2 mt-1">
+                    <Button size="sm" variant="outline" className="flex-1 rounded-lg text-xs" onClick={() => setEditingId(null)}>Cancel</Button>
+                    <Button
+                      size="sm"
+                      className="flex-1 rounded-lg text-xs bg-teal-600 hover:bg-teal-700 text-white"
+                      disabled={updateMut.isPending}
+                      onClick={() => updateMut.mutate({ addressId: addr.id, label: editLabel, address: editAddr, city: editCity })}
+                    >
+                      {updateMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                    </Button>
+                  </div>
+                </div>
+              ) : deleteConfirmId === addr.id ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-red-700 font-semibold">Delete "{addr.label}"?</p>
+                  <p className="text-xs text-muted-foreground">This cannot be undone.</p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="flex-1 rounded-lg text-xs" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+                    <Button size="sm" className="flex-1 rounded-lg text-xs bg-red-600 hover:bg-red-700 text-white" disabled={deleteMut.isPending}
+                      onClick={() => deleteMut.mutate(addr.id)}
+                    >
+                      {deleteMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Delete"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-foreground">{addr.label}</span>
+                      {addr.isDefault && (
+                        <Badge variant="outline" className="text-[10px] text-teal-600 border-teal-200 bg-teal-50">DEFAULT</Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-blue-600 hover:bg-blue-50" onClick={() => startEdit(addr)}>Edit</Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-red-500 hover:bg-red-50" onClick={() => setDeleteConfirmId(addr.id)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{addr.address}</p>
+                  {addr.city && <p className="text-xs text-muted-foreground mt-0.5">{addr.city}</p>}
+                </>
+              )}
             </div>
           ))}
         </div>
+      )}
+
+      {showAddForm ? (
+        <div className="mt-3 space-y-2 p-3 bg-teal-50 border border-teal-200 rounded-xl">
+          <p className="text-xs font-bold text-teal-800">Add New Address</p>
+          <Input value={newLabel} onChange={e => setNewLabel(e.target.value)} placeholder="Label (e.g. Home, Work)" className="h-9 rounded-lg text-sm" />
+          <Input value={newAddr} onChange={e => setNewAddr(e.target.value)} placeholder="Full address" className="h-9 rounded-lg text-sm" />
+          <Input value={newCity} onChange={e => setNewCity(e.target.value)} placeholder="City (optional)" className="h-9 rounded-lg text-sm" />
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="flex-1 rounded-lg text-xs" onClick={() => { setShowAddForm(false); setNewLabel(""); setNewAddr(""); setNewCity(""); }}>Cancel</Button>
+            <Button
+              size="sm"
+              className="flex-1 rounded-lg text-xs bg-teal-600 hover:bg-teal-700 text-white"
+              disabled={createMut.isPending || !newLabel.trim() || !newAddr.trim()}
+              onClick={() => createMut.mutate({ label: newLabel, address: newAddr, city: newCity })}
+            >
+              {createMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add Address"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-3 w-full rounded-xl border-teal-300 text-teal-700 hover:bg-teal-50 gap-2"
+          onClick={() => setShowAddForm(true)}
+        >
+          <MapPin className="w-4 h-4" /> Add Address
+        </Button>
       )}
     </MobileDrawer>
   );
@@ -1332,6 +1564,15 @@ export default function Users() {
     mutationFn: (userId: string) => fetcher(`/admin/users/${userId}/waive-debt`, { method: "PATCH" }),
     onSuccess: (data: any, userId: string) => {
       toast({ title: "Debt Waived", description: `${formatCurrency(Number(data.waived?.toFixed(0) || 0))} cancellation debt cleared.` });
+      qc.setQueryData(["admin-users"], (old: any) => {
+        if (!old?.users) return old;
+        return {
+          ...old,
+          users: old.users.map((u: any) =>
+            u.id === userId ? { ...u, cancellationDebt: 0 } : u
+          ),
+        };
+      });
       qc.invalidateQueries({ queryKey: ["admin-users"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -1352,6 +1593,7 @@ export default function Users() {
   const [addressUser, setAddressUser]   = useState<any>(null);
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
   const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [waiveConfirmUser, setWaiveConfirmUser] = useState<any>(null);
 
   const pendingUsers = pendingData?.users || [];
 
@@ -1868,12 +2110,12 @@ export default function Users() {
                             {parseFloat(user.cancellationDebt || "0") > 0 && (
                               <Button
                                 variant="outline" size="sm"
-                                onClick={() => waiveDebtMutation.mutate(user.id)}
-                                disabled={waiveDebtMutation.isPending}
+                                onClick={() => setWaiveConfirmUser(user)}
+                                disabled={waiveDebtMutation.isPending && waiveDebtMutation.variables === user.id}
                                 className="h-8 rounded-lg text-xs gap-1.5 border-orange-200 text-orange-700 hover:bg-orange-50 hover:border-orange-300 transition-colors"
                                 title={`Waive Rs. ${parseFloat(user.cancellationDebt).toFixed(0)} debt`}
                               >
-                                <span className="text-xs">⚡</span> Waive Debt
+                                {(waiveDebtMutation.isPending && waiveDebtMutation.variables === user.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">⚡</span>} Waive Debt
                               </Button>
                             )}
                             <Button variant="outline" size="sm" onClick={() => setDeleteUser(user)} className="h-8 w-8 rounded-lg border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 p-0 flex items-center justify-center transition-colors">
@@ -1934,6 +2176,31 @@ export default function Users() {
       {addressUser && <AddressBookModal user={addressUser} onClose={() => setAddressUser(null)} />}
 
       <CreateUserDialog open={createUserOpen} onClose={() => setCreateUserOpen(false)} />
+
+      <Dialog open={!!waiveConfirmUser} onOpenChange={open => { if (!open) setWaiveConfirmUser(null); }}>
+        <DialogContent className="w-[95vw] max-w-sm rounded-2xl p-6">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><span className="text-lg">⚡</span> Waive Cancellation Debt?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground mt-2">
+            This will clear <strong>Rs. {parseFloat(waiveConfirmUser?.cancellationDebt || "0").toFixed(0)}</strong> of cancellation debt for{" "}
+            <strong>{waiveConfirmUser?.name || waiveConfirmUser?.phone}</strong>. This action cannot be undone.
+          </p>
+          <div className="flex gap-3 mt-6">
+            <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setWaiveConfirmUser(null)}>Cancel</Button>
+            <Button
+              className="flex-1 rounded-xl bg-orange-600 hover:bg-orange-700 text-white gap-2"
+              disabled={waiveDebtMutation.isPending}
+              onClick={() => {
+                const u = waiveConfirmUser;
+                setWaiveConfirmUser(null);
+                waiveDebtMutation.mutate(u.id);
+              }}
+            >
+              {waiveDebtMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>⚡</span>}
+              Waive Debt
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PullToRefresh>
   );
 }

@@ -12,7 +12,7 @@ import {
   vendorProfilesTable,
   riderProfilesTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, type SQL } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
@@ -141,8 +141,28 @@ router.get("/users/search-riders", async (req, res) => {
 router.get("/users", async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
   const conditionTier = (req.query?.conditionTier as string) ?? "";
+  const search = ((req.query?.search as string) ?? "").trim();
+  const role = ((req.query?.role as string) ?? "").trim().toLowerCase();
+  const status = ((req.query?.status as string) ?? "").trim().toLowerCase();
 
-  const baseQuery = db
+  const conditions: SQL[] = [];
+
+  if (filter === "2fa_enabled") {
+    conditions.push(eq(usersTable.totpEnabled, true));
+  }
+  if (search) {
+    conditions.push(or(ilike(usersTable.name, `%${search}%`), ilike(usersTable.email, `%${search}%`))!);
+  }
+  if (role) {
+    conditions.push(ilike(usersTable.roles, `%${role}%`));
+  }
+  if (status === "active") {
+    conditions.push(and(eq(usersTable.isActive, true), eq(usersTable.isBanned, false))!);
+  } else if (status === "blocked") {
+    conditions.push(or(eq(usersTable.isActive, false), eq(usersTable.isBanned, true))!);
+  }
+
+  const rows = await db
     .select({
       user: usersTable,
       vendorProfile: vendorProfilesTable,
@@ -150,13 +170,9 @@ router.get("/users", async (req, res) => {
     })
     .from(usersTable)
     .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
-    .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId));
-
-  const rows = await (
-    filter === "2fa_enabled"
-      ? baseQuery.where(eq(usersTable.totpEnabled, true))
-      : baseQuery
-  ).orderBy(desc(usersTable.createdAt));
+    .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(usersTable.createdAt));
 
   const condCounts = await db.select({
     userId: accountConditionsTable.userId,

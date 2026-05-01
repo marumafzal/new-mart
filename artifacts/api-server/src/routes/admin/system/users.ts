@@ -298,7 +298,7 @@ router.get("/users/pending", async (_req, res) => {
 /* ── Approve User ── */
 router.post("/users/:id/approve", async (req, res) => {
   const adminReq = req as AdminRequest;
-  const { note, skipDocCheck } = req.body;
+  const { note, skipDocCheck } = req.body ?? {};
   const userId = req.params["id"]!;
   
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);

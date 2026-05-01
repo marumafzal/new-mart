@@ -2578,6 +2578,134 @@ router.get("/export/rides", adminAuth, async (req, res) => {
   }
 });
 
+/* ── GET /admin/revenue-analytics — monthly breakdown, category totals, top vendors ── */
+router.get("/revenue-analytics", adminAuth, async (_req, res) => {
+  try {
+    const now = new Date();
+    // Inclusive 12-month window: from the 1st of (current month - 11) through end of current month.
+    // This yields exactly 12 calendar months including the current one.
+    const windowStart = new Date(now.getFullYear(), now.getMonth() - 11, 1, 0, 0, 0, 0);
+
+    // Pre-build the 12 month keys so we can zero-fill months with no activity.
+    const monthKeys: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(windowStart.getFullYear(), windowStart.getMonth() + i, 1);
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      monthKeys.push(`${d.getFullYear()}-${mm}`);
+    }
+
+    const [
+      monthlyOrders,
+      monthlyRides,
+      monthlyPharmacy,
+      [orderTotal],
+      [rideTotal],
+      [pharmTotal],
+      topVendors,
+    ] = await Promise.all([
+      db.select({
+        month: sql<string>`to_char(date_trunc('month', ${ordersTable.createdAt}), 'YYYY-MM')`,
+        total: sql<string>`coalesce(sum(${ordersTable.total}), 0)`,
+      })
+        .from(ordersTable)
+        .where(and(eq(ordersTable.status, "delivered"), gte(ordersTable.createdAt, windowStart)))
+        .groupBy(sql`date_trunc('month', ${ordersTable.createdAt})`)
+        .orderBy(sql`date_trunc('month', ${ordersTable.createdAt})`),
+
+      db.select({
+        month: sql<string>`to_char(date_trunc('month', ${ridesTable.createdAt}), 'YYYY-MM')`,
+        total: sql<string>`coalesce(sum(${ridesTable.fare}), 0)`,
+      })
+        .from(ridesTable)
+        .where(and(eq(ridesTable.status, "completed"), gte(ridesTable.createdAt, windowStart)))
+        .groupBy(sql`date_trunc('month', ${ridesTable.createdAt})`)
+        .orderBy(sql`date_trunc('month', ${ridesTable.createdAt})`),
+
+      db.select({
+        month: sql<string>`to_char(date_trunc('month', ${pharmacyOrdersTable.createdAt}), 'YYYY-MM')`,
+        total: sql<string>`coalesce(sum(${pharmacyOrdersTable.total}), 0)`,
+      })
+        .from(pharmacyOrdersTable)
+        .where(and(eq(pharmacyOrdersTable.status, "delivered"), gte(pharmacyOrdersTable.createdAt, windowStart)))
+        .groupBy(sql`date_trunc('month', ${pharmacyOrdersTable.createdAt})`)
+        .orderBy(sql`date_trunc('month', ${pharmacyOrdersTable.createdAt})`),
+
+      db.select({ total: sum(ordersTable.total) }).from(ordersTable).where(eq(ordersTable.status, "delivered")),
+      db.select({ total: sum(ridesTable.fare) }).from(ridesTable).where(eq(ridesTable.status, "completed")),
+      db.select({ total: sum(pharmacyOrdersTable.total) }).from(pharmacyOrdersTable).where(eq(pharmacyOrdersTable.status, "delivered")),
+
+      db.select({
+        id: usersTable.id,
+        name: vendorProfilesTable.storeName,
+        phone: usersTable.phone,
+        orderCount: sql<number>`count(${ordersTable.id})`,
+        totalRevenue: sql<string>`coalesce(sum(${ordersTable.total}), 0)`,
+      })
+        .from(usersTable)
+        .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
+        .leftJoin(ordersTable, and(eq(ordersTable.vendorId, usersTable.id), eq(ordersTable.status, "delivered")))
+        .where(ilike(usersTable.roles, "%vendor%"))
+        .groupBy(usersTable.id, vendorProfilesTable.storeName)
+        .orderBy(sql`coalesce(sum(${ordersTable.total}), 0) desc`)
+        .limit(10),
+    ]);
+
+    const monthMap: Record<string, { month: string; orders: number; rides: number; pharmacy: number; total: number }> = {};
+    // Zero-fill all 12 months upfront so months with no activity still appear in the response.
+    for (const key of monthKeys) {
+      monthMap[key] = { month: key, orders: 0, rides: 0, pharmacy: 0, total: 0 };
+    }
+    const ensureMonth = (m: string) => {
+      if (!monthMap[m]) monthMap[m] = { month: m, orders: 0, rides: 0, pharmacy: 0, total: 0 };
+    };
+
+    for (const row of monthlyOrders) {
+      ensureMonth(row.month);
+      const v = parseFloat(row.total);
+      monthMap[row.month]!.orders = v;
+      monthMap[row.month]!.total += v;
+    }
+    for (const row of monthlyRides) {
+      ensureMonth(row.month);
+      const v = parseFloat(row.total);
+      monthMap[row.month]!.rides = v;
+      monthMap[row.month]!.total += v;
+    }
+    for (const row of monthlyPharmacy) {
+      ensureMonth(row.month);
+      const v = parseFloat(row.total);
+      monthMap[row.month]!.pharmacy = v;
+      monthMap[row.month]!.total += v;
+    }
+
+    const monthly = Object.values(monthMap).sort((a, b) => a.month.localeCompare(b.month));
+
+    const catOrders  = parseFloat(orderTotal?.total ?? "0");
+    const catRides   = parseFloat(rideTotal?.total ?? "0");
+    const catPharmacy = parseFloat(pharmTotal?.total ?? "0");
+    const catGrand   = catOrders + catRides + catPharmacy;
+
+    const categoryTotals = {
+      orders:   catOrders,
+      rides:    catRides,
+      pharmacy: catPharmacy,
+      total:    catGrand,
+    };
+
+    sendSuccess(res, {
+      monthly,
+      categoryTotals,
+      topVendors: topVendors.map(v => ({
+        ...v,
+        orderCount: Number(v.orderCount),
+        totalRevenue: parseFloat(String(v.totalRevenue)),
+      })),
+    });
+  } catch (e: unknown) {
+    sendError(res, e instanceof Error ? e.message : "Failed to load revenue analytics", 500);
+  }
+});
+
 router.get("/export/financial", adminAuth, async (req, res) => {
   try {
     const { dateFrom, dateTo } = req.query;

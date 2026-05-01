@@ -121,6 +121,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { nameKey: "navOrders",                                href: "/orders",            icon: ShoppingBag },
       { nameKey: "navTransactions",                          href: "/transactions",      icon: Receipt },
+      { nameKey: "navRevenueAnalytics" as TranslationKey,   href: "/revenue-analytics", icon: BarChart2 },
       { nameKey: "navWithdrawals",                            href: "/withdrawals",        icon: Wallet },
       { nameKey: "navDepositRequests",                       href: "/deposit-requests",  icon: CreditCard },
       { nameKey: "navWalletTransfers" as TranslationKey,    href: "/wallet-transfers",  icon: Wallet },
@@ -214,6 +215,7 @@ export const NAV_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "/condition-rules":      "Default rules per condition type",
   "/orders":                "All marketplace orders and refunds",
   "/transactions":         "Wallet, payouts and ledger entries",
+  "/revenue-analytics":    "Monthly revenue breakdown, category totals, and top vendors",
   "/withdrawals":           "Vendor and rider withdrawal requests",
   "/deposit-requests":     "Customer top-ups awaiting approval",
   "/wallet-transfers":     "Internal wallet movements",

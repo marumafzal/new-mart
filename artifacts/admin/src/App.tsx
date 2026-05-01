@@ -41,6 +41,7 @@ import Parcel from "@/pages/parcel";
 import Products from "@/pages/products";
 import Broadcast from "@/pages/broadcast";
 import Transactions from "@/pages/transactions";
+import RevenueAnalytics from "@/pages/revenue-analytics";
 import Settings from "@/pages/settings";
 import FlashDeals from "@/pages/flash-deals";
 import Categories from "@/pages/categories";
@@ -267,6 +268,7 @@ function Router() {
       <Route path="/products"><ProtectedRoute component={Products} /></Route>
       <Route path="/broadcast"><ProtectedRoute component={Broadcast} /></Route>
       <Route path="/transactions"><ProtectedRoute component={Transactions} /></Route>
+      <Route path="/revenue-analytics"><ProtectedRoute component={RevenueAnalytics} /></Route>
       {/*
         Settings hub deep links: `/settings/:section` and
         `/settings/:section/:subsection`. The hub component reads route

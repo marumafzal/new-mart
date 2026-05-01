@@ -1003,6 +1003,9 @@ export const useRevenueTrend = () =>
 export const useLeaderboard = () =>
   useQuery({ queryKey: ["admin-leaderboard"], queryFn: () => fetcher("/leaderboard"), refetchInterval: 60_000 });
 
+export const useRevenueAnalytics = () =>
+  useQuery({ queryKey: ["admin-revenue-analytics"], queryFn: () => fetcher("/revenue-analytics"), refetchInterval: 5 * 60_000 });
+
 export const useAdminCancelRide = () => {
   const qc = useQueryClient();
   const { toast } = useToast();

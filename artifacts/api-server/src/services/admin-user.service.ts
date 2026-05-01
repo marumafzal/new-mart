@@ -41,6 +41,7 @@ export interface CreateUserInput {
   city?: string;
   area?: string;
   tempPassword?: string;
+  profilePictureUrl?: string;
 }
 
 export interface UpdateUserInput {
@@ -145,8 +146,10 @@ export class UserService {
       name: trimName,
       username: trimUsername,
       roles: userRole,
+      role: userRole,
       city: input.city || null,
       area: input.area || null,
+      profilePictureUrl: input.profilePictureUrl || null,
       passwordHash: passwordHash || null,
       createdAt: now,
       updatedAt: now,
@@ -293,13 +296,13 @@ export class UserService {
       throw new Error("User not found");
     }
 
-    // Soft delete by setting status
-    await db.update(usersTable).set({ isActive: false, isBanned: true, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+    // Soft delete by setting isDeleted and deletedAt
+    await db.update(usersTable).set({ isDeleted: true, deletedAt: new Date(), updatedAt: new Date() }).where(eq(usersTable.id, userId));
 
     // Revoke all sessions
     await db.delete(userSessionsTable).where(eq(userSessionsTable.userId, userId));
 
-    logger.info({ userId }, "[UserService] User deleted");
+    logger.info({ userId }, "[UserService] User soft deleted");
 
     return { success: true };
   }

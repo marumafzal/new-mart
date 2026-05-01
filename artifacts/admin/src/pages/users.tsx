@@ -13,7 +13,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, type CreateUserInput } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useBulkDeleteUsers, useBulkRestoreUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, type CreateUserInput } from "@/hooks/use-admin";
 import { WalletAdjustModal } from "@/components/WalletAdjustModal";
 import { fetcher } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuthContext";
@@ -1630,6 +1630,8 @@ export default function Users() {
   const approveMutation  = useApproveUser();
   const rejectMutation   = useRejectUser();
   const bulkBanMutation  = useBulkBanUsers();
+  const bulkDeleteMutation = useBulkDeleteUsers();
+  const bulkRestoreMutation = useBulkRestoreUsers();
   const { toast } = useToast();
   const qc = useQueryClient();
   const waiveDebtMutation = useMutation({
@@ -1746,6 +1748,52 @@ export default function Users() {
       onSuccess: (d: any) => {
         toast({ title: `${action === "ban" ? "Banned" : "Unbanned"} ${d.affected} user(s)` });
         setSelectedIds(new Set());
+      },
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleBulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} user(s)? This action cannot be undone.`)) return;
+    bulkDeleteMutation.mutate({ ids }, {
+      onSuccess: (d: any) => {
+        toast({ title: `Deleted ${d.count} user(s)` });
+        setSelectedIds(new Set());
+      },
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleBulkRestore = () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    bulkRestoreMutation.mutate({ ids }, {
+      onSuccess: (d: any) => {
+        toast({ title: `Restored ${d.count} user(s)` });
+        setSelectedIds(new Set());
+      },
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleBanUser = (user: any) => {
+    const action = user.isBanned ? "unban" : "ban";
+    if (!confirm(`${action === "ban" ? "Ban" : "Unban"} user ${user.name || user.phone}?`)) return;
+    bulkBanMutation.mutate({ ids: [user.id], action }, {
+      onSuccess: () => {
+        toast({ title: `User ${action}ned` });
+      },
+      onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleDeleteUser = (user: any) => {
+    if (!confirm(`Delete user ${user.name || user.phone}? This action cannot be undone.`)) return;
+    deleteMutation.mutate(user.id, {
+      onSuccess: () => {
+        toast({ title: "User deleted" });
       },
       onError: e => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
@@ -1971,6 +2019,14 @@ export default function Users() {
                 className="px-3 py-1.5 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-200 disabled:opacity-60 transition-colors">
                 Unban All
               </button>
+              <button onClick={() => handleBulkDelete()} disabled={!canDeleteUsers || bulkDeleteMutation.isPending}
+                className="px-3 py-1.5 bg-gray-100 text-gray-700 border border-gray-200 rounded-lg text-xs font-bold hover:bg-gray-200 disabled:opacity-60 transition-colors">
+                Delete All
+              </button>
+              <button onClick={() => handleBulkRestore()} disabled={!canEditUsers || bulkRestoreMutation.isPending}
+                className="px-3 py-1.5 bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-200 disabled:opacity-60 transition-colors">
+                Restore All
+              </button>
               <button onClick={() => setSelectedIds(new Set())} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Deselect</button>
             </div>
           )}
@@ -2113,7 +2169,20 @@ export default function Users() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${isBanned ? "bg-red-100 text-red-600" : isBlocked ? "bg-amber-100 text-amber-600" : "bg-[#1A56DB]/10 text-[#1A56DB]"}`}>
+                            {user.profilePictureUrl ? (
+                              <img
+                                src={user.profilePictureUrl}
+                                alt={`${user.name || user.phone} profile`}
+                                className={`w-10 h-10 rounded-full object-cover flex-shrink-0 ${isBanned ? "ring-2 ring-red-300" : isBlocked ? "ring-2 ring-amber-300" : "ring-2 ring-[#1A56DB]/20"}`}
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                  const fallback = target.nextElementSibling as HTMLElement;
+                                  if (fallback) fallback.style.display = 'flex';
+                                }}
+                              />
+                            ) : null}
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${user.profilePictureUrl ? 'hidden' : ''} ${isBanned ? "bg-red-100 text-red-600" : isBlocked ? "bg-amber-100 text-amber-600" : "bg-[#1A56DB]/10 text-[#1A56DB]"}`}>
                               {(user.name || user.phone || "U")[0].toUpperCase()}
                             </div>
                             <div className="min-w-0">
@@ -2186,6 +2255,12 @@ export default function Users() {
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => setActivityUser(user)} className="h-8 w-8 rounded-lg border-[#1A56DB]/20 text-[#1A56DB] hover:bg-[#1A56DB]/5 hover:border-[#1A56DB]/30 p-0 flex items-center justify-center transition-colors" title="Activity">
                               <Activity className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleBanUser(user)} disabled={!canBanUsers} title={!canBanUsers ? "Permission required" : user.isBanned ? "Unban User" : "Ban User"} className="h-8 w-8 rounded-lg border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 p-0 flex items-center justify-center transition-colors disabled:opacity-50">
+                              <Ban className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleDeleteUser(user)} disabled={!canDeleteUsers} title={!canDeleteUsers ? "Permission required" : "Delete User"} className="h-8 w-8 rounded-lg border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 p-0 flex items-center justify-center transition-colors disabled:opacity-50">
+                              <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => setWalletUser(user)} disabled={!canTopupWallet} title={!canTopupWallet ? "Permission required" : "Wallet Topup"} className="h-8 rounded-lg text-xs gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-colors disabled:opacity-50">
                               <Wallet className="w-3.5 h-3.5" /> Top Up

@@ -998,7 +998,25 @@ export const useBulkBanUsers = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ ids, action, reason }: { ids: string[]; action: "ban" | "unban"; reason?: string }) =>
-      fetcher("/users/bulk-ban", { method: "PATCH", body: JSON.stringify({ ids, action, reason }) }),
+      fetcher("/users/bulk-ban", { method: "POST", body: JSON.stringify({ userIds: ids, reason }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+  });
+};
+
+export const useBulkDeleteUsers = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids }: { ids: string[] }) =>
+      fetcher("/users/bulk-delete", { method: "POST", body: JSON.stringify({ userIds: ids }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+  });
+};
+
+export const useBulkRestoreUsers = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids }: { ids: string[] }) =>
+      fetcher("/users/bulk-restore", { method: "POST", body: JSON.stringify({ userIds: ids }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
   });
 };

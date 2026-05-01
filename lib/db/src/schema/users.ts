@@ -1,7 +1,9 @@
-import { boolean, check, decimal, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, check, decimal, index, integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+export const userRoleEnum = pgEnum("user_role", ["customer", "rider", "vendor", "admin"]);
 
 export const usersTable = pgTable("users", {
   id:              text("id").primaryKey(),
@@ -9,7 +11,9 @@ export const usersTable = pgTable("users", {
   name:            text("name"),
   email:           text("email").unique(),
   roles:           text("roles").notNull().default("customer"),
+  role:            userRoleEnum("role").notNull().default("customer"),
   avatar:          text("avatar"),
+  profilePictureUrl: text("profile_picture_url"),
   walletBalance:   decimal("wallet_balance", { precision: 10, scale: 2 }).notNull().default("0"),
   /* ── OTP fields (phone verification) ── */
   otpCode:         text("otp_code"),
@@ -31,6 +35,8 @@ export const usersTable = pgTable("users", {
   /* ── Account status ── */
   isActive:        boolean("is_active").notNull().default(true),
   isBanned:        boolean("is_banned").notNull().default(false),
+  isDeleted:       boolean("is_deleted").notNull().default(false),
+  deletedAt:       timestamp("deleted_at"),
   banReason:       text("ban_reason"),
   blockedServices: text("blocked_services").notNull().default(""),
   securityNote:    text("security_note"),
@@ -115,6 +121,7 @@ export const usersTable = pgTable("users", {
   check("users_wallet_non_negative", sql`${t.walletBalance} >= 0`),
   /* Performance indexes for fleet/admin queries that filter by roles and/or online status */
   index("users_roles_idx").on(t.roles),
+  index("users_role_idx").on(t.role),
   index("users_is_online_idx").on(t.isOnline),
   index("users_roles_is_online_idx").on(t.roles, t.isOnline),
   index("users_ajk_id_idx").on(t.ajkId),

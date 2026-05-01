@@ -38,7 +38,7 @@ const router = Router();
 
 router.post("/users", requirePermission("users.edit"), async (req, res) => {
   const adminReq = req as AdminRequest;
-  let { phone, name, role, city, area, email, username, tempPassword } = req.body;
+  let { phone, name, role, city, area, email, username, tempPassword, profilePictureUrl } = req.body;
   phone = String(phone ?? "").trim();
   name = String(name ?? "").trim();
   email = String(email ?? "").trim();
@@ -46,6 +46,7 @@ router.post("/users", requirePermission("users.edit"), async (req, res) => {
   tempPassword = String(tempPassword ?? "").trim();
   city = String(city ?? "").trim();
   area = String(area ?? "").trim();
+  profilePictureUrl = String(profilePictureUrl ?? "").trim() || undefined;
 
   const allowedRoles = ["customer", "rider", "vendor", "admin"];
   if (!allowedRoles.includes(role)) role = "customer";
@@ -101,6 +102,7 @@ router.post("/users", requirePermission("users.edit"), async (req, res) => {
         city,
         area,
         tempPassword,
+        profilePictureUrl,
       })
     );
 
@@ -192,12 +194,12 @@ router.get("/users", requirePermission("users.view"), async (req, res) => {
   type UserRow = typeof usersTable.$inferSelect;
 
   let query: any = filter === "2fa_enabled"
-    ? db.select().from(usersTable).where(eq(usersTable.totpEnabled, true))
-    : db.select().from(usersTable);
+    ? db.select().from(usersTable).where(and(eq(usersTable.totpEnabled, true), eq(usersTable.isDeleted, false)))
+    : db.select().from(usersTable).where(eq(usersTable.isDeleted, false));
 
   let countQuery: any = filter === "2fa_enabled"
-    ? db.select({ total: count() }).from(usersTable).where(eq(usersTable.totpEnabled, true))
-    : db.select({ total: count() }).from(usersTable);
+    ? db.select({ total: count() }).from(usersTable).where(and(eq(usersTable.totpEnabled, true), eq(usersTable.isDeleted, false)))
+    : db.select({ total: count() }).from(usersTable).where(eq(usersTable.isDeleted, false));
 
   const addFilter = (clause: any) => {
     query = query.where(clause);
@@ -528,6 +530,140 @@ router.delete("/users/:id", requirePermission("users.delete"), async (req, res) 
     );
 
     sendSuccess(res, { success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(res, message, 400);
+  }
+});
+
+/* ── Toggle Ban Status ── */
+router.put("/users/:id/ban", requirePermission("users.edit"), async (req, res) => {
+  const adminReq = req as AdminRequest;
+  const userId = req.params["id"]!;
+
+  const [user] = await db.select({ isBanned: usersTable.isBanned }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { sendNotFound(res, "User not found"); return; }
+
+  const newBannedStatus = !user.isBanned;
+
+  try {
+    await AuditService.executeWithAudit(
+      {
+        adminId: adminReq.adminId,
+        adminName: adminReq.adminName,
+        adminIp: adminReq.adminIp || getClientIp(req),
+        action: newBannedStatus ? "user_ban" : "user_unban",
+        resourceType: "user",
+        resource: userId,
+      },
+      async () => {
+        await db.update(usersTable).set({ isBanned: newBannedStatus, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+        if (newBannedStatus) {
+          // Revoke sessions on ban
+          await db.delete(userSessionsTable).where(eq(userSessionsTable.userId, userId));
+        }
+      }
+    );
+
+    sendSuccess(res, { success: true, isBanned: newBannedStatus });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(res, message, 400);
+  }
+});
+
+/* ── Bulk Delete Users ── */
+router.post("/users/bulk-delete", requirePermission("users.delete"), async (req, res) => {
+  const adminReq = req as AdminRequest;
+  const { userIds } = req.body as { userIds: string[] };
+
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    sendValidationError(res, "userIds must be a non-empty array");
+    return;
+  }
+
+  try {
+    await AuditService.executeWithAudit(
+      {
+        adminId: adminReq.adminId,
+        adminName: adminReq.adminName,
+        adminIp: adminReq.adminIp || getClientIp(req),
+        action: "user_bulk_delete",
+        resourceType: "user",
+        resource: userIds.join(","),
+      },
+      async () => {
+        await db.update(usersTable).set({ isDeleted: true, deletedAt: new Date(), updatedAt: new Date() }).where(inArray(usersTable.id, userIds));
+        // Revoke sessions for all
+        await db.delete(userSessionsTable).where(inArray(userSessionsTable.userId, userIds));
+      }
+    );
+
+    sendSuccess(res, { success: true, count: userIds.length });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(res, message, 400);
+  }
+});
+
+/* ── Bulk Restore Users ── */
+router.post("/users/bulk-restore", requirePermission("users.edit"), async (req, res) => {
+  const adminReq = req as AdminRequest;
+  const { userIds } = req.body as { userIds: string[] };
+
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    sendValidationError(res, "userIds must be a non-empty array");
+    return;
+  }
+
+  try {
+    await AuditService.executeWithAudit(
+      {
+        adminId: adminReq.adminId,
+        adminName: adminReq.adminName,
+        adminIp: adminReq.adminIp || getClientIp(req),
+        action: "user_bulk_restore",
+        resourceType: "user",
+        resource: userIds.join(","),
+      },
+      () => db.update(usersTable).set({ isDeleted: false, deletedAt: null, updatedAt: new Date() }).where(inArray(usersTable.id, userIds))
+    );
+
+    sendSuccess(res, { success: true, count: userIds.length });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(res, message, 400);
+  }
+});
+
+/* ── Bulk Ban Users ── */
+router.post("/users/bulk-ban", requirePermission("users.edit"), async (req, res) => {
+  const adminReq = req as AdminRequest;
+  const { userIds } = req.body as { userIds: string[] };
+
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    sendValidationError(res, "userIds must be a non-empty array");
+    return;
+  }
+
+  try {
+    await AuditService.executeWithAudit(
+      {
+        adminId: adminReq.adminId,
+        adminName: adminReq.adminName,
+        adminIp: adminReq.adminIp || getClientIp(req),
+        action: "user_bulk_ban",
+        resourceType: "user",
+        resource: userIds.join(","),
+      },
+      async () => {
+        await db.update(usersTable).set({ isBanned: true, updatedAt: new Date() }).where(inArray(usersTable.id, userIds));
+        // Revoke sessions for all
+        await db.delete(userSessionsTable).where(inArray(userSessionsTable.userId, userIds));
+      }
+    );
+
+    sendSuccess(res, { success: true, count: userIds.length });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(res, message, 400);

@@ -3,6 +3,7 @@ import { getIO } from "../../../lib/socketio.js";
 import { db } from "@workspace/db";
 import {
   usersTable,
+  riderProfilesTable,
   walletTransactionsTable,
   notificationsTable,
   ordersTable, ridesTable, pharmacyOrdersTable, parcelBookingsTable,
@@ -10,7 +11,7 @@ import {
   userSessionsTable,
   refreshTokensTable,
 } from "@workspace/db/schema";
-import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
+import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, inArray } from "drizzle-orm";
 import {
   stripUser, generateId, getUserLanguage, t,
   getPlatformSettings, adminAuth, getAdminSecret,
@@ -35,9 +36,50 @@ import { requirePermission } from "../../../middlewares/require-permission.js";
 
 const router = Router();
 
-router.post("/users", async (req, res) => {
+router.post("/users", requirePermission("users.edit"), async (req, res) => {
   const adminReq = req as AdminRequest;
-  const { phone, name, role, city, area, email, username, tempPassword } = req.body;
+  let { phone, name, role, city, area, email, username, tempPassword } = req.body;
+  phone = String(phone ?? "").trim();
+  name = String(name ?? "").trim();
+  email = String(email ?? "").trim();
+  username = String(username ?? "").trim();
+  tempPassword = String(tempPassword ?? "").trim();
+  city = String(city ?? "").trim();
+  area = String(area ?? "").trim();
+
+  const allowedRoles = ["customer", "rider", "vendor", "admin"];
+  if (!allowedRoles.includes(role)) role = "customer";
+  if (!phone && !name) {
+    sendValidationError(res, "Either name or phone is required");
+    return;
+  }
+  if (phone) {
+    try {
+      phone = canonicalizePhone(phone);
+    } catch {
+      sendValidationError(res, "Invalid phone format");
+      return;
+    }
+  }
+  if (email && !email.includes("@")) {
+    sendValidationError(res, "Invalid email format");
+    return;
+  }
+  if (username) {
+    const normalizedUsername = username.toLowerCase().replace(/[^a-z0-9_]/g, "");
+    if (normalizedUsername.length < 3) {
+      sendValidationError(res, "Username must be at least 3 characters");
+      return;
+    }
+    username = normalizedUsername;
+  }
+  if (tempPassword) {
+    const strength = validatePasswordStrength(tempPassword);
+    if (!strength.ok) {
+      sendValidationError(res, strength.message);
+      return;
+    }
+  }
 
   try {
     const result = await AuditService.executeWithAudit(
@@ -80,7 +122,7 @@ router.post("/users", async (req, res) => {
 /* GET /admin/users/search?q=...&limit=20
    Lightweight server-side user search used by OTP Control and other admin tools.
    Returns users matching name or phone query (partial, case-insensitive). */
-router.get("/users/search", async (req, res) => {
+router.get("/users/search", requirePermission("users.view"), async (req, res) => {
   const q = ((req.query?.q as string) ?? "").trim();
   const limitN = Math.min(50, Math.max(1, parseInt((req.query?.limit as string) ?? "20", 10)));
 
@@ -108,7 +150,7 @@ router.get("/users/search", async (req, res) => {
    Lightweight server-side rider search used by RideDetailModal for reassignment.
    Returns only active, non-rejected riders matching the search query.
    Pass onlineOnly=true to restrict to riders currently online (matches reassign constraints). */
-router.get("/users/search-riders", async (req, res) => {
+router.get("/users/search-riders", requirePermission("users.view"), async (req, res) => {
   const q = ((req.query?.q as string) ?? "").trim();
   const limitN = Math.min(50, Math.max(1, parseInt((req.query?.limit as string) ?? "20", 10)));
   const onlineOnly = (req.query?.onlineOnly as string) === "true";
@@ -136,27 +178,88 @@ router.get("/users/search-riders", async (req, res) => {
   sendSuccess(res, { riders, total: riders.length });
 });
 
-router.get("/users", async (req, res) => {
+router.get("/users", requirePermission("users.view"), async (req, res) => {
   const filter = (req.query?.filter as string) ?? "";
   const conditionTier = (req.query?.conditionTier as string) ?? "";
-  const users = await (
-    filter === "2fa_enabled"
-      ? db.select().from(usersTable).where(eq(usersTable.totpEnabled, true))
-      : db.select().from(usersTable)
-  ).orderBy(desc(usersTable.createdAt));
+  const search = String(req.query?.search ?? "").trim();
+  const role = String(req.query?.role ?? "").trim();
+  const status = String(req.query?.status ?? "").trim();
+  const createdFrom = String(req.query?.createdFrom ?? "").trim();
+  const createdTo = String(req.query?.createdTo ?? "").trim();
+  const page = Math.max(1, Number(req.query?.page ?? 1));
+  const limit = Math.min(100, Math.max(10, Number(req.query?.limit ?? 25)));
+  const offset = (page - 1) * limit;
+  type UserRow = typeof usersTable.$inferSelect;
 
-  const condCounts = await db.select({
+  let query: any = filter === "2fa_enabled"
+    ? db.select().from(usersTable).where(eq(usersTable.totpEnabled, true))
+    : db.select().from(usersTable);
+
+  let countQuery: any = filter === "2fa_enabled"
+    ? db.select({ total: count() }).from(usersTable).where(eq(usersTable.totpEnabled, true))
+    : db.select({ total: count() }).from(usersTable);
+
+  const addFilter = (clause: any) => {
+    query = query.where(clause);
+    countQuery = countQuery.where(clause);
+  };
+
+  if (search) {
+    const searchTerm = `%${search.replace(/%/g, "\\%")}%`;
+    const searchClause = or(
+      ilike(usersTable.name, searchTerm),
+      ilike(usersTable.email, searchTerm),
+      ilike(usersTable.phone, searchTerm),
+      ilike(usersTable.username, searchTerm),
+    );
+    addFilter(searchClause);
+  }
+
+  if (role && role !== "all") {
+    addFilter(or(
+      eq(usersTable.roles, role),
+      ilike(usersTable.roles, `${role},%`),
+      ilike(usersTable.roles, `%,${role},%`),
+      ilike(usersTable.roles, `%,${role}`),
+    ));
+  }
+
+  if (status === "active") {
+    addFilter(and(eq(usersTable.isActive, true), eq(usersTable.isBanned, false)));
+  } else if (status === "blocked") {
+    addFilter(and(eq(usersTable.isActive, false), eq(usersTable.isBanned, false)));
+  } else if (status === "banned") {
+    addFilter(eq(usersTable.isBanned, true));
+  }
+
+  if (createdFrom) {
+    const fromDate = new Date(createdFrom);
+    if (!Number.isNaN(fromDate.getTime())) addFilter(gte(usersTable.createdAt, fromDate));
+  }
+  if (createdTo) {
+    const toDate = new Date(createdTo);
+    if (!Number.isNaN(toDate.getTime())) {
+      const endDate = new Date(toDate.toISOString().split("T")[0] + "T23:59:59.999Z");
+      addFilter(lte(usersTable.createdAt, endDate));
+    }
+  }
+
+  const pageRows = await query.orderBy(desc(usersTable.createdAt)).limit(limit).offset(offset) as UserRow[];
+  const pageIds = pageRows.map((u: UserRow) => u.id);
+
+  const condCounts = pageIds.length > 0 ? await db.select({
     userId: accountConditionsTable.userId,
     activeCount: count(),
     maxSeverity: sql<string>`MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)`,
     maxSeverityLabel: sql<string>`(ARRAY['warning','warning','restriction_normal','restriction_strict','suspension','ban'])[1 + MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)]`,
   }).from(accountConditionsTable)
-    .where(eq(accountConditionsTable.isActive, true))
-    .groupBy(accountConditionsTable.userId);
+    .where(and(eq(accountConditionsTable.isActive, true), inArray(accountConditionsTable.userId, pageIds)))
+    .groupBy(accountConditionsTable.userId)
+    : [];
 
   const condMap = new Map(condCounts.map(c => [c.userId, { count: Number(c.activeCount), maxSeverity: c.maxSeverityLabel }]));
 
-  let enrichedUsers = users.map((u) => ({
+  let enrichedUsers = pageRows.map((u) => ({
     ...stripUser(u),
     walletBalance: parseFloat(u.walletBalance ?? "0"),
     createdAt: u.createdAt.toISOString(),
@@ -166,32 +269,85 @@ router.get("/users", async (req, res) => {
     isMpinLocked: !!(u.walletPinLockedUntil && u.walletPinLockedUntil.getTime() > Date.now()),
   }));
 
-  if (conditionTier === "has_conditions") {
-    enrichedUsers = enrichedUsers.filter(u => u.conditionCount > 0);
-  } else if (conditionTier === "warnings") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "warning");
-  } else if (conditionTier === "restrictions") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "restriction_normal" || u.maxConditionSeverity === "restriction_strict");
-  } else if (conditionTier === "suspensions") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "suspension");
-  } else if (conditionTier === "bans") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "ban");
-  } else if (conditionTier === "clean") {
-    enrichedUsers = enrichedUsers.filter(u => u.conditionCount === 0);
+  let totalUsers = 0;
+  if (conditionTier === "all") {
+    const [countResult] = await countQuery;
+    totalUsers = Number(countResult?.total ?? 0);
+  } else {
+    const allUsers = await query.orderBy(desc(usersTable.createdAt)) as UserRow[];
+    const allConditions = await db.select({
+      userId: accountConditionsTable.userId,
+      activeCount: count(),
+      maxSeverity: sql<string>`MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)`,
+      maxSeverityLabel: sql<string>`(ARRAY['warning','warning','restriction_normal','restriction_strict','suspension','ban'])[1 + MAX(CASE ${accountConditionsTable.severity}::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END)]`,
+    }).from(accountConditionsTable)
+      .where(and(eq(accountConditionsTable.isActive, true), inArray(accountConditionsTable.userId, allUsers.map(u => u.id))))
+      .groupBy(accountConditionsTable.userId);
+    const allCondMap = new Map(allConditions.map(c => [c.userId, { count: Number(c.activeCount), maxSeverity: c.maxSeverityLabel }]));
+
+    enrichedUsers = allUsers.map((u) => ({
+      ...stripUser(u),
+      walletBalance: parseFloat(u.walletBalance ?? "0"),
+      createdAt: u.createdAt.toISOString(),
+      updatedAt: u.updatedAt.toISOString(),
+      conditionCount: allCondMap.get(u.id)?.count || 0,
+      maxConditionSeverity: allCondMap.get(u.id)?.maxSeverity || null,
+      isMpinLocked: !!(u.walletPinLockedUntil && u.walletPinLockedUntil.getTime() > Date.now()),
+    }));
+
+    if (conditionTier === "has_conditions") {
+      enrichedUsers = enrichedUsers.filter(u => u.conditionCount > 0);
+    } else if (conditionTier === "warnings") {
+      enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "warning");
+    } else if (conditionTier === "restrictions") {
+      enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "restriction_normal" || u.maxConditionSeverity === "restriction_strict");
+    } else if (conditionTier === "suspensions") {
+      enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "suspension");
+    } else if (conditionTier === "bans") {
+      enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "ban");
+    } else if (conditionTier === "clean") {
+      enrichedUsers = enrichedUsers.filter(u => u.conditionCount === 0);
+    }
+    totalUsers = enrichedUsers.length;
+    enrichedUsers = enrichedUsers.slice(offset, offset + limit);
   }
+
+  const activeCount = enrichedUsers.filter(u => u.isActive && !u.isBanned).length;
+  const bannedCount = enrichedUsers.filter(u => u.isBanned).length;
+  const blockedCount = enrichedUsers.filter(u => !u.isActive && !u.isBanned).length;
 
   sendSuccess(res, {
     users: enrichedUsers,
-    total: enrichedUsers.length,
+    total: totalUsers,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(totalUsers / limit)),
+    activeCount,
+    bannedCount,
+    blockedCount,
   });
 });
 
-router.patch("/users/:id", async (req, res) => {
+router.patch("/users/:id", requirePermission("users.edit"), async (req, res) => {
   const { role, isActive, walletBalance } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> & { tokenVersion?: ReturnType<typeof sql> } = {};
-  if (role !== undefined) { updates.roles = role; updates.roles = role; }
-  if (isActive !== undefined) updates.isActive = isActive;
-  if (walletBalance !== undefined) updates.walletBalance = String(walletBalance);
+  if (role !== undefined) {
+    const allowedRoles = ["customer", "rider", "vendor", "admin"];
+    if (!allowedRoles.includes(role)) {
+      sendValidationError(res, "Invalid role value");
+      return;
+    }
+    updates.roles = role;
+  }
+  if (isActive !== undefined) updates.isActive = Boolean(isActive);
+  if (walletBalance !== undefined) {
+    const amount = Number(walletBalance);
+    if (Number.isNaN(amount) || amount < 0) {
+      sendValidationError(res, "walletBalance must be a non-negative number");
+      return;
+    }
+    updates.walletBalance = String(amount);
+  }
 
   if (role === "vendor" || role === "rider") {
     updates.isActive = true;
@@ -213,7 +369,7 @@ router.patch("/users/:id", async (req, res) => {
 });
 
 /* ── Pending Approval Users ── */
-router.get("/users/pending", async (_req, res) => {
+router.get("/users/pending", requirePermission("users.approve"), async (_req, res) => {
   const users = await db.select().from(usersTable)
     .where(eq(usersTable.approvalStatus, "pending"))
     .orderBy(desc(usersTable.createdAt));
@@ -229,18 +385,36 @@ router.get("/users/pending", async (_req, res) => {
 });
 
 /* ── Approve User ── */
-router.post("/users/:id/approve", async (req, res) => {
+router.post("/users/:id/approve", requirePermission("users.approve"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { note, skipDocCheck } = req.body;
   const userId = req.params["id"]!;
   
-  const [target] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const [target] = await db.select({
+      id: usersTable.id,
+      roles: usersTable.roles,
+      documents: riderProfilesTable.documents,
+      vehiclePhoto: riderProfilesTable.vehiclePhoto,
+    })
+    .from(usersTable)
+    .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
+    .where(eq(usersTable.id, userId))
+    .limit(1);
   if (!target) { sendNotFound(res, "User not found"); return; }
 
-  if (target.roles.includes("rider") && !skipDocCheck) {
-    // Document check logic for rider approval
-    // If needed, check for required rider documents from database
-    // For now, we'll allow skipping this check
+  const hasDocuments = Boolean(target.vehiclePhoto || (() => {
+    if (!target.documents) return false;
+    try {
+      const parsed = JSON.parse(target.documents);
+      return (Array.isArray(parsed) && parsed.length > 0) || (parsed?.files && Array.isArray(parsed.files) && parsed.files.length > 0);
+    } catch {
+      return false;
+    }
+  })());
+
+  if (target.roles.includes("rider") && !skipDocCheck && !hasDocuments) {
+    sendValidationError(res, "Rider approval requires valid uploaded documents before approving.");
+    return;
   }
 
   try {
@@ -266,7 +440,7 @@ router.post("/users/:id/approve", async (req, res) => {
 });
 
 /* ── Reject User ── */
-router.post("/users/:id/reject", async (req, res) => {
+router.post("/users/:id/reject", requirePermission("users.approve"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { note } = req.body as { note?: string };
   const userId = req.params["id"]!;
@@ -294,7 +468,7 @@ router.post("/users/:id/reject", async (req, res) => {
 });
 
 /* ── Wallet Top-up ── */
-router.post("/users/:id/wallet-topup", async (req, res) => {
+router.post("/users/:id/wallet-topup", requirePermission("finance.wallet.topup"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { amount, description } = req.body;
   const userId = req.params["id"]!;
@@ -361,7 +535,7 @@ router.delete("/users/:id", requirePermission("users.delete"), async (req, res) 
 });
 
 /* ── User Activity (orders + rides summary) ── */
-router.get("/users/:id/activity", async (req, res) => {
+router.get("/users/:id/activity", requirePermission("users.view"), async (req, res) => {
   const uid = req.params["id"]!;
   const orders = await db.select().from(ordersTable).where(eq(ordersTable.userId, uid)).orderBy(desc(ordersTable.createdAt)).limit(10);
   const rides = await db.select().from(ridesTable).where(eq(ridesTable.userId, uid)).orderBy(desc(ridesTable.createdAt)).limit(10);
@@ -378,7 +552,7 @@ router.get("/users/:id/activity", async (req, res) => {
 });
 
 /* ── Overview with user enrichment (orders + user info) ── */
-router.patch("/users/:id/security", async (req, res) => {
+router.patch("/users/:id/security", requirePermission("users.edit"), async (req, res) => {
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -478,7 +652,7 @@ router.patch("/users/:id/security", async (req, res) => {
 });
 
 /* ── PATCH /admin/users/:id/identity — Admin update user identity (username, email, name) ── */
-router.patch("/users/:id/identity", async (req, res) => {
+router.patch("/users/:id/identity", requirePermission("users.edit"), async (req, res) => {
   const userId = req.params["id"]!;
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -550,14 +724,14 @@ router.patch("/users/:id/identity", async (req, res) => {
   sendSuccess(res, { ...stripUser(user), walletBalance: parseFloat(String(user.walletBalance)) });
 });
 
-router.post("/users/:id/reset-otp", async (req, res) => {
+router.post("/users/:id/reset-otp", requirePermission("users.edit"), async (req, res) => {
   await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, req.params["id"]!));
   sendSuccess(res, { success: true, message: "OTP cleared — user must re-authenticate" });
 });
 
 
 /* ── POST /admin/users/:id/otp/bypass — set a timed OTP bypass ── */
-router.post("/users/:id/otp/bypass", async (req, res) => {
+router.post("/users/:id/otp/bypass", requirePermission("users.edit"), async (req, res) => {
   const userId = req.params["id"]!;
   const minutes = Number(req.body?.minutes);
   if (!minutes || minutes <= 0 || minutes > 1440 || !Number.isInteger(minutes)) {
@@ -586,7 +760,7 @@ router.post("/users/:id/otp/bypass", async (req, res) => {
 });
 
 /* ── DELETE /admin/users/:id/otp/bypass — cancel an active OTP bypass ── */
-router.delete("/users/:id/otp/bypass", async (req, res) => {
+router.delete("/users/:id/otp/bypass", requirePermission("users.edit"), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
@@ -609,7 +783,7 @@ router.delete("/users/:id/otp/bypass", async (req, res) => {
 
 
 /* ── Force-disable 2FA for a user (admin action) ── */
-router.post("/users/:id/2fa/disable", async (req, res) => {
+router.post("/users/:id/2fa/disable", requirePermission("users.edit"), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
@@ -628,13 +802,45 @@ router.post("/users/:id/2fa/disable", async (req, res) => {
 });
 
 /* ── PATCH /admin/users/:id/kyc-approve — Admin marks user KYC as verified ── */
-router.patch("/users/:id/kyc-approve", async (req, res) => {
+router.patch("/users/:id/kyc-approve", requirePermission("finance.kyc.approve"), async (req, res) => {
   const userId = req.params["id"]!;
   const adminReq = req as AdminRequest;
 
-  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, kycStatus: usersTable.kycStatus })
-    .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const [user] = await db.select({
+      id: usersTable.id,
+      phone: usersTable.phone,
+      kycStatus: usersTable.kycStatus,
+      walletBalance: usersTable.walletBalance,
+      documents: riderProfilesTable.documents,
+      vehiclePhoto: riderProfilesTable.vehiclePhoto,
+    })
+    .from(usersTable)
+    .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
+    .where(eq(usersTable.id, userId))
+    .limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
+
+  if (user.kycStatus === "verified") {
+    sendSuccess(res, { success: true, message: "KYC already verified", user: { ...stripUser(user), walletBalance: parseFloat(String(user.walletBalance ?? "0")) } });
+    return;
+  }
+
+  let hasDocuments = false;
+  if (user.vehiclePhoto) hasDocuments = true;
+  if (user.documents) {
+    try {
+      const parsed = JSON.parse(user.documents);
+      if (Array.isArray(parsed) && parsed.length > 0) hasDocuments = true;
+      if (parsed?.files && Array.isArray(parsed.files) && parsed.files.length > 0) hasDocuments = true;
+    } catch {
+      // ignore parse errors, count as absent documents
+    }
+  }
+
+  if (!hasDocuments) {
+    sendValidationError(res, "No KYC documents found. Please review the user's uploaded documents before approving.");
+    return;
+  }
 
   await db.update(usersTable).set({ kycStatus: "verified", updatedAt: new Date() }).where(eq(usersTable.id, userId));
 
@@ -650,7 +856,7 @@ router.patch("/users/:id/kyc-approve", async (req, res) => {
   sendSuccess(res, { success: true, user: { ...stripUser(updated!), walletBalance: parseFloat(String(updated!.walletBalance)) } });
 });
 
-router.post("/users/:id/reset-wallet-pin", async (req, res) => {
+router.post("/users/:id/reset-wallet-pin", requirePermission("finance.wallet.adjust"), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
@@ -667,8 +873,16 @@ router.post("/users/:id/reset-wallet-pin", async (req, res) => {
 });
 
 /* ── Admin Accounts (Sub-Admins) ── */
-router.patch("/users/:id/request-correction", async (req, res) => {
-  const { field, note } = req.body as { field?: string; note?: string };
+router.patch("/users/:id/request-correction", requirePermission("finance.kyc.approve"), async (req, res) => {
+  let { field, note } = req.body as { field?: string; note?: string };
+  field = String(field ?? "").trim();
+  note = String(note ?? "").trim();
+  const allowedFields = ["cnic_front", "cnic_back", "driving_license", "vehicle_photo", "all"];
+  if (field && !allowedFields.includes(field)) field = "document";
+  if (!field && !note) {
+    sendValidationError(res, "Please specify a document field or a correction note.");
+    return;
+  }
   const [user] = await db.update(usersTable)
     .set({ approvalStatus: "correction_needed", approvalNote: note || `Please re-upload: ${field || "document"}`, updatedAt: new Date() })
     .where(eq(usersTable.id, req.params["id"]!))
@@ -686,7 +900,7 @@ router.patch("/users/:id/request-correction", async (req, res) => {
 });
 
 /* ── PATCH /admin/users/:id/waive-debt — waive rider's cancellation debt ── */
-router.patch("/users/:id/waive-debt", async (req, res) => {
+router.patch("/users/:id/waive-debt", requirePermission("finance.wallet.adjust"), async (req, res) => {
   const userId = req.params["id"]!;
   const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, cancellationDebt: usersTable.cancellationDebt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -709,6 +923,7 @@ router.patch("/users/:id/waive-debt", async (req, res) => {
 router.patch("/users/bulk-ban", requirePermission("users.ban"), async (req, res) => {
   const { ids, action, reason } = req.body as { ids: string[]; action: "ban" | "unban"; reason?: string };
   if (!ids?.length) { sendValidationError(res, "ids required"); return; }
+  if (action !== "ban" && action !== "unban") { sendValidationError(res, "action must be either ban or unban"); return; }
   const adminReq = req as AdminRequest;
   for (const id of ids) {
     if (action === "ban") {
@@ -740,7 +955,7 @@ router.patch("/users/bulk-ban", requirePermission("users.ban"), async (req, res)
 });
 
 /* ── GET /admin/users/:id/sessions — list user's active sessions ── */
-router.get("/users/:id/sessions", async (req, res) => {
+router.get("/users/:id/sessions", requirePermission("users.edit"), async (req, res) => {
   const { id } = req.params;
   const sessions = await db
     .select()
@@ -763,7 +978,7 @@ router.get("/users/:id/sessions", async (req, res) => {
 });
 
 /* ── DELETE /admin/users/:id/sessions/:sessionId — revoke one session ── */
-router.delete("/users/:id/sessions/:sessionId", async (req, res) => {
+router.delete("/users/:id/sessions/:sessionId", requirePermission("users.edit"), async (req, res) => {
   const { id, sessionId } = req.params;
   const [session] = await db
     .select()
@@ -784,7 +999,7 @@ router.delete("/users/:id/sessions/:sessionId", async (req, res) => {
 });
 
 /* ── DELETE /admin/users/:id/sessions — revoke ALL sessions for user ── */
-router.delete("/users/:id/sessions", async (req, res) => {
+router.delete("/users/:id/sessions", requirePermission("users.edit"), async (req, res) => {
   const { id } = req.params;
 
   await db.update(userSessionsTable)

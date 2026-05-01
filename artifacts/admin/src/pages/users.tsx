@@ -19,6 +19,7 @@ import { fetcher } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,28 @@ function SkeletonRow() {
 function formatStatus(s: string): string {
   if (!s) return "";
   return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
+function PaginationControl({ page, total, limit, onPage }: { page: number; total: number; limit: number; onPage: (page: number) => void }) {
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-t border-border/50 bg-muted/20 text-xs text-muted-foreground">
+      <p>Page {page} of {totalPages} · {total} total</p>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={() => onPage(page - 1)} disabled={page <= 1}>Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => onPage(page + 1)} disabled={page >= totalPages}>Next</Button>
+      </div>
+    </div>
+  );
 }
 
 function UserActivityModal({ userId, userName, user: userData, onClose }: { userId: string; userName: string; user: any; onClose: () => void }) {
@@ -1204,7 +1227,9 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   vehicle_photo: "Vehicle Photo",
 };
 
-function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
+function KycDocModal({ user, onClose, canRequestCorrection }: { user: any; onClose: () => void; canRequestCorrection: boolean }) {
+  const { has } = usePermissions();
+  const canApproveKyc = has("finance.kyc.approve");
   const correctionMutation = useRequestUserCorrection();
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -1226,12 +1251,17 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
   const parsed = parseUserDocuments(user);
   const docs = parsed.files;
   const riderNote = parsed.note;
+  const hasDocuments = docs.length > 0;
 
   const allChecked = ["cnic_legible", "photo_match", "details_correct", "not_expired"].every(k => checklist[k]);
 
   const handleRequestCorrection = () => {
     if (!user.id) return;
-    correctionMutation.mutate({ id: user.id, field: corrField || "document", note: corrNote || undefined }, {
+    if (!corrField && !corrNote.trim()) {
+      toast({ title: "Correction details required", description: "Select a document field or add a note before requesting correction.", variant: "destructive" });
+      return;
+    }
+    correctionMutation.mutate({ id: user.id, field: corrField || "document", note: corrNote.trim() || undefined }, {
       onSuccess: () => {
         toast({ title: "Correction requested", description: "User will be notified to re-upload." });
         setShowCorrForm(false);
@@ -1342,21 +1372,34 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
             </div>
           </div>
         ) : (
-          <Button
-            className="mt-4 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-            onClick={() => kycApproveMutation.mutate()}
-            disabled={!allChecked || kycApproveMutation.isPending}
-          >
-            {kycApproveMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Approving...</>
-            ) : (
-              <><CheckCircle2 className="w-4 h-4" /> {allChecked ? "Approve KYC" : "Complete checklist to approve"}</>
+          <>
+            {!hasDocuments && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                No KYC documents are uploaded for this user. Please request correction or verify uploads before approving.
+              </div>
             )}
-          </Button>
+            <Button
+              className="mt-4 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              onClick={() => kycApproveMutation.mutate()}
+              disabled={!hasDocuments || !allChecked || kycApproveMutation.isPending || !canApproveKyc}
+              title={!canApproveKyc ? "You do not have permission to approve KYC" : !hasDocuments ? "Missing documents" : undefined}
+            >
+              {kycApproveMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Approving...</>
+              ) : (
+                <><CheckCircle2 className="w-4 h-4" /> {hasDocuments ? (allChecked ? "Approve KYC" : "Complete checklist to approve") : "Missing documents"}</>
+              )}
+            </Button>
+          </>
         )}
 
         {!showCorrForm ? (
-          <button onClick={() => setShowCorrForm(true)} className="mt-4 text-xs text-amber-600 flex items-center gap-1 hover:underline font-semibold">
+          <button
+            onClick={() => setShowCorrForm(true)}
+            disabled={!canRequestCorrection}
+            title={!canRequestCorrection ? "Permission required" : undefined}
+            className={`mt-4 text-xs flex items-center gap-1 font-semibold ${canRequestCorrection ? "text-amber-600 hover:underline" : "text-muted-foreground cursor-not-allowed"}`}
+          >
             <AlertCircle className="w-3.5 h-3.5" /> Request document correction
           </button>
         ) : (
@@ -1373,7 +1416,8 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
             <Input placeholder="Note to user (e.g., photo is blurry, CNIC not readable)..." value={corrNote} onChange={e => setCorrNote(e.target.value)} className="h-9 rounded-lg text-sm" />
             <div className="flex gap-2">
               <button onClick={() => setShowCorrForm(false)} className="flex-1 h-9 border border-border/50 rounded-lg text-xs font-semibold">Cancel</button>
-              <button onClick={handleRequestCorrection} disabled={correctionMutation.isPending}
+              <button onClick={handleRequestCorrection} disabled={!canRequestCorrection || correctionMutation.isPending}
+                title={!canRequestCorrection ? "Permission required" : undefined}
                 className="flex-1 h-9 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold disabled:opacity-60">
                 {correctionMutation.isPending ? "Sending..." : "Send Request"}
               </button>
@@ -1549,10 +1593,38 @@ export default function Users() {
   const [, navigate] = useLocation();
   const { logout } = useAdminAuth();
   const { language } = useLanguage();
+  const { has } = usePermissions();
+  const canViewUsers = has("users.view");
+  const canEditUsers = has("users.edit");
+  const canApproveUsers = has("users.approve");
+  const canBanUsers = has("users.ban");
+  const canDeleteUsers = has("users.delete");
+  const canApproveKyc = has("finance.kyc.approve");
+  const canTopupWallet = has("finance.wallet.topup");
+  const canAdjustWallet = has("finance.wallet.adjust");
+  const canRequestCorrection = canApproveKyc;
   const T = (key: TranslationKey) => tDual(key, language);
   const [conditionTier, setConditionTier] = useState("all");
-  const { data, isLoading, refetch, isFetching, isError } = useUsers(conditionTier !== "all" ? conditionTier : undefined);
-  const { data: pendingData, refetch: refetchPending } = usePendingUsers();
+  const [page, setPage] = useState(1);
+  const LIMIT = 25;
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo]     = useState("");
+  const [walletUser, setWalletUser] = useState<any>(null);
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const { data, isLoading, refetch, isFetching, isError } = useUsers({
+    conditionTier: conditionTier !== "all" ? conditionTier : undefined,
+    search: debouncedSearch || undefined,
+    role: roleFilter !== "all" ? roleFilter : undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    createdFrom: dateFrom || undefined,
+    createdTo: dateTo || undefined,
+    page,
+    limit: LIMIT,
+  }, canViewUsers);
+  const { data: pendingData, refetch: refetchPending } = usePendingUsers(canApproveUsers);
   const updateMutation   = useUpdateUser();
   const deleteMutation   = useDeleteUser();
   const approveMutation  = useApproveUser();
@@ -1578,12 +1650,9 @@ export default function Users() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo]     = useState("");
-  const [walletUser, setWalletUser] = useState<any>(null);
+  useEffect(() => {
+    setPage(1);
+  }, [conditionTier, debouncedSearch, roleFilter, statusFilter, dateFrom, dateTo]);
   const [deleteUser, setDeleteUser] = useState<any>(null);
   const [activityUser, setActivityUser] = useState<any>(null);
   const [securityUser, setSecurityUser] = useState<any>(null);
@@ -1597,7 +1666,19 @@ export default function Users() {
 
   const pendingUsers = pendingData?.users || [];
 
+  if (!canViewUsers) {
+    return (
+      <Card className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center mx-auto max-w-2xl">
+        <div className="text-center">
+          <p className="text-2xl font-semibold text-red-700">Access denied</p>
+          <p className="mt-3 text-sm text-red-600">You do not have permission to view users. Contact your administrator if this looks wrong.</p>
+        </div>
+      </Card>
+    );
+  }
+
   const handleApprove = (userId: string) => {
+    if (!canApproveUsers) { toast({ title: "Permission denied", description: "You do not have permission to approve users.", variant: "destructive" }); return; }
     approveMutation.mutate({ id: userId }, {
       onSuccess: () => { toast({ title: "User approved!", description: "User can now log in." }); },
       onError: err => toast({ title: "Failed to approve", description: err.message, variant: "destructive" }),
@@ -1606,6 +1687,10 @@ export default function Users() {
 
   const handleReject = () => {
     if (!rejectUser) return;
+    if (!canApproveUsers) {
+      toast({ title: "Permission denied", description: "You do not have permission to reject users.", variant: "destructive" });
+      return;
+    }
     rejectMutation.mutate({ id: rejectUser.id, note: rejectNote || "Rejected by admin" }, {
       onSuccess: () => {
         toast({ title: "User rejected", description: "Account rejected and user notified." });
@@ -1616,6 +1701,10 @@ export default function Users() {
   };
 
   const handleUpdate = (id: string, updates: any) => {
+    if (!canEditUsers) {
+      toast({ title: "Permission denied", description: "You do not have permission to update users.", variant: "destructive" });
+      return;
+    }
     updateMutation.mutate({ id, ...updates }, {
       onSuccess: () => toast({ title: "User updated" }),
       onError: err => toast({ title: "Update failed", description: err.message, variant: "destructive" })
@@ -1624,6 +1713,10 @@ export default function Users() {
 
   const handleDelete = () => {
     if (!deleteUser) return;
+    if (!canDeleteUsers) {
+      toast({ title: "Permission denied", description: "You do not have permission to delete users.", variant: "destructive" });
+      return;
+    }
     deleteMutation.mutate(deleteUser.id, {
       onSuccess: () => { toast({ title: "User deleted" }); setDeleteUser(null); },
       onError: err => toast({ title: "Delete failed", description: err.message, variant: "destructive" })
@@ -1631,28 +1724,11 @@ export default function Users() {
   };
 
   const users = data?.users || [];
-  const filtered = users.filter((u: any) => {
-    const matchSearch =
-      (u.name?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (u.phone || "").includes(search) ||
-      (u.email?.toLowerCase() || "").includes(search.toLowerCase());
-    const allUserRoles = new Set([
-      ...(u.roles || "").split(",").map((r: string) => r.trim()).filter(Boolean),
-      ...(u.role  || "").split(",").map((r: string) => r.trim()).filter(Boolean),
-    ]);
-    const matchRole = roleFilter === "all" || allUserRoles.has(roleFilter);
-    const matchStatus = statusFilter === "all"
-      || (statusFilter === "active"   && u.isActive && !u.isBanned)
-      || (statusFilter === "blocked"  && !u.isActive && !u.isBanned)
-      || (statusFilter === "banned"   && u.isBanned);
-    const matchDate = (!dateFrom || new Date(u.createdAt) >= new Date(dateFrom))
-                   && (!dateTo   || new Date(u.createdAt) <= new Date(dateTo + "T23:59:59"));
-    return matchSearch && matchRole && matchStatus && matchDate;
-  });
-
-  const bannedCount  = users.filter((u: any) => u.isBanned).length;
-  const blockedCount = users.filter((u: any) => !u.isActive && !u.isBanned).length;
-  const activeCount  = users.filter((u: any) => u.isActive && !u.isBanned).length;
+  const filtered = users;
+  const totalUsers = data?.total ?? users.length;
+  const bannedCount  = data?.bannedCount ?? users.filter((u: any) => u.isBanned).length;
+  const blockedCount = data?.blockedCount ?? users.filter((u: any) => !u.isActive && !u.isBanned).length;
+  const activeCount  = data?.activeCount ?? users.filter((u: any) => u.isActive && !u.isBanned).length;
 
   const allSelected = filtered.length > 0 && filtered.every((u: any) => selectedIds.has(u.id));
   const toggleAll = () => {
@@ -1678,7 +1754,7 @@ export default function Users() {
   const handlePullRefresh = useCallback(async () => {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["admin-users"] }),
-      qc.invalidateQueries({ queryKey: ["admin-pending"] }),
+      qc.invalidateQueries({ queryKey: ["admin-users-pending"] }),
     ]);
   }, [qc]);
 
@@ -1687,7 +1763,7 @@ export default function Users() {
       <PageHeader
         icon={UsersIcon}
         title="Users"
-        subtitle={`${users.length} total${activeCount > 0 ? ` · ${activeCount} active` : ""}${bannedCount > 0 ? ` · ${bannedCount} banned` : ""}${blockedCount > 0 ? ` · ${blockedCount} blocked` : ""}`}
+        subtitle={`${totalUsers} total${activeCount > 0 ? ` · ${activeCount} active` : ""}${bannedCount > 0 ? ` · ${bannedCount} banned` : ""}${blockedCount > 0 ? ` · ${blockedCount} blocked` : ""}`}
         iconBgClass="bg-blue-100"
         iconColorClass="text-blue-600"
         actions={
@@ -1698,11 +1774,16 @@ export default function Users() {
             <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="h-9 rounded-xl gap-2">
               <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> Refresh
             </Button>
+            {canEditUsers && (
+              <Button variant="secondary" size="sm" onClick={() => setCreateUserOpen(true)} className="h-9 rounded-xl gap-2">
+                <UserPlus className="w-4 h-4" /> Create User
+              </Button>
+            )}
           </div>
         }
       />
 
-      {pendingUsers.length > 0 && (
+      {canApproveUsers && pendingUsers.length > 0 && (
         <Card className="p-4 rounded-2xl border-amber-200 bg-amber-50/60 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -1752,8 +1833,9 @@ export default function Users() {
                   <Button
                     size="sm"
                     onClick={() => handleApprove(u.id)}
-                    disabled={approveMutation.isPending}
-                    className="h-8 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs gap-1"
+                    disabled={!canApproveUsers || approveMutation.isPending}
+                    title={!canApproveUsers ? "Permission required" : undefined}
+                    className="h-8 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs gap-1 disabled:opacity-60"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Approve
@@ -1762,8 +1844,9 @@ export default function Users() {
                     size="sm"
                     variant="outline"
                     onClick={() => { setRejectUser(u); setRejectNote(""); }}
-                    disabled={rejectMutation.isPending}
-                    className="h-8 px-3 border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs gap-1"
+                    disabled={!canApproveUsers || rejectMutation.isPending}
+                    title={!canApproveUsers ? "Permission required" : undefined}
+                    className="h-8 px-3 border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs gap-1 disabled:opacity-60"
                   >
                     <XCircle className="w-3.5 h-3.5" />
                     Reject
@@ -1812,7 +1895,7 @@ export default function Users() {
       <Card className="p-4 rounded-2xl border-border/50 shadow-sm space-y-3">
         <div className="flex flex-col gap-2">
           <ActionBar
-            primary={
+            primary={canEditUsers ? (
               <Button
                 size="sm"
                 onClick={() => setCreateUserOpen(true)}
@@ -1820,7 +1903,7 @@ export default function Users() {
               >
                 <UserPlus className="w-4 h-4" /> Create User
               </Button>
-            }
+            ) : null}
           />
           <FilterBar
             search={search}
@@ -1880,11 +1963,11 @@ export default function Users() {
           {selectedIds.size > 0 && (
             <div className="flex items-center gap-2 shrink-0">
               <span className="text-xs text-muted-foreground font-semibold">{selectedIds.size} selected</span>
-              <button onClick={() => handleBulkBan("ban")} disabled={bulkBanMutation.isPending}
+              <button onClick={() => handleBulkBan("ban")} disabled={!canBanUsers || bulkBanMutation.isPending}
                 className="px-3 py-1.5 bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-200 disabled:opacity-60 transition-colors">
                 Ban All
               </button>
-              <button onClick={() => handleBulkBan("unban")} disabled={bulkBanMutation.isPending}
+              <button onClick={() => handleBulkBan("unban")} disabled={!canBanUsers || bulkBanMutation.isPending}
                 className="px-3 py-1.5 bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-200 disabled:opacity-60 transition-colors">
                 Unban All
               </button>
@@ -1953,14 +2036,14 @@ export default function Users() {
                     <Button variant="outline" size="sm" onClick={() => setKycUser(user)} className="h-8 px-2.5 rounded-lg border-purple-200 text-purple-700 text-xs">
                       <Eye className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} className="h-8 px-2.5 rounded-lg border-slate-200 text-slate-600 text-xs">
+                    <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} disabled={!canEditUsers} title={!canEditUsers ? "Permission required" : "Security Settings"} className="h-8 px-2.5 rounded-lg border-slate-200 text-slate-600 text-xs disabled:opacity-50">
                       <Shield className="w-3.5 h-3.5" />
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => navigate(`/account-conditions?userId=${user.id}`)} className="h-8 px-2.5 rounded-lg border-violet-200 text-violet-600 text-xs gap-1" title="Conditions">
                       <Gavel className="w-3.5 h-3.5" />
                       {user.conditionCount > 0 && <span className="text-[10px] font-bold bg-violet-100 text-violet-700 rounded-full px-1.5 min-w-[18px] text-center">{user.conditionCount}</span>}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setWalletUser(user)} className="h-8 px-2.5 rounded-lg border-emerald-200 text-emerald-700 text-xs">
+                    <Button variant="outline" size="sm" onClick={() => setWalletUser(user)} disabled={!canTopupWallet} title={!canTopupWallet ? "Permission required" : "Wallet Topup"} className="h-8 px-2.5 rounded-lg border-emerald-200 text-emerald-700 text-xs disabled:opacity-50">
                       <Wallet className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -2069,7 +2152,7 @@ export default function Users() {
                               <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">Banned</Badge>
                             ) : (
                               <div className="flex items-center justify-center gap-2">
-                                <Switch checked={user.isActive} onCheckedChange={(val) => handleUpdate(user.id, { isActive: val })} />
+                                <Switch checked={user.isActive} disabled={!canEditUsers} onCheckedChange={(val) => canEditUsers && handleUpdate(user.id, { isActive: val })} />
                                 {user.isActive ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-400" />}
                               </div>
                             )}
@@ -2091,7 +2174,7 @@ export default function Users() {
                             <Button variant="outline" size="sm" onClick={() => setKycUser(user)} className="h-8 w-8 rounded-lg border-purple-200 text-purple-700 hover:bg-purple-50 hover:border-purple-300 p-0 flex items-center justify-center transition-colors" title="KYC Docs">
                               <Eye className="w-3.5 h-3.5"/>
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 p-0 flex items-center justify-center transition-colors" title="Security Settings">
+                            <Button variant="outline" size="sm" onClick={() => setSecurityUser(user)} disabled={!canEditUsers} title={!canEditUsers ? "Permission required" : "Security Settings"} className="h-8 w-8 rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 p-0 flex items-center justify-center transition-colors disabled:opacity-50">
                               <Shield className="w-3.5 h-3.5"/>
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => navigate(`/account-conditions?userId=${user.id}`)} className="h-8 rounded-lg border-violet-200 text-violet-600 hover:bg-violet-50 hover:border-violet-300 px-2 flex items-center justify-center gap-1 transition-colors" title="Conditions">
@@ -2104,10 +2187,10 @@ export default function Users() {
                             <Button variant="outline" size="sm" onClick={() => setActivityUser(user)} className="h-8 w-8 rounded-lg border-[#1A56DB]/20 text-[#1A56DB] hover:bg-[#1A56DB]/5 hover:border-[#1A56DB]/30 p-0 flex items-center justify-center transition-colors" title="Activity">
                               <Activity className="w-3.5 h-3.5" />
                             </Button>
-                            <Button variant="outline" size="sm" onClick={() => setWalletUser(user)} className="h-8 rounded-lg text-xs gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-colors">
+                            <Button variant="outline" size="sm" onClick={() => setWalletUser(user)} disabled={!canTopupWallet} title={!canTopupWallet ? "Permission required" : "Wallet Topup"} className="h-8 rounded-lg text-xs gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 transition-colors disabled:opacity-50">
                               <Wallet className="w-3.5 h-3.5" /> Top Up
                             </Button>
-                            {parseFloat(user.cancellationDebt || "0") > 0 && (
+                            {canAdjustWallet && parseFloat(user.cancellationDebt || "0") > 0 && (
                               <Button
                                 variant="outline" size="sm"
                                 onClick={() => setWaiveConfirmUser(user)}
@@ -2118,7 +2201,7 @@ export default function Users() {
                                 {(waiveDebtMutation.isPending && waiveDebtMutation.variables === user.id) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="text-xs">⚡</span>} Waive Debt
                               </Button>
                             )}
-                            <Button variant="outline" size="sm" onClick={() => setDeleteUser(user)} className="h-8 w-8 rounded-lg border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 p-0 flex items-center justify-center transition-colors">
+                            <Button variant="outline" size="sm" onClick={() => setDeleteUser(user)} disabled={!canDeleteUsers} title={!canDeleteUsers ? "Permission required" : "Delete User"} className="h-8 w-8 rounded-lg border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 p-0 flex items-center justify-center transition-colors disabled:opacity-50">
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
@@ -2131,9 +2214,7 @@ export default function Users() {
             </Table>
           </div>
           {!isLoading && filtered.length > 0 && (
-            <div className="border-t border-border/50 px-4 py-3 bg-muted/20 text-xs text-muted-foreground">
-              Showing {filtered.length} of {users.length} users
-            </div>
+            <PaginationControl page={page} total={totalUsers} limit={LIMIT} onPage={setPage} />
           )}
         </Card>
         </>
@@ -2171,7 +2252,7 @@ export default function Users() {
       {securityUser && <SecurityModal user={securityUser} onClose={() => setSecurityUser(null)} />}
 
       {/* KYC Document Modal */}
-      {kycUser && <KycDocModal user={kycUser} onClose={() => setKycUser(null)} />}
+      {kycUser && <KycDocModal user={kycUser} onClose={() => setKycUser(null)} canRequestCorrection={canRequestCorrection} />}
 
       {addressUser && <AddressBookModal user={addressUser} onClose={() => setAddressUser(null)} />}
 

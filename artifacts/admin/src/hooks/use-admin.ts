@@ -1469,6 +1469,43 @@ export const useEvaluateRules = () => {
   });
 };
 
+export const useConditionRuleAudit = (ruleId: string | null) => {
+  return useQuery({
+    queryKey: ["admin-condition-rule-audit", ruleId],
+    queryFn: () => fetcher(`/condition-rules/${ruleId}/audit`),
+    enabled: !!ruleId,
+  });
+};
+
+export const useAllConditionRuleAudit = (filters?: { ruleId?: string; action?: string; page?: number }) => {
+  const params = new URLSearchParams();
+  if (filters?.ruleId) params.set("ruleId", filters.ruleId);
+  if (filters?.action) params.set("action", filters.action);
+  if (filters?.page) params.set("page", String(filters.page));
+  const qs = params.toString();
+  return useQuery({
+    queryKey: ["admin-condition-audit-all", filters?.ruleId, filters?.action, filters?.page],
+    queryFn: () => fetcher(`/condition-rules/audit${qs ? `?${qs}` : ""}`),
+  });
+};
+
+export const useSimulateConditionRule = () => {
+  return useMutation({
+    mutationFn: (ruleId: string) => fetcher(`/condition-rules/${ruleId}/simulate`),
+  });
+};
+
+export const useBulkConditionRules = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, action }: { ids: string[]; action: "enable" | "disable" | "delete" }) =>
+      fetcher("/condition-rules/bulk", { method: "POST", body: JSON.stringify({ ids, action }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-condition-rules"] });
+    },
+  });
+};
+
 // ══════════════════════════════════════════════════════
 // SMS GATEWAYS (Hybrid Firebase / Dynamic Failover)
 // ══════════════════════════════════════════════════════

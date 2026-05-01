@@ -8,6 +8,11 @@ import {
   vanBookingsTable,
   vanSchedulesTable,
   vanDriversTable,
+  reviewsTable,
+  ordersTable,
+  locationLogsTable,
+  chatReportsTable,
+  walletTransactionsTable,
 } from "@workspace/db/schema";
 import { and, desc, eq, gte, inArray, lte, ilike, or, sql } from "drizzle-orm";
 import { generateId } from "../../lib/id.js";
@@ -90,7 +95,6 @@ async function getUserRoleSet(userId: string): Promise<Set<string>> {
     }
   }
   if (roles.size === 0) roles.add("customer");
-  // Synthetic van_driver role
   const [vd] = await db
     .select({ approvalStatus: vanDriversTable.approvalStatus, isActive: vanDriversTable.isActive })
     .from(vanDriversTable)
@@ -112,6 +116,31 @@ export async function reconcileUserFlags(userId: string): Promise<{ success: boo
   } catch (err) {
     console.error("reconcileUserFlags error:", err);
     return { success: false, error: String(err) };
+  }
+}
+
+/* ─────────────── AUDIT LOG HELPER ─────────────── */
+async function logRuleAudit(
+  action: string,
+  rule: Record<string, any>,
+  changedBy: string,
+  diff?: Record<string, any>,
+) {
+  try {
+    await db.execute(sql`
+      INSERT INTO condition_rule_audit_log (id, rule_id, action, changed_by, snapshot, diff, created_at)
+      VALUES (
+        ${generateId()},
+        ${rule.id ?? null},
+        ${action},
+        ${changedBy},
+        ${JSON.stringify(rule)}::jsonb,
+        ${diff ? JSON.stringify(diff) : null}::jsonb,
+        now()
+      )
+    `);
+  } catch (err) {
+    console.warn("[audit-log] Failed to write audit entry:", err);
   }
 }
 
@@ -358,7 +387,28 @@ router.post("/conditions/bulk", async (req, res) => {
 router.get("/condition-rules", async (_req, res) => {
   try {
     const rules = await db.select().from(conditionRulesTable).orderBy(desc(conditionRulesTable.createdAt));
-    res.json({ success: true, data: { rules } });
+
+    // Attach lastFiredAt from audit log for each rule
+    const ruleIds = rules.map((r) => r.id);
+    let lastFiredMap: Record<string, string> = {};
+    if (ruleIds.length > 0) {
+      const fired = await db.execute(sql`
+        SELECT DISTINCT ON (rule_id) rule_id, created_at
+        FROM condition_rule_audit_log
+        WHERE rule_id = ANY(${ruleIds}::text[]) AND action = 'fired'
+        ORDER BY rule_id, created_at DESC
+      `);
+      for (const row of fired.rows as any[]) {
+        lastFiredMap[row.rule_id] = row.created_at;
+      }
+    }
+
+    const enriched = rules.map((r) => ({
+      ...r,
+      lastFiredAt: lastFiredMap[r.id] ?? null,
+    }));
+
+    res.json({ success: true, data: { rules: enriched } });
   } catch (error) {
     res.status(500).json({ success: false, error: String(error) });
   }
@@ -369,6 +419,7 @@ router.post("/condition-rules", async (req, res) => {
     const {
       name, description, targetRole, metric, operator, threshold,
       conditionType, severity, cooldownHours, modeApplicability, isActive,
+      changedBy,
     } = req.body ?? {};
 
     if (!name || !targetRole || !metric || !operator || threshold === undefined || threshold === "" || !conditionType) {
@@ -393,6 +444,8 @@ router.post("/condition-rules", async (req, res) => {
         isActive: isActive ?? true,
       })
       .returning();
+
+    await logRuleAudit("created", created, changedBy || "admin");
     return res.json({ success: true, data: created });
   } catch (error) {
     console.error("[admin/condition-rules] create error:", error);
@@ -402,7 +455,10 @@ router.post("/condition-rules", async (req, res) => {
 
 router.patch("/condition-rules/:id", async (req, res) => {
   try {
-    const updates: any = { ...req.body, updatedAt: new Date() };
+    const { changedBy, ...body } = req.body ?? {};
+    const [before] = await db.select().from(conditionRulesTable).where(eq(conditionRulesTable.id, req.params.id)).limit(1);
+
+    const updates: any = { ...body, updatedAt: new Date() };
     if (updates.threshold !== undefined) updates.threshold = String(updates.threshold);
     if (updates.cooldownHours !== undefined) updates.cooldownHours = Number(updates.cooldownHours);
     const [updated] = await db
@@ -411,6 +467,17 @@ router.patch("/condition-rules/:id", async (req, res) => {
       .where(eq(conditionRulesTable.id, req.params.id))
       .returning();
     if (!updated) return res.status(404).json({ success: false, error: "Rule not found" });
+
+    if (before) {
+      const diff: Record<string, any> = {};
+      for (const k of Object.keys(body)) {
+        const bv = (before as any)[k];
+        const av = (updated as any)[k];
+        if (String(bv) !== String(av)) diff[k] = { from: bv, to: av };
+      }
+      await logRuleAudit("updated", updated, changedBy || "admin", diff);
+    }
+
     return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, error: String(error) });
@@ -419,9 +486,144 @@ router.patch("/condition-rules/:id", async (req, res) => {
 
 router.delete("/condition-rules/:id", async (req, res) => {
   try {
+    const { changedBy } = req.body ?? {};
+    const [before] = await db.select().from(conditionRulesTable).where(eq(conditionRulesTable.id, req.params.id)).limit(1);
     await db.delete(conditionRulesTable).where(eq(conditionRulesTable.id, req.params.id));
+    if (before) await logRuleAudit("deleted", before, changedBy || "admin");
     res.json({ success: true });
   } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+/* ─────────────── BULK CONDITION RULES ─────────────── */
+router.post("/condition-rules/bulk", async (req, res) => {
+  try {
+    const { ids, action, changedBy } = req.body ?? {};
+    if (!Array.isArray(ids) || ids.length === 0 || !action) {
+      return res.status(400).json({ success: false, error: "ids[] and action required" });
+    }
+    if (action === "enable" || action === "disable") {
+      const isActive = action === "enable";
+      const result = await db
+        .update(conditionRulesTable)
+        .set({ isActive, updatedAt: new Date() })
+        .where(inArray(conditionRulesTable.id, ids))
+        .returning();
+      for (const r of result) {
+        await logRuleAudit(isActive ? "updated" : "updated", r, changedBy || "admin", { isActive: { from: !isActive, to: isActive } });
+      }
+      return res.json({ success: true, affected: result.length });
+    }
+    if (action === "delete") {
+      const toDelete = await db.select().from(conditionRulesTable).where(inArray(conditionRulesTable.id, ids));
+      await db.delete(conditionRulesTable).where(inArray(conditionRulesTable.id, ids));
+      for (const r of toDelete) {
+        await logRuleAudit("deleted", r, changedBy || "admin");
+      }
+      return res.json({ success: true, affected: toDelete.length });
+    }
+    return res.status(400).json({ success: false, error: "Unsupported action" });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+/* ─────────────── AUDIT LOG ENDPOINTS ─────────────── */
+router.get("/condition-rules/audit", async (req, res) => {
+  try {
+    const { ruleId, action, page = "1", limit = "50" } = req.query as Record<string, string>;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    let whereClause = sql`1=1`;
+    if (ruleId) whereClause = sql`${whereClause} AND rule_id = ${ruleId}`;
+    if (action) whereClause = sql`${whereClause} AND action = ${action}`;
+
+    const entries = await db.execute(sql`
+      SELECT * FROM condition_rule_audit_log
+      WHERE ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT ${parseInt(limit)} OFFSET ${offset}
+    `);
+    const [countRow] = await db.execute(sql`
+      SELECT count(*)::int AS total FROM condition_rule_audit_log WHERE ${whereClause}
+    `);
+
+    res.json({
+      success: true,
+      data: {
+        entries: entries.rows,
+        total: (countRow as any)?.rows?.[0]?.total ?? entries.rows.length,
+        page: parseInt(page),
+        limit: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+router.get("/condition-rules/:id/audit", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = "1", limit = "50" } = req.query as Record<string, string>;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const entries = await db.execute(sql`
+      SELECT * FROM condition_rule_audit_log
+      WHERE rule_id = ${id}
+      ORDER BY created_at DESC
+      LIMIT ${parseInt(limit)} OFFSET ${offset}
+    `);
+
+    res.json({ success: true, data: { entries: entries.rows } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+/* ─────────────── SIMULATE ENDPOINT ─────────────── */
+router.get("/condition-rules/:id/simulate", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rule] = await db.select().from(conditionRulesTable).where(eq(conditionRulesTable.id, id)).limit(1);
+    if (!rule) return res.status(404).json({ success: false, error: "Rule not found" });
+
+    const roleFilter = rule.targetRole === "van_driver" ? "rider" : rule.targetRole;
+
+    const users = await db
+      .select({ id: usersTable.id, name: usersTable.name, roles: usersTable.roles })
+      .from(usersTable)
+      .where(ilike(usersTable.roles, `%${roleFilter}%`))
+      .limit(500);
+
+    const matches: Array<{ userId: string; userName: string; metricValue: number }> = [];
+    let totalChecked = 0;
+
+    for (const u of users) {
+      try {
+        const value = await computeUserMetric(u.id, rule.metric);
+        if (value == null) continue;
+        totalChecked++;
+        if (compareMetric(value, rule.operator, rule.threshold)) {
+          matches.push({ userId: u.id, userName: u.name || u.id, metricValue: value });
+        }
+      } catch {
+        // skip user on error
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        matchCount: matches.length,
+        totalChecked,
+        matches,
+        rule: { id: rule.id, name: rule.name, metric: rule.metric, operator: rule.operator, threshold: rule.threshold },
+      },
+    });
+  } catch (error) {
+    console.error("[admin/condition-rules] simulate error:", error);
     res.status(500).json({ success: false, error: String(error) });
   }
 });
@@ -429,33 +631,43 @@ router.delete("/condition-rules/:id", async (req, res) => {
 /* ─────────────── DEFAULT RULE SEEDS ─────────────── */
 const DEFAULT_RULES: Array<Partial<typeof conditionRulesTable.$inferInsert>> = [
   // Customer
-  { name: "Customer high cancellation", targetRole: "customer", metric: "cancellation_rate", operator: ">", threshold: "30", conditionType: "warning_l2", severity: "warning", cooldownHours: 48, description: "Cancels too many orders" },
+  { name: "Customer high cancellation", targetRole: "customer", metric: "cancellation_rate", operator: ">", threshold: "30", conditionType: "warning_l2", severity: "warning", cooldownHours: 48, description: "Cancels too many orders in 30 days" },
+  { name: "Customer low order completion", targetRole: "customer", metric: "order_completion_rate", operator: "<", threshold: "60", conditionType: "warning_l1", severity: "warning", cooldownHours: 48, description: "Order completion rate below 60%" },
   { name: "Customer fraud incident", targetRole: "customer", metric: "fraud_incidents", operator: ">=", threshold: "1", conditionType: "ban_fraud", severity: "ban", cooldownHours: 0, description: "Confirmed payment fraud" },
-  { name: "Customer abuse reports", targetRole: "customer", metric: "abuse_reports", operator: ">=", threshold: "3", conditionType: "suspension_temporary", severity: "suspension", cooldownHours: 72 },
-  { name: "Customer failed payments", targetRole: "customer", metric: "failed_payments_7d", operator: ">=", threshold: "5", conditionType: "restriction_cash_only", severity: "restriction_normal", cooldownHours: 168 },
+  { name: "Customer abuse reports", targetRole: "customer", metric: "abuse_reports", operator: ">=", threshold: "3", conditionType: "suspension_temporary", severity: "suspension", cooldownHours: 72, description: "Multiple abuse reports filed" },
+  { name: "Customer failed payments", targetRole: "customer", metric: "failed_payments_7d", operator: ">=", threshold: "5", conditionType: "restriction_cash_only", severity: "restriction_normal", cooldownHours: 168, description: "Repeated failed payment attempts" },
+  { name: "Customer complaint reports", targetRole: "customer", metric: "complaint_reports", operator: ">=", threshold: "5", conditionType: "warning_l2", severity: "warning", cooldownHours: 72, description: "Multiple complaint reports against customer" },
   // Rider
-  { name: "Rider miss/ignore high", targetRole: "rider", metric: "miss_ignore_rate", operator: ">", threshold: "40", conditionType: "warning_l2", severity: "warning", cooldownHours: 48 },
-  { name: "Rider rating low", targetRole: "rider", metric: "avg_rating_30d", operator: "<", threshold: "3.5", conditionType: "warning_l1", severity: "warning", cooldownHours: 72 },
-  { name: "Rider GPS spoofing", targetRole: "rider", metric: "gps_spoofing", operator: ">=", threshold: "1", conditionType: "ban_fraud", severity: "ban", cooldownHours: 0 },
-  { name: "Rider cancellation debt", targetRole: "rider", metric: "cancellation_debt", operator: ">", threshold: "500", conditionType: "restriction_new_order_block", severity: "restriction_strict", cooldownHours: 24 },
-  // Van driver (synthetic role — matched via getUserRoleSet)
+  { name: "Rider high cancellation", targetRole: "rider", metric: "cancellation_rate", operator: ">", threshold: "25", conditionType: "warning_l1", severity: "warning", cooldownHours: 48, description: "Rider cancels too many assigned orders" },
+  { name: "Rider miss/ignore high", targetRole: "rider", metric: "miss_ignore_rate", operator: ">", threshold: "40", conditionType: "warning_l2", severity: "warning", cooldownHours: 48, description: "Rider ignores or misses assigned orders" },
+  { name: "Rider rating low", targetRole: "rider", metric: "avg_rating_30d", operator: "<", threshold: "3.5", conditionType: "warning_l1", severity: "warning", cooldownHours: 72, description: "Average rating below 3.5 in 30 days" },
+  { name: "Rider GPS spoofing", targetRole: "rider", metric: "gps_spoofing", operator: ">=", threshold: "1", conditionType: "ban_fraud", severity: "ban", cooldownHours: 0, description: "GPS location spoofing detected" },
+  { name: "Rider cancellation debt", targetRole: "rider", metric: "cancellation_debt", operator: ">", threshold: "500", conditionType: "restriction_new_order_block", severity: "restriction_strict", cooldownHours: 24, description: "Cancellation fees owed exceed threshold" },
+  { name: "Rider low completion rate", targetRole: "rider", metric: "order_completion_rate", operator: "<", threshold: "70", conditionType: "warning_l2", severity: "warning", cooldownHours: 48, description: "Order completion rate too low" },
+  // Van driver (synthetic role)
   { name: "Van driver excessive cancellations", targetRole: "van_driver", metric: "van_cancellation_count_30d", operator: ">=", threshold: "5", conditionType: "warning_l2", severity: "warning", cooldownHours: 48, description: "Cancelled too many van trips in last 30 days" },
   { name: "Van driver no-shows", targetRole: "van_driver", metric: "van_noshow_count", operator: ">=", threshold: "3", conditionType: "restriction_service_block", severity: "restriction_normal", cooldownHours: 72, description: "Multiple passenger no-shows on van trips" },
   { name: "Van driver missed start", targetRole: "van_driver", metric: "van_driver_missed_start", operator: ">=", threshold: "2", conditionType: "warning_l1", severity: "warning", cooldownHours: 24, description: "Missed scheduled trip starts" },
   // Vendor
-  { name: "Vendor complaint reports", targetRole: "vendor", metric: "complaint_reports", operator: ">=", threshold: "5", conditionType: "warning_l2", severity: "warning", cooldownHours: 72 },
-  { name: "Vendor fake item complaints", targetRole: "vendor", metric: "fake_item_complaints", operator: ">=", threshold: "3", conditionType: "restriction_new_order_block", severity: "restriction_strict", cooldownHours: 168 },
-  { name: "Vendor hygiene complaints", targetRole: "vendor", metric: "hygiene_complaints", operator: ">=", threshold: "3", conditionType: "suspension_temporary", severity: "suspension", cooldownHours: 168 },
-  { name: "Vendor late pattern violations", targetRole: "vendor", metric: "late_pattern_violations", operator: ">=", threshold: "5", conditionType: "warning_l1", severity: "warning", cooldownHours: 48 },
+  { name: "Vendor complaint reports", targetRole: "vendor", metric: "complaint_reports", operator: ">=", threshold: "5", conditionType: "warning_l2", severity: "warning", cooldownHours: 72, description: "Multiple customer complaint reports" },
+  { name: "Vendor fake item complaints", targetRole: "vendor", metric: "fake_item_complaints", operator: ">=", threshold: "3", conditionType: "restriction_new_order_block", severity: "restriction_strict", cooldownHours: 168, description: "Fake or wrong item complaints" },
+  { name: "Vendor hygiene complaints", targetRole: "vendor", metric: "hygiene_complaints", operator: ">=", threshold: "3", conditionType: "suspension_temporary", severity: "suspension", cooldownHours: 168, description: "Hygiene or quality complaints" },
+  { name: "Vendor late pattern violations", targetRole: "vendor", metric: "late_pattern_violations", operator: ">=", threshold: "5", conditionType: "warning_l1", severity: "warning", cooldownHours: 48, description: "Repeated late open/close violations" },
+  { name: "Vendor low rating", targetRole: "vendor", metric: "avg_rating_30d", operator: "<", threshold: "3.0", conditionType: "warning_l2", severity: "warning", cooldownHours: 72, description: "Vendor average rating below 3.0 in 30 days" },
 ];
 
-router.post("/condition-rules/seed-defaults", async (_req, res) => {
+router.post("/condition-rules/seed-defaults", async (req, res) => {
   try {
-    const existing = await db.select({ id: conditionRulesTable.id }).from(conditionRulesTable);
-    if (existing.length > 0) {
-      return res.json({ success: true, message: `Skipped — ${existing.length} rules already exist`, inserted: 0 });
+    const changedBy = req.body?.changedBy || "admin";
+    const existing = await db.select({ name: conditionRulesTable.name }).from(conditionRulesTable);
+    const existingNames = new Set(existing.map((r) => r.name));
+
+    const toInsert = DEFAULT_RULES.filter((r) => !existingNames.has(r.name!));
+    if (toInsert.length === 0) {
+      return res.json({ success: true, message: "All default rules already exist", inserted: 0 });
     }
-    const rows = DEFAULT_RULES.map((r) => ({
+
+    const rows = toInsert.map((r) => ({
       id: generateId(),
       name: r.name!,
       description: r.description ?? null,
@@ -470,6 +682,11 @@ router.post("/condition-rules/seed-defaults", async (_req, res) => {
       isActive: true,
     }));
     await db.insert(conditionRulesTable).values(rows as any);
+
+    for (const row of rows) {
+      await logRuleAudit("created", row, changedBy);
+    }
+
     return res.json({ success: true, message: `Seeded ${rows.length} default rules`, inserted: rows.length });
   } catch (error) {
     console.error("[admin/condition-rules] seed error:", error);
@@ -477,13 +694,14 @@ router.post("/condition-rules/seed-defaults", async (_req, res) => {
   }
 });
 
-/* ─────────────── METRIC COMPUTATION (van + basic) ─────────────── */
+/* ─────────────── METRIC COMPUTATION ─────────────── */
 async function computeUserMetric(userId: string, metric: string): Promise<number | null> {
   const now = new Date();
   const ago30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const ago7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   switch (metric) {
+    /* ── Van metrics (existing) ── */
     case "van_cancellation_count_30d": {
       const driverSchedules = await db.select({ id: vanSchedulesTable.id })
         .from(vanSchedulesTable).where(eq(vanSchedulesTable.driverId, userId));
@@ -499,9 +717,6 @@ async function computeUserMetric(userId: string, metric: string): Promise<number
       return Number(row?.c ?? 0);
     }
     case "van_noshow_count": {
-      // Only count past-dated trips (travelDate < today) where the booking
-      // remained "confirmed" but the passenger never boarded — i.e. an actual
-      // no-show. Future/upcoming confirmed bookings must not be counted.
       const today = now.toISOString().split("T")[0]!;
       const driverSchedules = await db.select({ id: vanSchedulesTable.id })
         .from(vanSchedulesTable).where(eq(vanSchedulesTable.driverId, userId));
@@ -528,20 +743,159 @@ async function computeUserMetric(userId: string, metric: string): Promise<number
         ));
       return Number(row?.c ?? 0);
     }
-    case "cancellation_rate":
-    case "miss_ignore_rate":
-    case "avg_rating_30d":
-    case "fraud_incidents":
-    case "abuse_reports":
-    case "failed_payments_7d":
-    case "complaint_reports":
-    case "fake_item_complaints":
-    case "hygiene_complaints":
-    case "late_pattern_violations":
-    case "gps_spoofing":
-    case "cancellation_debt":
-    case "order_completion_rate":
-      return null;
+
+    /* ── Order-based metrics ── */
+    case "cancellation_rate": {
+      const whereClause = and(
+        or(eq(ordersTable.userId, userId), eq(ordersTable.riderId, userId)),
+        gte(ordersTable.createdAt, ago30),
+      );
+      const [total] = await db.select({ c: sql<number>`count(*)::int` }).from(ordersTable).where(whereClause);
+      if (!total?.c || total.c === 0) return 0;
+      const [cancelled] = await db.select({ c: sql<number>`count(*)::int` }).from(ordersTable).where(
+        and(whereClause, eq(ordersTable.status, "cancelled")),
+      );
+      return Math.round(((cancelled?.c ?? 0) / total.c) * 100 * 10) / 10;
+    }
+
+    case "order_completion_rate": {
+      const whereClause = and(
+        or(
+          eq(ordersTable.userId, userId),
+          eq(ordersTable.riderId, userId),
+          eq(ordersTable.vendorId, userId),
+        ),
+        gte(ordersTable.createdAt, ago30),
+      );
+      const [total] = await db.select({ c: sql<number>`count(*)::int` }).from(ordersTable).where(whereClause);
+      if (!total?.c || total.c === 0) return 0;
+      const [delivered] = await db.select({ c: sql<number>`count(*)::int` }).from(ordersTable).where(
+        and(whereClause, eq(ordersTable.status, "delivered")),
+      );
+      return Math.round(((delivered?.c ?? 0) / total.c) * 100 * 10) / 10;
+    }
+
+    case "miss_ignore_rate": {
+      const [total] = await db.select({ c: sql<number>`count(*)::int` }).from(ordersTable).where(
+        and(eq(ordersTable.assignedRiderId, userId), gte(ordersTable.createdAt, ago30)),
+      );
+      if (!total?.c || total.c === 0) return 0;
+      const [missed] = await db.select({ c: sql<number>`count(*)::int` }).from(ordersTable).where(
+        and(
+          eq(ordersTable.assignedRiderId, userId),
+          gte(ordersTable.createdAt, ago30),
+          eq(ordersTable.status, "cancelled"),
+          sql`${ordersTable.riderId} IS NULL`,
+        ),
+      );
+      return Math.round(((missed?.c ?? 0) / total.c) * 100 * 10) / 10;
+    }
+
+    case "failed_payments_7d": {
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(ordersTable).where(
+        and(
+          eq(ordersTable.userId, userId),
+          gte(ordersTable.createdAt, ago7),
+          eq(ordersTable.paymentStatus, "failed"),
+        ),
+      );
+      return Number(row?.c ?? 0);
+    }
+
+    case "cancellation_debt": {
+      const [row] = await db.select({ s: sql<number>`coalesce(sum(amount::numeric), 0)` }).from(walletTransactionsTable).where(
+        and(
+          eq(walletTransactionsTable.userId, userId),
+          ilike(walletTransactionsTable.type, "%cancellation%"),
+        ),
+      );
+      return Number(row?.s ?? 0);
+    }
+
+    /* ── Rating metrics ── */
+    case "avg_rating_30d": {
+      const [riderRating] = await db.select({ avg: sql<number>`coalesce(avg(rider_rating::numeric), 0)` }).from(reviewsTable).where(
+        and(eq(reviewsTable.riderId, userId), gte(reviewsTable.createdAt, ago30), sql`${reviewsTable.riderRating} IS NOT NULL`),
+      );
+      if (riderRating?.avg && Number(riderRating.avg) > 0) return Math.round(Number(riderRating.avg) * 100) / 100;
+
+      const [vendorRating] = await db.select({ avg: sql<number>`coalesce(avg(rating::numeric), 0)` }).from(reviewsTable).where(
+        and(eq(reviewsTable.vendorId, userId), gte(reviewsTable.createdAt, ago30)),
+      );
+      if (vendorRating?.avg && Number(vendorRating.avg) > 0) return Math.round(Number(vendorRating.avg) * 100) / 100;
+
+      const [customerRating] = await db.select({ avg: sql<number>`coalesce(avg(rating::numeric), 0)` }).from(reviewsTable).where(
+        and(eq(reviewsTable.userId, userId), gte(reviewsTable.createdAt, ago30)),
+      );
+      return Math.round(Number(customerRating?.avg ?? 0) * 100) / 100;
+    }
+
+    /* ── Location-based metrics ── */
+    case "gps_spoofing": {
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(locationLogsTable).where(
+        and(eq(locationLogsTable.userId, userId), eq(locationLogsTable.isSpoofed, true)),
+      );
+      return Number(row?.c ?? 0);
+    }
+
+    /* ── Report-based metrics ── */
+    case "abuse_reports": {
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(chatReportsTable).where(
+        eq(chatReportsTable.reportedUserId, userId),
+      );
+      return Number(row?.c ?? 0);
+    }
+
+    case "fraud_incidents": {
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(chatReportsTable).where(
+        and(
+          eq(chatReportsTable.reportedUserId, userId),
+          or(ilike(chatReportsTable.reason, "%fraud%"), ilike(chatReportsTable.reason, "%chargeback%")),
+        ),
+      );
+      return Number(row?.c ?? 0);
+    }
+
+    case "complaint_reports": {
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(chatReportsTable).where(
+        and(eq(chatReportsTable.reportedUserId, userId), gte(chatReportsTable.createdAt, ago30)),
+      );
+      return Number(row?.c ?? 0);
+    }
+
+    case "fake_item_complaints": {
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(chatReportsTable).where(
+        and(
+          eq(chatReportsTable.reportedUserId, userId),
+          or(ilike(chatReportsTable.reason, "%fake%"), ilike(chatReportsTable.reason, "%wrong item%"), ilike(chatReportsTable.reason, "%wrong_item%")),
+        ),
+      );
+      return Number(row?.c ?? 0);
+    }
+
+    case "hygiene_complaints": {
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(chatReportsTable).where(
+        and(
+          eq(chatReportsTable.reportedUserId, userId),
+          or(ilike(chatReportsTable.reason, "%hygiene%"), ilike(chatReportsTable.reason, "%quality%")),
+        ),
+      );
+      return Number(row?.c ?? 0);
+    }
+
+    case "late_pattern_violations": {
+      // No dedicated late-event table exists; proxy via orders that timed out or were vendor-cancelled
+      console.warn(`[computeUserMetric] late_pattern_violations: no dedicated table, using cancelled vendor orders as proxy`);
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(ordersTable).where(
+        and(
+          eq(ordersTable.vendorId, userId),
+          eq(ordersTable.status, "cancelled"),
+          gte(ordersTable.createdAt, ago30),
+        ),
+      );
+      return Number(row?.c ?? 0);
+    }
+
     default:
       return null;
   }
@@ -562,8 +916,7 @@ function compareMetric(value: number, operator: string, threshold: string): bool
 }
 
 /**
- * Evaluate all active rules whose targetRole matches any role of the user
- * (including the synthetic "van_driver" role for approved van drivers).
+ * Evaluate all active rules whose targetRole matches any role of the user.
  * Honors per-rule cooldown and inserts new conditions when thresholds are met.
  * Exported so other routes (e.g. van mode entry) can trigger evaluation.
  */
@@ -622,6 +975,8 @@ export async function evaluateRulesForUser(userId: string) {
         metadata: { ruleId: rule.id, metric: rule.metric, observed: value, threshold: rule.threshold },
       })
       .returning();
+
+    await logRuleAudit("fired", rule, "rule_engine", { userId, metric: rule.metric, observed: value, conditionId: created?.id });
     triggered.push({ ruleId: rule.id, ruleName: rule.name, metric: rule.metric, value, conditionId: created?.id });
   }
 

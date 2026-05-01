@@ -77,6 +77,22 @@ export const insertConditionRuleSchema = createInsertSchema(conditionRulesTable)
 export type InsertConditionRule = z.infer<typeof insertConditionRuleSchema>;
 export type ConditionRule = typeof conditionRulesTable.$inferSelect;
 
+export const conditionRuleAuditLogTable = pgTable("condition_rule_audit_log", {
+  id: text("id").primaryKey(),
+  ruleId: text("rule_id"),
+  action: text("action").notNull(),
+  changedBy: text("changed_by").notNull().default("admin"),
+  snapshot: jsonb("snapshot"),
+  diff: jsonb("diff"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [
+  index("cral_rule_id_idx").on(t.ruleId),
+  index("cral_action_idx").on(t.action),
+  index("cral_created_at_idx").on(t.createdAt),
+]);
+
+export type ConditionRuleAuditLog = typeof conditionRuleAuditLogTable.$inferSelect;
+
 export const conditionSettingsTable = pgTable("condition_settings", {
   id: text("id").primaryKey(),
   mode: conditionModeEnum("mode").notNull().default("default"),

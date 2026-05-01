@@ -265,100 +265,225 @@ export function createServer() {
 }
 
 /**
- * Dev-only landing page rendered at `GET /` on the API server. Lists every
- * sibling app as a clickable card so the user can jump between them from a
- * single Replit preview window without typing URLs.
+ * Dev-only landing page rendered at `GET /` on the API server.
+ * Shows an iframe-based app switcher — click a tab to preview any app
+ * without leaving the Replit preview window.
  */
 function renderHubPage(): string {
   const apps = [
-    { href: "/admin/",    label: "Admin Panel",   sub: "Platform administration",       icon: "🛠️", color: "#6366f1" },
-    { href: "/vendor/",   label: "Vendor App",    sub: "Vendors & store management",    icon: "🏪", color: "#10b981" },
-    { href: "/rider/",    label: "Rider App",     sub: "Delivery rider operations",     icon: "🛵", color: "#f59e0b" },
-    { href: "/customer/", label: "Customer App",  sub: "AJKMart Expo customer client",  icon: "🛍️", color: "#ec4899" },
+    { id: "admin",    href: "/admin/",    label: "Admin",    icon: "🛠️", color: "#6366f1" },
+    { id: "vendor",   href: "/vendor/",   label: "Vendor",   icon: "🏪", color: "#10b981" },
+    { id: "rider",    href: "/rider/",    label: "Rider",    icon: "🛵", color: "#f59e0b" },
+    { id: "customer", href: "/customer/", label: "Customer", icon: "🛍️", color: "#ec4899" },
   ];
-  const cards = apps.map(a => `
-    <a class="card" href="${a.href}" style="--accent:${a.color}">
-      <div class="icon" aria-hidden="true">${a.icon}</div>
-      <div class="text">
-        <div class="label">${a.label}</div>
-        <div class="sub">${a.sub}</div>
-      </div>
-      <div class="arrow" aria-hidden="true">→</div>
-    </a>
+
+  const tabs = apps.map((a, i) => `
+    <button
+      class="tab${i === 0 ? " active" : ""}"
+      data-href="${a.href}"
+      data-id="${a.id}"
+      style="--accent:${a.color}"
+      onclick="switchApp(this)"
+    >
+      <span class="tab-icon">${a.icon}</span>
+      <span class="tab-label">${a.label}</span>
+    </button>
   `).join("");
+
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>AJKMart — App Hub</title>
+  <title>AJKMart — Dev Hub</title>
   <style>
-    *,*::before,*::after { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; height: 100%; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: radial-gradient(1200px 600px at 80% -10%, #312e81 0%, transparent 60%),
-                  radial-gradient(900px 500px at -10% 110%, #0f766e 0%, transparent 55%),
-                  #0b1020;
-      color: #e5e7eb;
-      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
       display: flex;
       align-items: center;
+      gap: 0;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      height: 44px;
+      flex-shrink: 0;
+      padding: 0 8px;
+    }
+    .logo {
+      font-size: 13px;
+      font-weight: 700;
+      color: #58a6ff;
+      padding: 0 12px 0 6px;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      border-right: 1px solid #30363d;
+      margin-right: 8px;
+    }
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex: 1;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: #8b949e;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all .15s ease;
+      font-family: inherit;
+    }
+    .tab:hover {
+      background: #21262d;
+      color: #e6edf3;
+      border-color: #30363d;
+    }
+    .tab.active {
+      background: rgba(88,166,255,0.1);
+      border-color: var(--accent, #6366f1);
+      color: #e6edf3;
+    }
+    .tab.active .tab-icon { opacity: 1; }
+    .tab-icon { font-size: 15px; opacity: 0.75; }
+
+    /* ── Address bar ── */
+    .addressbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      padding-left: 12px;
+    }
+    .url-display {
+      font-size: 12px;
+      color: #8b949e;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 4px 10px;
+      min-width: 180px;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .btn-open {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 12px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #8b949e;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all .15s ease;
+      text-decoration: none;
+    }
+    .btn-open:hover {
+      background: #30363d;
+      color: #e6edf3;
+    }
+    .dot { width:7px; height:7px; border-radius:50%; background:#3fb950; box-shadow:0 0 5px #3fb950; flex-shrink:0; }
+
+    /* ── iFrame area ── */
+    .preview-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #fff;
+    }
+
+    /* ── Loading overlay ── */
+    .loader {
+      position: absolute;
+      inset: 0;
+      background: #0d1117;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       justify-content: center;
-      padding: 32px 20px;
+      gap: 14px;
+      z-index: 10;
+      transition: opacity .3s ease;
     }
-    .container { width: 100%; max-width: 880px; }
-    header { margin-bottom: 28px; text-align: center; }
-    h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.02em; }
-    p.lead { color: #9ca3af; margin: 0; font-size: 14px; }
-    .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
-    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
-    .card {
-      display: flex; align-items: center; gap: 16px;
-      padding: 18px 20px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-left: 4px solid var(--accent, #6366f1);
-      border-radius: 14px;
-      text-decoration: none; color: inherit;
-      transition: transform .12s ease, background .12s ease, border-color .12s ease;
+    .loader.hidden { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #30363d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
     }
-    .card:hover {
-      background: rgba(255,255,255,0.07);
-      border-color: rgba(255,255,255,0.18);
-      transform: translateY(-1px);
-    }
-    .card:active { transform: translateY(0); }
-    .icon {
-      width: 44px; height: 44px; flex: 0 0 44px;
-      border-radius: 10px;
-      background: color-mix(in srgb, var(--accent) 18%, transparent);
-      display: grid; place-items: center;
-      font-size: 22px;
-    }
-    .text { flex: 1; min-width: 0; }
-    .label { font-weight: 600; font-size: 16px; line-height: 1.2; }
-    .sub { color: #9ca3af; font-size: 12.5px; margin-top: 2px; }
-    .arrow { color: #9ca3af; font-size: 18px; }
-    footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 22px; }
-    footer code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; color: #d1d5db; }
-    .status { display:inline-flex; align-items:center; gap:6px; }
-    .dot { width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 6px #10b981; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-text { font-size: 13px; color: #8b949e; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>AJKMart — App Hub</h1>
-      <p class="lead"><span class="status"><span class="dot"></span>API Server is running</span> · pick an app to open</p>
-    </header>
-    <div class="grid">
-      ${cards}
+  <div class="topbar">
+    <div class="logo">⬡ AJKMart</div>
+    <div class="tabs" id="tabs">${tabs}</div>
+    <div class="addressbar">
+      <span class="dot"></span>
+      <span class="url-display" id="urlDisplay">/admin/</span>
+      <a class="btn-open" id="openLink" href="/admin/" target="_blank">↗ Open</a>
     </div>
-    <footer>
-      Backend health: <code>/health</code> · API: <code>/api/*</code>
-    </footer>
   </div>
+
+  <div class="preview-wrap">
+    <div class="loader" id="loader">
+      <div class="spinner"></div>
+      <div class="loader-text" id="loaderText">Loading Admin…</div>
+    </div>
+    <iframe id="preview" src="/admin/" onload="iframeLoaded()"></iframe>
+  </div>
+
+  <script>
+    function switchApp(btn) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      const href = btn.dataset.href;
+      const label = btn.querySelector('.tab-label').textContent;
+      document.getElementById('loader').classList.remove('hidden');
+      document.getElementById('loaderText').textContent = 'Loading ' + label + '…';
+      document.getElementById('urlDisplay').textContent = href;
+      document.getElementById('openLink').href = href;
+      document.getElementById('preview').src = href;
+    }
+    function iframeLoaded() {
+      document.getElementById('loader').classList.add('hidden');
+    }
+  </script>
 </body>
 </html>`;
 }

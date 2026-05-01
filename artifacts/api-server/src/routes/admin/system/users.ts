@@ -144,6 +144,8 @@ router.get("/users", async (req, res) => {
   const search = ((req.query?.search as string) ?? "").trim();
   const role = ((req.query?.role as string) ?? "").trim().toLowerCase();
   const status = ((req.query?.status as string) ?? "").trim().toLowerCase();
+  const pageNum = Math.max(1, parseInt((req.query?.page as string) ?? "1", 10));
+  const pageSize = Math.min(200, Math.max(1, parseInt((req.query?.limit as string) ?? "50", 10)));
 
   const conditions: SQL[] = [];
 
@@ -162,7 +164,9 @@ router.get("/users", async (req, res) => {
     conditions.push(or(eq(usersTable.isActive, false), eq(usersTable.isBanned, true))!);
   }
 
-  const rows = await db
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const baseQuery = db
     .select({
       user: usersTable,
       vendorProfile: vendorProfilesTable,
@@ -171,7 +175,7 @@ router.get("/users", async (req, res) => {
     .from(usersTable)
     .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
     .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(whereClause)
     .orderBy(desc(usersTable.createdAt));
 
   const condCounts = await db.select({
@@ -185,7 +189,7 @@ router.get("/users", async (req, res) => {
 
   const condMap = new Map(condCounts.map(c => [c.userId, { count: Number(c.activeCount), maxSeverity: c.maxSeverityLabel }]));
 
-  let enrichedUsers = rows.map(({ user: u, vendorProfile, riderProfile }) => ({
+  const enrich = (rows: Awaited<typeof baseQuery>) => rows.map(({ user: u, vendorProfile, riderProfile }) => ({
     ...stripUser(u),
     walletBalance: parseFloat(u.walletBalance ?? "0"),
     createdAt: u.createdAt.toISOString(),
@@ -210,23 +214,40 @@ router.get("/users", async (req, res) => {
     } : null,
   }));
 
-  if (conditionTier === "has_conditions") {
-    enrichedUsers = enrichedUsers.filter(u => u.conditionCount > 0);
-  } else if (conditionTier === "warnings") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "warning");
-  } else if (conditionTier === "restrictions") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "restriction_normal" || u.maxConditionSeverity === "restriction_strict");
-  } else if (conditionTier === "suspensions") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "suspension");
-  } else if (conditionTier === "bans") {
-    enrichedUsers = enrichedUsers.filter(u => u.maxConditionSeverity === "ban");
-  } else if (conditionTier === "clean") {
-    enrichedUsers = enrichedUsers.filter(u => u.conditionCount === 0);
+  const applyConditionTier = <T extends { conditionCount: number; maxConditionSeverity: string | null }>(users: T[]): T[] => {
+    if (conditionTier === "has_conditions") return users.filter(u => u.conditionCount > 0);
+    if (conditionTier === "warnings") return users.filter(u => u.maxConditionSeverity === "warning");
+    if (conditionTier === "restrictions") return users.filter(u => u.maxConditionSeverity === "restriction_normal" || u.maxConditionSeverity === "restriction_strict");
+    if (conditionTier === "suspensions") return users.filter(u => u.maxConditionSeverity === "suspension");
+    if (conditionTier === "bans") return users.filter(u => u.maxConditionSeverity === "ban");
+    if (conditionTier === "clean") return users.filter(u => u.conditionCount === 0);
+    return users;
+  };
+
+  let total: number;
+  let enrichedUsers: ReturnType<typeof enrich>;
+
+  if (conditionTier) {
+    // conditionTier is a JS-side filter — must fetch all matching rows to get accurate total
+    const allRows = await baseQuery;
+    const allEnriched = applyConditionTier(enrich(allRows));
+    total = allEnriched.length;
+    enrichedUsers = allEnriched.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+  } else {
+    // Pure DB pagination: COUNT query + paginated fetch run in parallel
+    const [countResult, rows] = await Promise.all([
+      db.select({ total: count() }).from(usersTable).where(whereClause),
+      baseQuery.limit(pageSize).offset((pageNum - 1) * pageSize),
+    ]);
+    total = Number(countResult[0]?.total ?? 0);
+    enrichedUsers = enrich(rows);
   }
 
   sendSuccess(res, {
     users: enrichedUsers,
-    total: enrichedUsers.length,
+    total,
+    page: pageNum,
+    pageSize,
   });
 });
 

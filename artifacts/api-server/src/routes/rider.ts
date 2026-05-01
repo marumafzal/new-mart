@@ -217,6 +217,7 @@ async function riderAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
     if (!user) { sendErrorWithData(res, "User not found", { code: "AUTH_REQUIRED" }, 401); return; }
+    if (user.isDeleted) { sendErrorWithData(res, "Account not found", { code: "ACCOUNT_DELETED" }, 401); return; }
     if (user.isBanned) { sendErrorWithData(res, "Your account has been permanently banned. Please contact support.", { code: "ACCOUNT_BANNED" }, 401); return; }
     if (!user.isActive) {
       /* Structured response for approval states so the frontend can show the right screen */

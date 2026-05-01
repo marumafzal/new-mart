@@ -330,7 +330,7 @@ export async function apiFetch(path: string, opts: RequestInit = {}, _retryBudge
       const rejectionReason = err.rejectionReason ?? (err.data as Record<string, unknown> | undefined)?.rejectionReason ?? null;
       const approvalStatus = err.approvalStatus ?? (err.data as Record<string, unknown> | undefined)?.approvalStatus ?? null;
       /* APPROVAL_PENDING and APPROVAL_REJECTED are NOT auth failures — do not force logout */
-      const AUTH_DENY_CODES = ["AUTH_REQUIRED", "ROLE_DENIED", "TOKEN_INVALID", "TOKEN_EXPIRED", "ACCOUNT_BANNED"];
+      const AUTH_DENY_CODES = ["AUTH_REQUIRED", "ROLE_DENIED", "TOKEN_INVALID", "TOKEN_EXPIRED", "ACCOUNT_BANNED", "ACCOUNT_DELETED"];
       const AUTH_DENY_PHRASES = ["access denied", "forbidden", "unauthorized", "authentication required", "token invalid", "token expired"];
       const isAuthDenial =
         AUTH_DENY_CODES.includes(code) ||

@@ -31,14 +31,15 @@ args = "Start application"
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
+mode = "parallel"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm run replit-start"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"

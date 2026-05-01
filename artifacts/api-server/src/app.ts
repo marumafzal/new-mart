@@ -156,7 +156,7 @@ export function createServer() {
       preload: true,
     },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-    frameguard: { action: 'deny' },
+    frameguard: { action: 'sameorigin' },
     noSniff: true,
     xssFilter: true,
   }));
@@ -233,6 +233,7 @@ export function createServer() {
       xfwd: true,
       logger: undefined,
       pathFilter: (pathname) =>
+        pathname !== "/" &&
         pathname !== "/health" &&
         !pathname.startsWith("/api") &&
         !pathname.startsWith("/admin") &&
@@ -461,28 +462,36 @@ function renderHubPage(): string {
   </div>
 
   <div class="preview-wrap">
-    <div class="loader" id="loader">
+    <div class="loader hidden" id="loader">
       <div class="spinner"></div>
-      <div class="loader-text" id="loaderText">Loading Admin…</div>
+      <div class="loader-text" id="loaderText">Loading…</div>
     </div>
-    <iframe id="preview" src="/admin/" onload="iframeLoaded()"></iframe>
+    <iframe id="preview" src="/admin/"></iframe>
   </div>
 
   <script>
+    var loaderTimer = null;
+    function hideLoader() {
+      clearTimeout(loaderTimer);
+      document.getElementById('loader').classList.add('hidden');
+    }
+    function showLoader(label) {
+      clearTimeout(loaderTimer);
+      document.getElementById('loaderText').textContent = 'Loading ' + label + '…';
+      document.getElementById('loader').classList.remove('hidden');
+      loaderTimer = setTimeout(hideLoader, 4000);
+    }
     function switchApp(btn) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       btn.classList.add('active');
       const href = btn.dataset.href;
       const label = btn.querySelector('.tab-label').textContent;
-      document.getElementById('loader').classList.remove('hidden');
-      document.getElementById('loaderText').textContent = 'Loading ' + label + '…';
       document.getElementById('urlDisplay').textContent = href;
       document.getElementById('openLink').href = href;
+      showLoader(label);
       document.getElementById('preview').src = href;
     }
-    function iframeLoaded() {
-      document.getElementById('loader').classList.add('hidden');
-    }
+    document.getElementById('preview').addEventListener('load', hideLoader);
   </script>
 </body>
 </html>`;

@@ -13,7 +13,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, useAdminViewOtp, useAdminVerifyContact, useAdminForcePasswordReset, useAdminKycByUserId, useAdminKycApprove, useAdminKycReject, useWaiveDebt, type CreateUserInput } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, useAdminViewOtp, useAdminVerifyContact, useAdminForcePasswordReset, useAdminKycByUserId, useAdminKycApprove, useAdminKycReject, useWaiveDebt, useAdminResetOtp, type CreateUserInput } from "@/hooks/use-admin";
 import { WalletAdjustModal } from "@/components/WalletAdjustModal";
 import { fetcher } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuthContext";
@@ -572,14 +572,7 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
-  const resetOtpMutation = useMutation({
-    mutationFn: () => fetcher(`/users/${user.id}/reset-otp`, { method: "POST", body: "{}" }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-users"] });
-      toast({ title: "OTP cleared", description: "User must re-authenticate on next login." });
-    },
-    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
-  });
+  const resetOtpMutation = useAdminResetOtp();
 
   const setBypassMutation = useMutation({
     mutationFn: (minutes: number) => fetcher(`/users/${user.id}/otp/bypass`, { method: "POST", body: JSON.stringify({ minutes }) }),
@@ -1006,7 +999,10 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
               size="sm"
               variant="outline"
               className="border-amber-300 text-amber-700 hover:bg-amber-100 rounded-lg text-xs"
-              onClick={() => resetOtpMutation.mutate()}
+              onClick={() => resetOtpMutation.mutate(user.id, {
+                onSuccess: () => toast({ title: "OTP cleared", description: "User must re-authenticate on next login." }),
+                onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+              })}
               disabled={resetOtpMutation.isPending}
             >
               {resetOtpMutation.isPending ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Clearing...</> : "Reset OTP"}
@@ -1261,15 +1257,10 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
   const kycRecord = kycData?.records?.[0] ?? null;
   const kycId = kycRecord?.id ?? null;
 
-  const parsed = parseUserDocuments(user);
-  const legacyDocs = parsed.files;
-
-  const kycPhotos: { label: string; url: string }[] = [];
-  if (kycRecord?.frontIdPhoto) kycPhotos.push({ label: "CNIC Front", url: kycRecord.frontIdPhoto });
-  if (kycRecord?.backIdPhoto)  kycPhotos.push({ label: "CNIC Back",  url: kycRecord.backIdPhoto });
-  if (kycRecord?.selfiePhoto)  kycPhotos.push({ label: "Selfie",     url: kycRecord.selfiePhoto });
-
-  const docs = kycPhotos.length > 0 ? kycPhotos : legacyDocs.map(d => ({ label: d.label, url: d.url }));
+  const docs: { label: string; url: string }[] = [];
+  if (kycRecord?.frontIdPhoto) docs.push({ label: "CNIC Front", url: kycRecord.frontIdPhoto });
+  if (kycRecord?.backIdPhoto)  docs.push({ label: "CNIC Back",  url: kycRecord.backIdPhoto });
+  if (kycRecord?.selfiePhoto)  docs.push({ label: "Selfie",     url: kycRecord.selfiePhoto });
 
   const allChecked = ["cnic_legible", "photo_match", "details_correct", "not_expired"].every(k => checklist[k]);
 

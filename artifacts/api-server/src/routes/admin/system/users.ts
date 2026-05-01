@@ -725,11 +725,32 @@ router.post("/users/:id/force-password-reset", async (req, res) => {
 
 router.post("/users/:id/reset-otp", async (req, res) => {
   const userId = req.params["id"]!;
-  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, name: usersTable.name, roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, userId));
   const adminReq = req as AdminRequest;
-  addAuditEntry({ action: "admin_reset_otp", ip: getClientIp(req), adminId: adminReq.adminId, adminName: adminReq.adminName, affectedUserId: userId, affectedUserName: user?.name || user?.phone, affectedUserRole: user?.roles?.split(",")[0]?.trim() || "customer", details: `OTP cleared for ${user?.phone || userId} — user must re-authenticate`, result: "success" });
-  sendSuccess(res, { success: true, message: "OTP cleared — user must re-authenticate" });
+  const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, name: usersTable.name, roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { sendNotFound(res, "User not found"); return; }
+
+  try {
+    await AuditService.executeWithAudit(
+      {
+        adminId:          adminReq.adminId,
+        adminName:        adminReq.adminName,
+        adminIp:          getClientIp(req),
+        action:           "admin_reset_otp",
+        resourceType:     "user",
+        resource:         user.phone ?? userId,
+        details:          `OTP cleared — user must re-authenticate`,
+        affectedUserId:   userId,
+        affectedUserName: (user.name ?? user.phone) ?? undefined,
+        affectedUserRole: user.roles?.split(",")[0]?.trim() ?? "customer",
+      },
+      async () => {
+        await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+      }
+    );
+    sendSuccess(res, { success: true, message: "OTP cleared — user must re-authenticate" });
+  } catch (err: any) {
+    sendError(res, err.message || "Failed to reset OTP", 500);
+  }
 });
 
 
@@ -920,49 +941,83 @@ router.get("/users/:id/sessions", async (req, res) => {
 /* ── DELETE /admin/users/:id/sessions/:sessionId — revoke one session ── */
 router.delete("/users/:id/sessions/:sessionId", async (req, res) => {
   const { id, sessionId } = req.params;
+  const adminReq = req as AdminRequest;
+
   const [session] = await db
     .select()
     .from(userSessionsTable)
     .where(and(eq(userSessionsTable.id, sessionId!), eq(userSessionsTable.userId, id!)))
     .limit(1);
-
   if (!session) { sendNotFound(res, "Session"); return; }
 
-  await db.update(userSessionsTable).set({ revokedAt: new Date() }).where(eq(userSessionsTable.id, sessionId!));
-
-  if (session.refreshTokenId) {
-    await db.update(refreshTokensTable).set({ revokedAt: new Date() }).where(eq(refreshTokensTable.id, session.refreshTokenId));
-  }
-
   const [affectedUser] = await db.select({ name: usersTable.name, phone: usersTable.phone, roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, id!)).limit(1);
-  const adminReq = req as AdminRequest;
-  addAuditEntry({ action: "revoke_session", ip: getClientIp(req), adminId: adminReq.adminId, adminName: adminReq.adminName, affectedUserId: id!, affectedUserName: affectedUser?.name || affectedUser?.phone, affectedUserRole: affectedUser?.roles?.split(",")[0]?.trim() || "customer", details: `Revoked session ${sessionId} for user ${affectedUser?.phone || id} (device: ${session.deviceName || session.browser || "unknown"})`, result: "success" });
-  writeAuthAuditLog("admin_session_revoked", { userId: id!, ip: req.ip ?? "", metadata: { sessionId } });
-  sendSuccess(res, { revoked: true });
+
+  try {
+    await AuditService.executeWithAudit(
+      {
+        adminId:          adminReq.adminId,
+        adminName:        adminReq.adminName,
+        adminIp:          getClientIp(req),
+        action:           "revoke_session",
+        resourceType:     "user_session",
+        resource:         sessionId!,
+        details:          `Revoked session for user ${affectedUser?.phone || id} (device: ${session.deviceName || session.browser || "unknown"})`,
+        affectedUserId:   id!,
+        affectedUserName: (affectedUser?.name ?? affectedUser?.phone) ?? undefined,
+        affectedUserRole: affectedUser?.roles?.split(",")[0]?.trim() ?? "customer",
+      },
+      async () => {
+        await db.update(userSessionsTable).set({ revokedAt: new Date() }).where(eq(userSessionsTable.id, sessionId!));
+        if (session.refreshTokenId) {
+          await db.update(refreshTokensTable).set({ revokedAt: new Date() }).where(eq(refreshTokensTable.id, session.refreshTokenId));
+        }
+      }
+    );
+    writeAuthAuditLog("admin_session_revoked", { userId: id!, ip: req.ip ?? "", metadata: { sessionId } });
+    sendSuccess(res, { revoked: true });
+  } catch (err: any) {
+    sendError(res, err.message || "Failed to revoke session", 500);
+  }
 });
 
 /* ── DELETE /admin/users/:id/sessions — revoke ALL sessions for user ── */
 router.delete("/users/:id/sessions", async (req, res) => {
   const { id } = req.params;
-
-  await db.update(userSessionsTable)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(userSessionsTable.userId, id!), isNull(userSessionsTable.revokedAt)));
-
-  await db.update(refreshTokensTable)
-    .set({ revokedAt: new Date() })
-    .where(and(eq(refreshTokensTable.userId, id!), isNull(refreshTokensTable.revokedAt)));
-
-  /* Bump tokenVersion so all outstanding access JWTs are immediately invalid */
-  await db.update(usersTable)
-    .set({ tokenVersion: sql`token_version + 1`, updatedAt: new Date() })
-    .where(eq(usersTable.id, id!));
-
-  const [affectedUser] = await db.select({ name: usersTable.name, phone: usersTable.phone, roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, id!)).limit(1);
   const adminReq = req as AdminRequest;
-  addAuditEntry({ action: "revoke_all_sessions", ip: getClientIp(req), adminId: adminReq.adminId, adminName: adminReq.adminName, affectedUserId: id!, affectedUserName: affectedUser?.name || affectedUser?.phone, affectedUserRole: affectedUser?.roles?.split(",")[0]?.trim() || "customer", details: `All sessions revoked for user ${affectedUser?.phone || id}`, result: "success" });
-  writeAuthAuditLog("admin_all_sessions_revoked", { userId: id!, ip: req.ip ?? "" });
-  sendSuccess(res, { revoked: true, message: "All sessions revoked for user" });
+  const [affectedUser] = await db.select({ name: usersTable.name, phone: usersTable.phone, roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, id!)).limit(1);
+
+  try {
+    await AuditService.executeWithAudit(
+      {
+        adminId:          adminReq.adminId,
+        adminName:        adminReq.adminName,
+        adminIp:          getClientIp(req),
+        action:           "revoke_all_sessions",
+        resourceType:     "user",
+        resource:         affectedUser?.phone ?? id!,
+        details:          `All sessions revoked for user ${affectedUser?.phone ?? id}`,
+        affectedUserId:   id!,
+        affectedUserName: (affectedUser?.name ?? affectedUser?.phone) ?? undefined,
+        affectedUserRole: affectedUser?.roles?.split(",")[0]?.trim() ?? "customer",
+      },
+      async () => {
+        await db.update(userSessionsTable)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(userSessionsTable.userId, id!), isNull(userSessionsTable.revokedAt)));
+        await db.update(refreshTokensTable)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(refreshTokensTable.userId, id!), isNull(refreshTokensTable.revokedAt)));
+        /* Bump tokenVersion so all outstanding access JWTs are immediately invalid */
+        await db.update(usersTable)
+          .set({ tokenVersion: sql`token_version + 1`, updatedAt: new Date() })
+          .where(eq(usersTable.id, id!));
+      }
+    );
+    writeAuthAuditLog("admin_all_sessions_revoked", { userId: id!, ip: req.ip ?? "" });
+    sendSuccess(res, { revoked: true, message: "All sessions revoked for user" });
+  } catch (err: any) {
+    sendError(res, err.message || "Failed to revoke sessions", 500);
+  }
 });
 
 export default router;

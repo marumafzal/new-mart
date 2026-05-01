@@ -84,3 +84,4 @@ export * from "./otp_bypass_audit";
 export * from "./integration_test_history";
 export * from "./search_logs";
 export * from "./file_scan_results";
+export * from "./admin_action_audit_log";

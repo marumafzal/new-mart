@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, refreshTokensTable, authAuditLogTable, rateLimitsTable } from "@workspace/db/schema";
+import { usersTable, refreshTokensTable, authAuditLogTable, rateLimitsTable, adminActionAuditLogTable } from "@workspace/db/schema";
 import { eq, and, lt, gt, like, sql } from "drizzle-orm";
 import { getPlatformSettings } from "../routes/admin.js";
 import { generateId } from "../lib/id.js";
@@ -257,12 +257,29 @@ export function getClientIp(req: Request): string {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   AUDIT LOG (in-memory ring buffer)
+   AUDIT LOG (in-memory ring buffer + async DB persistence)
 ══════════════════════════════════════════════════════════════ */
 export function addAuditEntry(entry: Omit<AuditEntry, "timestamp">) {
   if (settingsCache["security_audit_log"] === "off") return;
-  auditLog.unshift({ ...entry, timestamp: new Date().toISOString() });
+  const timestamp = new Date().toISOString();
+  auditLog.unshift({ ...entry, timestamp });
   if (auditLog.length > 2000) auditLog.splice(2000);
+
+  // Persist to DB asynchronously — never blocks the request
+  db.insert(adminActionAuditLogTable).values({
+    id:               generateId(),
+    adminId:          entry.adminId ?? null,
+    adminName:        entry.adminName ?? null,
+    ip:               entry.ip,
+    action:           entry.action,
+    result:           entry.result,
+    details:          entry.details ?? null,
+    affectedUserId:   entry.affectedUserId ?? null,
+    affectedUserName: entry.affectedUserName ?? null,
+    affectedUserRole: entry.affectedUserRole ?? null,
+  }).catch((err) => {
+    logger.warn({ err, action: entry.action }, "[audit] DB persist failed (in-memory copy retained)");
+  });
 }
 
 export function addSecurityEvent(event: Omit<SecurityEvent, "timestamp">) {

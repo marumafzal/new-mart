@@ -1605,6 +1605,17 @@ export const useDeleteOtpWhitelist = () => {
 // USER OTP / CONTACT VERIFICATION / PASSWORD RESET (Admin tools)
 // ══════════════════════════════════════════════════════
 
+export const useAdminResetOtp = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      fetcher(`/users/${userId}/reset-otp`, { method: "POST", body: "{}" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"], exact: false });
+    },
+  });
+};
+
 export const useAdminViewOtp = (userId: string | null) =>
   useQuery({
     queryKey: ["admin-user-otp", userId],

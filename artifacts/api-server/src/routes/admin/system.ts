@@ -16,6 +16,7 @@ import {
   supportMessagesTable,
   locationLogsTable,
   integrationTestHistoryTable,
+  adminActionAuditLogTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne, lt, type SQL } from "drizzle-orm";
 import {
@@ -647,43 +648,95 @@ router.get("/all-notifications", async (req, res) => {
    SECURITY MANAGEMENT ENDPOINTS
 ══════════════════════════════════════════════════════════════ */
 
-/* ── GET /admin/audit-log — view admin action audit trail ── */
-router.get("/audit-log", adminAuth, (req, res) => {
-  const page    = Math.max(1, parseInt(String(req.query["page"]    || "1")));
-  const limit   = Math.min(parseInt(String(req.query["limit"]   || "50")), 500);
-  const action  = req.query["action"]  as string | undefined;
-  const result  = req.query["result"]  as string | undefined;
-  const from    = req.query["from"]    as string | undefined;
-  const to      = req.query["to"]      as string | undefined;
-  const adminId = req.query["adminId"] as string | undefined;
-  const search  = req.query["search"]  as string | undefined;
+/* ── GET /admin/audit-log — view admin action audit trail (DB-backed) ── */
+router.get("/audit-log", adminAuth, async (req, res) => {
+  const page   = Math.max(1, parseInt(String(req.query["page"]   || "1")));
+  const limit  = Math.min(parseInt(String(req.query["limit"]  || "50")), 500);
+  const action = req.query["action"]  as string | undefined;
+  const result = req.query["result"]  as string | undefined;
+  const from   = req.query["from"]    as string | undefined;
+  const to     = req.query["to"]      as string | undefined;
+  const search = req.query["search"]  as string | undefined;
 
-  let entries = [...auditLog];
-  if (action)  entries = entries.filter(e => e.action.includes(action));
-  if (result)  entries = entries.filter(e => e.result === result);
-  if (from)    entries = entries.filter(e => new Date(e.timestamp) >= new Date(from));
-  if (to)      entries = entries.filter(e => new Date(e.timestamp) <= new Date(to));
-  if (adminId) entries = entries.filter(e => (e.adminId || "").toLowerCase().includes(adminId.toLowerCase())
-                                           || (e.adminName || "").toLowerCase().includes(adminId.toLowerCase()));
-  if (search)  entries = entries.filter(e =>
-    (e.adminId || "").toLowerCase().includes(search.toLowerCase()) ||
-    (e.adminName || "").toLowerCase().includes(search.toLowerCase()) ||
-    (e.action || "").toLowerCase().includes(search.toLowerCase()) ||
-    (e.details || "").toLowerCase().includes(search.toLowerCase()) ||
-    (e.ip || "").toLowerCase().includes(search.toLowerCase()) ||
-    (e.affectedUserName || "").toLowerCase().includes(search.toLowerCase())
-  );
+  try {
+    const conditions: SQL[] = [];
+    if (action) conditions.push(ilike(adminActionAuditLogTable.action, `%${action}%`));
+    if (result) conditions.push(eq(adminActionAuditLogTable.result, result));
+    if (from)   conditions.push(gte(adminActionAuditLogTable.createdAt, new Date(from)));
+    if (to)     conditions.push(lte(adminActionAuditLogTable.createdAt, new Date(to)));
+    if (search) {
+      const q = `%${search}%`;
+      conditions.push(or(
+        ilike(adminActionAuditLogTable.action, q),
+        ilike(adminActionAuditLogTable.details, q),
+        ilike(adminActionAuditLogTable.ip, q),
+        ilike(adminActionAuditLogTable.adminName, q),
+        ilike(adminActionAuditLogTable.affectedUserName, q),
+        ilike(adminActionAuditLogTable.adminId, q),
+      )!);
+    }
 
-  const total = entries.length;
-  const paginated = entries.slice((page - 1) * limit, page * limit);
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  sendSuccess(res, {
-    entries: paginated,
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
-  });
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(adminActionAuditLogTable)
+      .where(where);
+
+    const rows = await db
+      .select({
+        id:               adminActionAuditLogTable.id,
+        action:           adminActionAuditLogTable.action,
+        result:           adminActionAuditLogTable.result,
+        details:          adminActionAuditLogTable.details,
+        ip:               adminActionAuditLogTable.ip,
+        adminId:          adminActionAuditLogTable.adminId,
+        adminName:        adminActionAuditLogTable.adminName,
+        affectedUserId:   adminActionAuditLogTable.affectedUserId,
+        affectedUserName: adminActionAuditLogTable.affectedUserName,
+        affectedUserRole: adminActionAuditLogTable.affectedUserRole,
+        timestamp:        adminActionAuditLogTable.createdAt,
+      })
+      .from(adminActionAuditLogTable)
+      .where(where)
+      .orderBy(desc(adminActionAuditLogTable.createdAt))
+      .limit(limit)
+      .offset((page - 1) * limit);
+
+    const entries = rows.map(r => ({
+      ...r,
+      timestamp: r.timestamp instanceof Date ? r.timestamp.toISOString() : r.timestamp,
+    }));
+
+    sendSuccess(res, {
+      entries,
+      total: Number(total),
+      page,
+      limit,
+      totalPages: Math.ceil(Number(total) / limit),
+    });
+  } catch (err) {
+    // Fallback to in-memory ring buffer if DB query fails
+    logger.warn({ err }, "[audit-log] DB query failed, falling back to in-memory buffer");
+    let entries = [...auditLog];
+    if (action) entries = entries.filter(e => e.action.includes(action));
+    if (result) entries = entries.filter(e => e.result === result);
+    if (from)   entries = entries.filter(e => new Date(e.timestamp) >= new Date(from));
+    if (to)     entries = entries.filter(e => new Date(e.timestamp) <= new Date(to));
+    if (search) {
+      const q = search.toLowerCase();
+      entries = entries.filter(e =>
+        (e.adminId || "").toLowerCase().includes(q) ||
+        (e.adminName || "").toLowerCase().includes(q) ||
+        (e.action || "").toLowerCase().includes(q) ||
+        (e.details || "").toLowerCase().includes(q) ||
+        (e.ip || "").toLowerCase().includes(q) ||
+        (e.affectedUserName || "").toLowerCase().includes(q)
+      );
+    }
+    const total = entries.length;
+    sendSuccess(res, { entries: entries.slice((page - 1) * limit, page * limit), total, page, limit, totalPages: Math.ceil(total / limit) });
+  }
 });
 
 /* ── GET /admin/auth-audit-log — persistent auth event log from DB ── */

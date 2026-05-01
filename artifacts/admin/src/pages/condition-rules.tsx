@@ -3,13 +3,15 @@ import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared";
 import {
   Settings2, Shield, RefreshCw, Plus, Trash2, Edit2, ToggleLeft, ToggleRight,
-  Zap, Brain, Sliders, CheckCircle2, Loader2,
+  Zap, Brain, Sliders, CheckCircle2, Loader2, History, Play, CheckSquare,
+  Square, X, Clock,
 } from "lucide-react";
 import { PullToRefresh } from "@/components/PullToRefresh";
 import {
   useConditionRules, useCreateConditionRule, useUpdateConditionRule,
   useDeleteConditionRule, useSeedDefaultRules,
   useConditionSettings, useUpdateConditionSettings,
+  useConditionRuleAudit, useSimulateConditionRule, useBulkConditionRules,
 } from "@/hooks/use-admin";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,7 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   CONDITION_TYPES,
   SEVERITY_COLORS,
@@ -73,6 +77,18 @@ const MODE_CONFIG = [
   },
 ];
 
+const ACTION_BADGE_COLORS: Record<string, string> = {
+  created: "bg-green-100 text-green-700 border-green-200",
+  updated: "bg-blue-100 text-blue-700 border-blue-200",
+  deleted: "bg-red-100 text-red-700 border-red-200",
+  fired: "bg-amber-100 text-amber-700 border-amber-200",
+};
+
+function formatDate(d: string | null | undefined) {
+  if (!d) return null;
+  return new Date(d).toLocaleString();
+}
+
 function RuleFormModal({ rule, onClose }: { rule?: any; onClose: () => void }) {
   const { toast } = useToast();
   const createMut = useCreateConditionRule();
@@ -86,7 +102,7 @@ function RuleFormModal({ rule, onClose }: { rule?: any; onClose: () => void }) {
   const [threshold, setThreshold] = useState(rule?.threshold || "");
   const [conditionType, setConditionType] = useState(rule?.conditionType || "warning_l1");
   const [severity, setSeverity] = useState(rule?.severity || "warning");
-  const [cooldownHours, setCooldownHours] = useState(String(rule?.cooldownHours || 24));
+  const [cooldownHours, setCooldownHours] = useState(String(rule?.cooldownHours ?? 24));
 
   const handleSave = () => {
     if (!name || !metric || threshold === "" || threshold == null) {
@@ -123,7 +139,7 @@ function RuleFormModal({ rule, onClose }: { rule?: any; onClose: () => void }) {
           </div>
           <div>
             <label className="text-xs font-bold text-muted-foreground uppercase block mb-1">Description</label>
-            <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" className="h-10 rounded-xl" />
+            <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description shown in rule card" className="h-10 rounded-xl" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -200,25 +216,174 @@ function RuleFormModal({ rule, onClose }: { rule?: any; onClose: () => void }) {
   );
 }
 
+function SimulateModal({ rule, onClose }: { rule: any; onClose: () => void }) {
+  const simulateMut = useSimulateConditionRule();
+  const [result, setResult] = useState<any>(null);
+
+  const handleRun = () => {
+    simulateMut.mutate(rule.id, {
+      onSuccess: (d: any) => setResult(d.data),
+      onError: () => setResult(null),
+    });
+  };
+
+  const metricLabel = METRICS.find(m => m.value === rule.metric)?.label || rule.metric;
+
+  return (
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="w-[95vw] max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Play className="w-5 h-5 text-green-600" /> Simulate Rule
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 mt-2">
+          <div className="bg-muted/50 rounded-xl p-3 text-sm">
+            <p className="font-semibold text-foreground">{rule.name}</p>
+            <p className="text-muted-foreground mt-1">
+              When <span className="font-medium">{metricLabel}</span> {rule.operator} <span className="font-medium">{rule.threshold}</span> → apply <span className="font-medium">{rule.conditionType}</span>
+            </p>
+            <p className="text-muted-foreground text-xs mt-1">Target role: {rule.targetRole}</p>
+          </div>
+
+          {!result && (
+            <Button onClick={handleRun} disabled={simulateMut.isPending}
+              className="w-full rounded-xl bg-green-600 hover:bg-green-700 text-white">
+              {simulateMut.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Running simulation...</> : "Run Simulation"}
+            </Button>
+          )}
+
+          {result && (
+            <div className="space-y-3">
+              <div className="flex gap-3">
+                <div className="flex-1 bg-red-50 border border-red-100 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-red-600">{result.matchCount}</p>
+                  <p className="text-xs text-red-500">Users breach threshold</p>
+                </div>
+                <div className="flex-1 bg-muted/50 rounded-xl p-3 text-center">
+                  <p className="text-2xl font-bold text-foreground">{result.totalChecked}</p>
+                  <p className="text-xs text-muted-foreground">Total checked</p>
+                </div>
+              </div>
+
+              {result.matches?.length > 0 && (
+                <div className="border border-border/50 rounded-xl overflow-hidden">
+                  <div className="bg-muted/30 px-3 py-2 text-xs font-bold text-muted-foreground uppercase">Affected Users</div>
+                  <div className="max-h-48 overflow-y-auto divide-y divide-border/30">
+                    {result.matches.map((m: any) => (
+                      <div key={m.userId} className="px-3 py-2 flex items-center justify-between">
+                        <span className="text-sm font-medium">{m.userName}</span>
+                        <Badge className="bg-red-50 text-red-600 border-red-100 text-[10px]">
+                          {metricLabel}: {m.metricValue}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {result.matchCount === 0 && (
+                <div className="text-center py-4">
+                  <CheckCircle2 className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No users currently breach this threshold.</p>
+                </div>
+              )}
+
+              <Button variant="outline" onClick={handleRun} disabled={simulateMut.isPending} className="w-full rounded-xl text-sm">
+                Re-run
+              </Button>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AuditDrawer({ rule, onClose }: { rule: any; onClose: () => void }) {
+  const { data, isLoading } = useConditionRuleAudit(rule?.id ?? null);
+  const entries: any[] = (data as any)?.data?.entries ?? [];
+
+  return (
+    <Sheet open onOpenChange={open => { if (!open) onClose(); }}>
+      <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader className="pb-4 border-b border-border/50">
+          <SheetTitle className="flex items-center gap-2">
+            <History className="w-5 h-5 text-indigo-600" /> Rule History
+          </SheetTitle>
+          <p className="text-sm text-muted-foreground mt-1">{rule.name}</p>
+        </SheetHeader>
+
+        {isLoading ? (
+          <div className="flex justify-center mt-8">
+            <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="text-center py-12">
+            <History className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No audit history yet</p>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {entries.map((entry: any) => (
+              <div key={entry.id} className="border border-border/50 rounded-xl p-3 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className={`${ACTION_BADGE_COLORS[entry.action] || "bg-gray-100"} text-[10px] capitalize border`}>
+                    {entry.action}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{formatDate(entry.created_at)}</span>
+                  {entry.changed_by && (
+                    <span className="text-xs text-muted-foreground ml-auto">by {entry.changed_by}</span>
+                  )}
+                </div>
+                {entry.diff && Object.keys(entry.diff).length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    {Object.entries(entry.diff).map(([k, v]: any) => (
+                      <p key={k} className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{k}</span>: {String(v?.from)} → {String(v?.to)}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {entry.action === "fired" && entry.diff?.userId && (
+                  <p className="text-xs text-amber-600">
+                    Triggered for user {entry.diff.userId} — observed {entry.diff.observed} (threshold: {entry.diff.threshold})
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 export default function ConditionRules() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
   const { data: rulesData, isLoading: rulesLoading, refetch } = useConditionRules();
-  const { data: settingsData, isLoading: settingsLoading } = useConditionSettings();
+  const { data: settingsData } = useConditionSettings();
   const updateSettingsMut = useUpdateConditionSettings();
   const updateRuleMut = useUpdateConditionRule();
   const deleteRuleMut = useDeleteConditionRule();
   const seedMut = useSeedDefaultRules();
+  const bulkMut = useBulkConditionRules();
 
   const [editRule, setEditRule] = useState<any>(null);
   const [showCreateRule, setShowCreateRule] = useState(false);
+  const [simulateRule, setSimulateRule] = useState<any>(null);
+  const [auditRule, setAuditRule] = useState<any>(null);
   const [roleTab, setRoleTab] = useState("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const rules: any[] = rulesData?.rules || [];
   const settings = settingsData || { mode: "default" };
 
   const filteredRules = roleTab === "all" ? rules : rules.filter(r => r.targetRole === roleTab);
+
+  const allFilteredSelected = filteredRules.length > 0 && filteredRules.every(r => selectedIds.has(r.id));
 
   const handleModeSwitch = (mode: string) => {
     updateSettingsMut.mutate({ mode }, {
@@ -253,6 +418,42 @@ export default function ConditionRules() {
     await qc.invalidateQueries({ queryKey: ["admin-condition-rules"] });
     await qc.invalidateQueries({ queryKey: ["admin-condition-settings"] });
   }, [qc]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filteredRules.forEach(r => next.delete(r.id));
+        return next;
+      });
+    } else {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filteredRules.forEach(r => next.add(r.id));
+        return next;
+      });
+    }
+  };
+
+  const handleBulk = (action: "enable" | "disable" | "delete") => {
+    const ids = Array.from(selectedIds);
+    if (action === "delete" && !confirm(`Delete ${ids.length} rule(s) permanently?`)) return;
+    bulkMut.mutate({ ids, action }, {
+      onSuccess: (d: any) => {
+        toast({ title: `${action === "enable" ? "Enabled" : action === "disable" ? "Disabled" : "Deleted"} ${d.affected} rule(s)` });
+        setSelectedIds(new Set());
+      },
+      onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+    });
+  };
 
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="space-y-6">
@@ -308,18 +509,16 @@ export default function ConditionRules() {
               <h2 className="text-lg font-bold">Auto-Trigger Rules</h2>
             </div>
             <div className="flex gap-2">
-              {rules.length === 0 && (
-                <Button size="sm" variant="outline" onClick={handleSeedDefaults} disabled={seedMut.isPending}
-                  className="h-8 rounded-xl gap-1 text-xs">
-                  {seedMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />} Seed Defaults
-                </Button>
-              )}
+              <Button size="sm" variant="outline" onClick={handleSeedDefaults} disabled={seedMut.isPending}
+                className="h-8 rounded-xl gap-1 text-xs">
+                {seedMut.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />} Seed Defaults
+              </Button>
               <Button size="sm" onClick={() => setShowCreateRule(true)} className="h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white gap-1 text-xs">
                 <Plus className="w-3 h-3" /> New Rule
               </Button>
             </div>
           </div>
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-2 mt-3 flex-wrap">
             {["all", "customer", "rider", "van_driver", "vendor"].map(r => (
               <button key={r} onClick={() => setRoleTab(r)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${roleTab === r ? "bg-indigo-100 text-indigo-700" : "bg-muted/50 text-muted-foreground hover:bg-muted"}`}>
@@ -340,43 +539,100 @@ export default function ConditionRules() {
             <p className="text-xs text-muted-foreground mt-1">Click "Seed Defaults" to load standard rules or create a custom one</p>
           </CardContent>
         ) : (
-          <div className="divide-y divide-border/50">
-            {filteredRules.map(rule => {
-              const metricLabel = METRICS.find(m => m.value === rule.metric)?.label || rule.metric;
-              const typeLabel = CONDITION_TYPES.find(t => t.value === rule.conditionType)?.label || rule.conditionType;
-              return (
-                <div key={rule.id} className={`p-4 flex items-center gap-3 ${!rule.isActive ? "opacity-50" : ""}`}>
-                  <Switch checked={rule.isActive} onCheckedChange={() => handleToggleRule(rule)} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold">{rule.name}</span>
-                      <Badge className="bg-blue-50 text-blue-600 border-blue-100 text-[10px] capitalize">{rule.targetRole}</Badge>
-                      <Badge className={`${SEVERITY_COLORS[rule.severity] || "bg-gray-100"} text-[10px]`}>
-                        {rule.severity.replace("_", " ")}
-                      </Badge>
+          <>
+            <div className="px-4 py-2 border-b border-border/30 flex items-center gap-2 bg-muted/20">
+              <button onClick={toggleSelectAll} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+                {allFilteredSelected
+                  ? <CheckSquare className="w-4 h-4 text-indigo-600" />
+                  : <Square className="w-4 h-4" />}
+                {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}
+              </button>
+            </div>
+            <div className="divide-y divide-border/50">
+              {filteredRules.map(rule => {
+                const metricLabel = METRICS.find(m => m.value === rule.metric)?.label || rule.metric;
+                const typeLabel = CONDITION_TYPES.find(t => t.value === rule.conditionType)?.label || rule.conditionType;
+                const isSelected = selectedIds.has(rule.id);
+                return (
+                  <div key={rule.id} className={`p-4 flex items-start gap-3 transition-colors ${!rule.isActive ? "opacity-50" : ""} ${isSelected ? "bg-indigo-50/50" : ""}`}>
+                    <button onClick={() => toggleSelect(rule.id)} className="mt-1 shrink-0">
+                      {isSelected
+                        ? <CheckSquare className="w-4 h-4 text-indigo-600" />
+                        : <Square className="w-4 h-4 text-muted-foreground" />}
+                    </button>
+                    <Switch checked={rule.isActive} onCheckedChange={() => handleToggleRule(rule)} className="mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold">{rule.name}</span>
+                        <Badge className="bg-blue-50 text-blue-600 border-blue-100 text-[10px] capitalize">{rule.targetRole}</Badge>
+                        <Badge className={`${SEVERITY_COLORS[rule.severity] || "bg-gray-100"} text-[10px]`}>
+                          {rule.severity.replace("_", " ")}
+                        </Badge>
+                      </div>
+                      {rule.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5 italic">{rule.description}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        When <span className="font-semibold">{metricLabel}</span> {rule.operator} <span className="font-semibold">{rule.threshold}</span> → <span className="font-semibold">{typeLabel}</span>
+                        {rule.cooldownHours > 0 && <span className="ml-2">· {rule.cooldownHours}h cooldown</span>}
+                      </p>
+                      {rule.lastFiredAt && (
+                        <p className="text-[10px] text-amber-600 mt-0.5 flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> Last triggered: {formatDate(rule.lastFiredAt)}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      When <span className="font-semibold">{metricLabel}</span> {rule.operator} <span className="font-semibold">{rule.threshold}</span> → <span className="font-semibold">{typeLabel}</span>
-                      {rule.cooldownHours > 0 && <span className="ml-2">· {rule.cooldownHours}h cooldown</span>}
-                    </p>
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="sm" variant="ghost" onClick={() => setSimulateRule(rule)} title="Simulate" className="h-8 w-8 p-0 rounded-lg text-green-600 hover:text-green-700 hover:bg-green-50">
+                        <Play className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setAuditRule(rule)} title="History" className="h-8 w-8 p-0 rounded-lg text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50">
+                        <History className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditRule(rule)} title="Edit" className="h-8 w-8 p-0 rounded-lg">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => handleDeleteRule(rule.id)} title="Delete" className="h-8 w-8 p-0 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button size="sm" variant="ghost" onClick={() => setEditRule(rule)} className="h-8 w-8 p-0 rounded-lg">
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDeleteRule(rule.id)} className="h-8 w-8 p-0 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </Card>
 
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-white border border-border shadow-xl rounded-2xl px-4 py-3">
+          <span className="text-sm font-semibold text-foreground mr-2">{selectedIds.size} selected</span>
+          <Button size="sm" onClick={() => handleBulk("enable")} disabled={bulkMut.isPending}
+            className="h-8 rounded-xl bg-green-600 hover:bg-green-700 text-white gap-1 text-xs">
+            Enable
+          </Button>
+          <Button size="sm" onClick={() => handleBulk("disable")} disabled={bulkMut.isPending}
+            className="h-8 rounded-xl bg-amber-600 hover:bg-amber-700 text-white gap-1 text-xs">
+            Disable
+          </Button>
+          <Button size="sm" onClick={() => handleBulk("delete")} disabled={bulkMut.isPending}
+            className="h-8 rounded-xl bg-red-600 hover:bg-red-700 text-white gap-1 text-xs">
+            <Trash2 className="w-3 h-3" /> Delete
+          </Button>
+          <button onClick={() => setSelectedIds(new Set())} className="ml-1 text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {(showCreateRule || editRule) && (
         <RuleFormModal rule={editRule} onClose={() => { setShowCreateRule(false); setEditRule(null); }} />
+      )}
+      {simulateRule && (
+        <SimulateModal rule={simulateRule} onClose={() => setSimulateRule(null)} />
+      )}
+      {auditRule && (
+        <AuditDrawer rule={auditRule} onClose={() => setAuditRule(null)} />
       )}
     </PullToRefresh>
   );

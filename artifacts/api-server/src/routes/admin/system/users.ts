@@ -738,16 +738,18 @@ router.post("/users/:id/reset-otp", async (req, res) => {
         action:           "admin_reset_otp",
         resourceType:     "user",
         resource:         user.phone ?? userId,
-        details:          `OTP cleared — user must re-authenticate`,
+        details:          `OTP cleared (including bypass) — user must re-verify on next login`,
         affectedUserId:   userId,
         affectedUserName: (user.name ?? user.phone) ?? undefined,
         affectedUserRole: user.roles?.split(",")[0]?.trim() ?? "customer",
       },
       async () => {
-        await db.update(usersTable).set({ otpCode: null, otpExpiry: null, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+        await db.update(usersTable)
+          .set({ otpCode: null, otpExpiry: null, otpBypassUntil: null, updatedAt: new Date() })
+          .where(eq(usersTable.id, userId));
       }
     );
-    sendSuccess(res, { success: true, message: "OTP cleared — user must re-authenticate" });
+    sendSuccess(res, { success: true, message: "OTP and bypass cleared — user must re-verify on next login" });
   } catch (err: any) {
     sendError(res, err.message || "Failed to reset OTP", 500);
   }
@@ -863,22 +865,42 @@ router.patch("/users/:id/request-correction", async (req, res) => {
 /* ── PATCH /admin/users/:id/waive-debt — waive rider's cancellation debt ── */
 router.patch("/users/:id/waive-debt", async (req, res) => {
   const userId = req.params["id"]!;
+  const adminReq = req as AdminRequest;
   const [user] = await db.select({ id: usersTable.id, phone: usersTable.phone, name: usersTable.name, roles: usersTable.roles, cancellationDebt: usersTable.cancellationDebt })
     .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { sendNotFound(res, "User not found"); return; }
   const debt = parseFloat(user.cancellationDebt ?? "0");
   if (debt <= 0) { sendSuccess(res, { success: true, message: "No debt to waive" }); return; }
-  await db.update(usersTable).set({ cancellationDebt: "0", updatedAt: new Date() }).where(eq(usersTable.id, userId));
-  const adminReq = req as AdminRequest;
-  addAuditEntry({ action: "debt_waived", ip: getClientIp(req), adminId: adminReq.adminId, adminName: adminReq.adminName, affectedUserId: userId, affectedUserName: user.name || user.phone, affectedUserRole: user.roles?.split(",")[0]?.trim() || "rider", details: `Cancelled debt of Rs.${debt.toFixed(0)} for ${user.phone}`, result: "success" });
-  const debtLang = await getUserLanguage(userId);
-  await db.insert(notificationsTable).values({
-    id: generateId(), userId,
-    title: t("notifDebtWaived", debtLang),
-    body: t("notifDebtWaivedBody", debtLang).replace("{amount}", debt.toFixed(0)),
-    type: "system", icon: "checkmark-circle-outline",
-  }).catch(() => {});
-  sendSuccess(res, { success: true, waived: debt });
+
+  try {
+    await AuditService.executeWithAudit(
+      {
+        adminId:          adminReq.adminId,
+        adminName:        adminReq.adminName,
+        adminIp:          getClientIp(req),
+        action:           "debt_waived",
+        resourceType:     "user",
+        resource:         user.phone ?? userId,
+        details:          `Waived cancellation debt of Rs.${debt.toFixed(0)} for ${user.phone ?? userId}`,
+        affectedUserId:   userId,
+        affectedUserName: (user.name ?? user.phone) ?? undefined,
+        affectedUserRole: user.roles?.split(",")[0]?.trim() ?? "rider",
+      },
+      async () => {
+        await db.update(usersTable).set({ cancellationDebt: "0", updatedAt: new Date() }).where(eq(usersTable.id, userId));
+        const debtLang = await getUserLanguage(userId);
+        await db.insert(notificationsTable).values({
+          id: generateId(), userId,
+          title: t("notifDebtWaived", debtLang),
+          body: t("notifDebtWaivedBody", debtLang).replace("{amount}", debt.toFixed(0)),
+          type: "system", icon: "checkmark-circle-outline",
+        }).catch(() => {});
+      }
+    );
+    sendSuccess(res, { success: true, waived: debt });
+  } catch (err: any) {
+    sendError(res, err.message || "Failed to waive debt", 500);
+  }
 });
 
 /* ── PATCH /admin/users/:id/bulk-ban — ban/unban multiple users ── */

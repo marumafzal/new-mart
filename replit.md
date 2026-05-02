@@ -2,9 +2,7 @@
 
 ## Overview
 
-AJKMart is a multi-service super-app platform serving the AJK (Azad Jammu & Kashmir) region of Pakistan. The platform provides a unified experience for multiple verticals: e-commerce (Mart), food delivery, ride-hailing (bike/car/rickshaw), pharmacy, parcel delivery, and inter-city van transport. The system consists of four user-facing applications (customer mobile/web, rider PWA, vendor portal, admin panel) backed by a single Node.js API server with PostgreSQL data storage.
-
-The repository is organized as a pnpm workspace monorepo with shared libraries for database schema, API client, validation, and i18n. The primary goal is to ship a production-grade, low-resource-friendly experience suitable for slow networks and budget devices common in the target region.
+AJKMart is a multi-service super-app platform designed for the AJK region of Pakistan. It integrates e-commerce, food delivery, ride-hailing, pharmacy services, parcel delivery, and inter-city transport into a single platform. The project aims to provide a robust, low-resource-friendly experience optimized for environments with slow networks and budget devices. The system comprises four user-facing applications (customer mobile/web, rider PWA, vendor portal, admin panel) supported by a Node.js API server and PostgreSQL database.
 
 ## User Preferences
 
@@ -12,181 +10,70 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Monorepo Structure (pnpm Workspaces)
+### Monorepo Structure
 
-The repository uses **pnpm exclusively** (enforced via a `preinstall` hook that rejects npm/yarn). The workspace is split into:
-
-- `lib/*` — Shared libraries (`db`, `api-client-react`, `api-zod`, `auth-utils`, `i18n`) consumed via `@workspace/*` path aliases. These are built first and consumed in their `dist` form by apps.
-- `artifacts/*` — Deployable applications (`api-server`, `admin`, `rider-app`, `vendor-app`, `ajkmart`, `sandbox`).
-- `scripts/` — Development control (`dev-ctl.mjs`) and environment-specific launchers (`replit`, `codespace`, `vps`, `local`).
-
-TypeScript uses project references with a `tsconfig.base.json`, `customConditions: ["workspace"]`, and a path alias `@workspace/* -> ./lib/*/dist`. The root `typecheck` script builds library references first, then per-package typechecks.
+The project is structured as a pnpm workspace monorepo, enforcing pnpm usage. It includes shared libraries for database schema, API client, validation, and internationalization, consumed by various deployable applications such as the API server, admin panel, rider app, vendor app, and customer super-app. TypeScript project references are used for efficient type-checking and build processes.
 
 ### Applications
 
-1. **api-server** (Node.js/Express) — Single backend serving all clients on port 8080. Routes organized by domain (auth, orders, rides, pharmacy, vendor, rider, admin, wallet, payments, maps, platform-config, etc.). Uses Drizzle ORM, Zod for validation, Socket.IO for real-time events.
-2. **admin** (React + Vite) — Admin command-center panel with sidebar navigation, dashboard, operations/inventory/financials/safety/config modules. Designed with a "Command Center" aesthetic (Slate sidebar, Indigo accents, Lucide icons, glassmorphism header).
-3. **rider-app** (React + Vite, PWA) — Rider-facing web app with Leaflet maps, GPS tracking, order/ride acceptance, wallet, earnings, deposits.
-4. **vendor-app** (React + Vite, Wouter router) — Vendor portal for product/inventory/order management, served under `/vendor/` base path.
-5. **ajkmart** (Expo / React Native + Expo Router) — Customer mobile super-app with web build support. Uses `expo-router`, `expo-secure-store`, `expo-local-authentication` (biometrics), `expo-image`, deep linking for magic-link auth.
+1.  **api-server**: A Node.js/Express backend providing a unified API for all clients. It uses Drizzle ORM for database interactions, Zod for validation, and Socket.IO for real-time features.
+2.  **admin**: A React + Vite application serving as the central administration panel, featuring a "Command Center" design with various modules for operations, inventory, finance, safety, and configuration.
+3.  **rider-app**: A React + Vite PWA for riders, including mapping, GPS tracking, order/ride management, and financial features.
+4.  **vendor-app**: A React + Vite application for vendors to manage products, inventory, and orders.
+5.  **ajkmart**: An Expo / React Native customer super-app, supporting mobile and web builds, with features like biometrics, deep linking for authentication, and network-aware image loading.
 
 ### Backend Architecture
 
-- **Framework**: Express with Zod request validation, JWT-based auth (15min access + 30-day refresh tokens), CSRF, rate limiting, audit logging.
-- **Real-time**: Socket.IO for order ACKs, rider GPS broadcasts (throttled), admin notifications, ride dispatch events.
-- **Auth**: Multi-method authentication system — Phone OTP, Email OTP, Username+Password, Google/Facebook OAuth, magic links, TOTP-based 2FA with backup codes, biometric (mobile only). Method visibility is admin-toggleable via platform config.
-- **Hybrid Wallet Model**: For cash rides/orders, platform commission is deducted from rider wallet (rider keeps full cash). For wallet-paid rides, rider gets their share credited. Riders must maintain `rider_min_balance` to accept cash jobs. Manual deposit + admin-verified top-ups.
-- **Atomic Operations**: Wallet deduction + order creation wrapped in single Drizzle transactions. Two-way ACK pattern between client and server for order confirmation.
-- **Platform Config**: A central `/api/platform-config` endpoint exposes admin-controlled settings (feature toggles, pricing defaults, service colors, map center, currency, regex formats, OTP/session TTLs, rate limits, image quality, etc.). Clients fetch on startup and use config values with hardcoded fallbacks.
+The backend leverages Express with Zod validation, JWT-based authentication, CSRF protection, and rate limiting. Socket.IO facilitates real-time events. A multi-method authentication system supports Phone/Email OTP, Username/Password, OAuth, magic links, and TOTP 2FA, with methods togglable via platform configuration. A hybrid wallet model manages commissions and rider balances, with atomic transactions for critical operations. A central platform configuration endpoint allows dynamic control over features, pricing, and service settings.
 
 ### Frontend Architecture
 
-- **Customer App (Expo)**: Lazy-loaded service modules gated by platform config feature flags — disabled services don't load code at all. Network-aware image loading via NetInfo + expo-image. React Query cache persisted to AsyncStorage for offline resilience. Bento-style home grid that dynamically adapts when services are toggled. Disabled services completely hidden (not greyed-out).
-- **State Management**: React Context (AuthContext, CartContext, PlatformConfigContext, RiderLocationContext) plus React Query for server state.
-- **i18n**: Trilingual (English / Urdu / Roman Urdu) via shared `lib/i18n` package.
-- **Design System**: Lucide icons across web apps; Ionicons in Expo. Slate/Indigo palette for admin; emerald for rider; brand gradient for customer. Skeleton loaders, bottom sheets on mobile, accessible labels, configurable font scaling.
+The customer app uses Expo, supporting lazy-loaded service modules that are toggled via feature flags in platform config. React Query is used for server state management with AsyncStorage persistence for offline resilience. The project supports trilingual internationalization (English/Urdu/Roman Urdu) via a shared library. A consistent design system is applied across applications, utilizing Lucide icons for web and Ionicons for Expo, with specific color palettes per application.
 
 ### Data Layer
 
-- **ORM**: Drizzle. Schema lives in `lib/db/src/schema/` split per domain (users, orders, products, rides, wallets, refresh_tokens, pending_otps, auth_audit_log, magic_link_tokens, error_reports, platform_settings, etc.).
-- **Database**: PostgreSQL (via `pg` Pool). May be added later if not yet provisioned — Drizzle schema can exist without an active Postgres instance during development.
-- **Migrations**: Managed via Drizzle Kit (`db:push` / `db:migrate`).
-
-### Development Workflow
-
-- `dev-ctl.mjs` provides per-service start/stop/status commands (`pnpm start:api`, `start:admin`, `start:rider`, `start:vendor`, `start:ajkmart`, `start:sandbox`, `start:all`).
-- Environment-specific launchers (`replit-start`, `codespace-start`, `vps-start`, `local-start`) handle env-specific port and proxy configuration.
-- All apps support hot reload via Vite/Expo dev servers.
-- Error tracking via central `error_reports` table with severity classification, surfaced through admin panel.
+PostgreSQL is the chosen database, with schema managed by Drizzle ORM. Drizzle Kit is used for migrations. The schema is organized by domain, covering users, orders, products, rides, wallets, and platform settings.
 
 ### Key Architectural Decisions
 
-- **Single API server vs microservices**: Chosen for simplicity, lower hosting cost, and easier transaction consistency across services. Rationale: target market is regional, scale demands moderate.
-- **pnpm workspace over Nx/Turborepo**: Lower complexity, sufficient for this project size; build references handled via TypeScript project refs.
-- **Expo for customer app**: Single codebase for iOS/Android/Web; trade-off is web bundle requires shims for native-only modules.
-- **Admin-driven configuration**: Almost everything (pricing, fees, timeouts, feature flags, auth methods, vehicle types, service zones, currency) is admin-controllable via platform settings to avoid code redeploys for business changes.
-- **Manual payment verification**: Wallet top-ups and COD remittances use bank transfer + admin verification rather than gateway integration, matching local payment habits and avoiding gateway fees during initial rollout.
+-   **Single API Server**: Chosen for simplicity, cost efficiency, and easier transaction consistency, suitable for the target regional scale.
+-   **pnpm Workspace**: Preferred over more complex monorepo tools for its simplicity and sufficiency for project needs.
+-   **Expo for Customer App**: Enables a single codebase for iOS/Android/Web, balancing native capabilities with web compatibility.
+-   **Admin-Driven Configuration**: Most business logic and feature toggles are controllable via the admin panel, reducing the need for code redeploys.
+-   **Manual Payment Verification**: Aligns with local payment habits and avoids initial gateway fees by supporting bank transfers with admin verification.
 
 ## External Dependencies
 
 ### Core Runtime & Frameworks
-- **Node.js** (API server) with **Express**, **Socket.IO**, **Drizzle ORM**, **Zod**.
-- **PostgreSQL** via `pg` driver (provisioned separately; SSL mode configurable per environment).
-- **React 19** + **Vite** for admin/rider/vendor web apps.
-- **Wouter** router (vendor app); **React Router** / native expo-router elsewhere.
-- **Expo SDK** with **expo-router**, **expo-secure-store**, **expo-local-authentication**, **expo-image**, **expo-auth-session**, **expo-camera**, **expo-store-review**, **expo-linking**.
-- **EAS CLI** for native builds.
-- **Capacitor** (referenced for rider native shell — Android/iOS).
-
-### Admin Account Seeding
-
-On every API server boot, `seedDefaultSuperAdmin` runs first, followed by
-`reconcileSeededSuperAdmin`. Behaviour:
-
-- **No admin accounts in DB** → creates a single super admin using
-  `ADMIN_SEED_PASSWORD` (default `Toqeerkhan@123.com`). The row is
-  flagged `default_credentials = true` and `must_change_password = false`.
-  The SPA reads `defaultCredentials` from auth responses and surfaces an
-  OPTIONAL post-login popup (`FirstLoginCredentialsDialog`) that lets
-  the super-admin update their username and/or password. Skipping the
-  popup keeps the defaults working — no route is gated.
-- **Existing admin row with `must_change_password = true`** (legacy
-  installs from the previous forced-rotation flow) → the reconcile step
-  re-hashes the documented default password, clears the flag, and sets
-  `default_credentials = true`. Idempotent: skipped once the admin has
-  rotated their password.
-- **Otherwise** → no-op (`[admin-seed] skipped — at least one admin
-  account already exists`).
-
-The legacy `mpc` (must-change-password) JWT claim and
-`FORCE_PASSWORD_CHANGE` 403 gate have been removed. The
-`admin_accounts.default_credentials` boolean column (migration `0047`)
-drives the new flow and is automatically cleared whenever the admin
-self-edits their password (`/api/admin/auth/change-password`) or
-username (`PATCH /api/admin/system/admin-accounts/:id`).
-
-Configurable via env (`ADMIN_SEED_EMAIL` defaults to `admin@ajkmart.local`,
-`ADMIN_SEED_USERNAME` to `admin`, `ADMIN_SEED_NAME` to
-`Super Admin`). `ADMIN_SEED_PASSWORD` is **optional** — if unset, the
-documented default `Toqeerkhan@123.com` is used so the credentials shown
-on the login page always work out-of-the-box. Operators may override
-`ADMIN_SEED_PASSWORD` via Replit Secrets, or simply rotate the
-credentials through the post-login popup once signed in.
+-   **Node.js**, **Express**, **Socket.IO**, **Drizzle ORM**, **Zod** (API server).
+-   **PostgreSQL** (database).
+-   **React 19**, **Vite** (admin/rider/vendor web apps).
+-   **Wouter**, **React Router**, **Expo Router** (routing).
+-   **Expo SDK** (with `expo-secure-store`, `expo-local-authentication`, `expo-image`, `expo-auth-session`, `expo-camera`, `expo-store-review`, `expo-linking`).
+-   **EAS CLI** (for native builds).
 
 ### Authentication & Security
-- **@react-oauth/google** (web Google sign-in).
-- **Facebook SDK** (JS for web, expo-auth-session provider for mobile).
-- **JWT** (access + refresh tokens), **bcrypt**-style password hashing, **TOTP** (otpauth URIs) for 2FA, hashed backup codes.
-- **reCAPTCHA v3** (invisible) on auth submissions.
+-   **@react-oauth/google** (Google sign-in).
+-   **Facebook SDK**.
+-   **JWT**, **bcrypt**, **TOTP** (2FA), **reCAPTCHA v3**.
 
 ### Maps & Location
-- **Leaflet** (rider/admin web maps) with custom marker icon fix.
-- **Reverse geocoding & routing** via maps service routes (street-level precision).
-- **NetInfo** for network-quality detection.
+-   **Leaflet** (web maps).
+-   **NetInfo** (network quality detection).
 
 ### Real-time & State
-- **Socket.IO** server + clients for order ACKs, rider location broadcasts, admin live alerts.
-- **TanStack React Query** with AsyncStorage persistence (mobile) for offline cache.
+-   **Socket.IO** (real-time communication).
+-   **TanStack React Query** (server state management with offline persistence).
 
 ### Payment & Wallet
-- Manual integration with **JazzCash**, **EasyPaisa**, **Bank Transfer** — no gateway API calls; admin verifies transaction IDs.
+-   Integration with **JazzCash**, **EasyPaisa**, **Bank Transfer** (manual verification).
 
 ### Notifications
-- **Push notifications** via Expo push tokens (mobile); WebSocket events for in-app realtime alerts.
-- **SMS / WhatsApp / Email OTP** delivery (provider abstracted in services layer).
+-   **Expo push tokens** (mobile push notifications).
+-   **SMS / WhatsApp / Email OTP** (provider abstracted).
 
 ### Tooling
-- **TypeScript 5.9**, **Prettier 3.8**.
-- **pnpm** (enforced via preinstall hook).
-- **Drizzle Kit** for schema migrations.
-- **Sentry** (lazy-loaded for error reporting).
-
-### Testing (admin app)
-- **Vitest** unit tests for shared helpers in `artifacts/admin/tests/*.test.ts`
-  (safeJson, escapeHtml, sanitizeMarkerHtml, highlightHtml).
-- **Integration tests** in `artifacts/admin/tests/integration/*.test.tsx`
-  using `@testing-library/react`, `@testing-library/user-event`, `jsdom`,
-  and `msw` for HTTP mocking. Covers admin auth (login + token refresh +
-  logout), settings persistence (`SystemSection` demo-backup save), and
-  CSV export with blob URL revocation. Run with
-  `pnpm --filter @workspace/admin test` (full suite < 15s).
-### Recent Polish (Apr 2026)
-- **Admin chrome modernization** — All 40+ admin pages now use `PageHeader`
-  from `artifacts/admin/src/components/shared/` for consistent title/icon/
-  subtitle/actions chrome. Three new shared primitives added:
-  `StatCard` (metric tiles with icon, trend, onClick filtering),
-  `FilterBar` (search + filter controls), `ActionBar` (bulk action row).
-  High-traffic pages (riders, vendors, KYC, account-conditions, FAQ) now
-  use `StatCard` grids. Duplicate settings surfaces in `/app-management`
-  replaced with `ManageInSettingsLink`. Pre-existing `methodIcon` function
-  was missing from `DepositRequests.tsx` and `Withdrawals.tsx` — added.
-  Typecheck and build both pass with zero errors.
-- **Auth Methods page** (`/admin/auth-methods`) — unified per-role login
-  toggles for Phone OTP, Email OTP, Username/Password, Magic Link, Google
-  OAuth, Facebook OAuth, 2FA (TOTP), and Biometric. 8 methods × 3 roles
-  (Customer/Rider/Vendor) matrix with bulk row toggles, OAuth credential
-  inputs, search, sticky save bar, and role usage stats. Uses existing
-  `platform_settings` JSON values (`{"customer":"on","rider":"on",
-  "vendor":"on"}`) — no backend changes required. Server-side
-  `isAuthMethodEnabled(settings, key, role)` already enforces per-role
-  access in `routes/auth.ts`.
-- **Settings global search** — cross-section live search input in the
-  Settings sidebar (desktop) and mobile drawer. Type 2+ chars to filter
-  any setting by key/label across all 10 top-level groups; clicking a
-  result switches to the right tab, smooth-scrolls to the sub-section,
-  and briefly flashes it (`ajkm-section-flash` keyframe). Cmd/Ctrl+F
-  focuses the search field while on the Settings page.
-- **Command Palette (⌘K) coverage** — added searchIndex entries for
-  `auth-methods`, `launch-control`, `otp-control`, and `sms-gateways`
-  pages with English/Urdu/Roman-Urdu keywords.
-
-### Error Monitor — Task #2 Upgrade (May 2026)
-- **Multi-select checkboxes** on every error row in the Error Monitor table. A floating action bar appears when 1+ errors are selected, offering "Bulk Task Plan" for the selected set.
-- **Bulk Task Plan** (`POST /api/admin/error-reports/bulk-generate-task`) — generates a consolidated task plan markdown for multiple errors at once, displayed in a modal with copy-to-clipboard.
-- **Smart re-open on resolved duplicates** — when an incoming error hash matches a previously resolved error, it is automatically reopened (status set back to `open`, occurrence count bumped) instead of creating a duplicate row.
-- **Richer single-error task plans** — `POST /api/admin/error-reports/:id/generate-task` now includes file reference paths, snippet context, occurrence count, and resolution history for better AI-usable prompts.
-- **File Scanner service** (`artifacts/api-server/src/services/file-scanner.ts`) — walks 5 source directories, applies 8 static-analysis rules (empty-catch, console-log, todo-fixme, async-no-trycatch, route-no-trycatch, missing-null-check, unhandled-promise, silent-catch-continue). Detected ~1,100 findings across the codebase.
-- **File Scan tab** (5th tab, purple) in Error Monitor — UI to trigger a manual scan, view history list, browse per-finding details (collapsible by file), and generate a task plan from a scan result.
-- **`file_scan_results` table** (`lib/db/src/schema/file_scan_results.ts`) — stores scan runs (id, scanned_at, duration_ms, total_findings, findings JSONB, triggered_by). Created via `ensureErrorResolutionTables()` called in `runStartupTasks()`.
-- **Daily file scan scheduler** — `scheduleDailyFileScan("02:00")` schedules an automatic nightly scan via `setTimeout`.
-- **`app.ts` wired up** — `ensureErrorResolutionTables()` is now called in `runStartupTasks()` at boot to ensure all error-monitor supplementary tables (`error_resolution_backups`, `auto_resolve_log`, `file_scan_results`) exist before serving requests.
+-   **TypeScript 5.9**, **Prettier 3.8**.
+-   **pnpm**.
+-   **Drizzle Kit** (migrations).
+-   **Sentry** (error reporting).

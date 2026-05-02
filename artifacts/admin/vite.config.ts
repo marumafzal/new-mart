@@ -19,7 +19,7 @@ const basePath = process.env.BASE_PATH || "/";
 
 // API proxy target for local development
 // Defaults to http://127.0.0.1:8080 (same machine, port 8080)
-const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:5000";
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:8080";
 
 export default defineConfig({
   base: basePath,

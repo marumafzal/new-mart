@@ -17,7 +17,7 @@ if (rawPort && (Number.isNaN(port) || port <= 0)) {
    most common deployment (path-routed behind the Replit proxy). Standalone
    deployments or local quick-starts override via env. */
 const basePath = process.env.BASE_PATH || "/rider/";
-const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:5000";
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:8080";
 
 export default defineConfig(async ({ mode }) => {
   /* Build-time HMAC secret check — warn loudly if the secret is absent in

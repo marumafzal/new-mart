@@ -105,25 +105,11 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                 <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">{userData.riderProfile?.vehiclePlate}</span>
               </div>
             )}
-            {isRider && userData.emergencyContact && (
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-xs">Emergency:</span>
-                <span className="text-xs font-semibold">{userData.emergencyContact}</span>
-              </div>
-            )}
             {isVendor && userData.vendorProfile?.businessType && (
               <div className="flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
                 <span className="text-muted-foreground text-xs">Business:</span>
                 <span className="font-semibold text-xs capitalize">{userData.vendorProfile?.businessType}</span>
-              </div>
-            )}
-            {(isRider || isVendor) && userData.bankName && (
-              <div className="flex items-center gap-2 col-span-2 bg-sky-50 border border-sky-200 rounded-xl px-2 py-1.5">
-                <span className="text-xs font-bold text-sky-700">Bank:</span>
-                <span className="text-xs text-sky-800">{userData.bankName}</span>
-                {userData.bankAccountTitle && <span className="text-xs text-muted-foreground">· {userData.bankAccountTitle}</span>}
-                {userData.bankAccount && <span className="font-mono text-xs font-bold text-sky-900">{userData.bankAccount}</span>}
               </div>
             )}
             <div className="flex items-center gap-2 col-span-2">
@@ -141,6 +127,37 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
             </div>
           </div>
         </div>
+
+        {(userData.emergencyContact || userData.bankName || userData.bankAccount || userData.bankAccountTitle) && (
+          <div className="bg-gradient-to-r from-sky-50 to-indigo-50 rounded-xl p-3 space-y-2 border border-sky-100">
+            <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Financial &amp; Contact</p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {userData.emergencyContact && (
+                <div className="flex items-center gap-2 col-span-2">
+                  <Phone className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                  <span className="text-muted-foreground text-xs">Emergency:</span>
+                  <span className="text-xs font-semibold">{userData.emergencyContact}</span>
+                </div>
+              )}
+              {userData.bankName && (
+                <div className="flex items-center gap-2 col-span-2 bg-sky-50 border border-sky-200 rounded-xl px-2 py-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                  <span className="text-xs font-bold text-sky-700">Bank:</span>
+                  <span className="text-xs text-sky-800">{userData.bankName}</span>
+                  {userData.bankAccountTitle && <span className="text-xs text-muted-foreground">· {userData.bankAccountTitle}</span>}
+                  {userData.bankAccount && <span className="font-mono text-xs font-bold text-sky-900">{userData.bankAccount}</span>}
+                </div>
+              )}
+              {!userData.bankName && (userData.bankAccount || userData.bankAccountTitle) && (
+                <div className="flex items-center gap-2 col-span-2 bg-sky-50 border border-sky-200 rounded-xl px-2 py-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-sky-600 flex-shrink-0" />
+                  {userData.bankAccountTitle && <span className="text-xs text-muted-foreground">{userData.bankAccountTitle}</span>}
+                  {userData.bankAccount && <span className="font-mono text-xs font-bold text-sky-900">{userData.bankAccount}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">

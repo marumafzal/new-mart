@@ -16,6 +16,7 @@ import { setupAdminFetcherHandlers } from "@/lib/adminFetcher";
 import { setTokenHandlers } from "@/lib/api";
 import { auditAdminEnv } from "@/lib/envValidation";
 import { bootAccessibilitySettings } from "@/lib/useAccessibilitySettings";
+import { useVersionCheck } from "@/hooks/useVersionCheck";
 
 // Run env audit once at module load so warnings appear before any
 // component depends on `import.meta.env.BASE_URL` etc.
@@ -328,6 +329,11 @@ function Router() {
   );
 }
 
+function VersionCheckInit() {
+  useVersionCheck();
+  return null;
+}
+
 function LanguageInit() {
   useLanguage();
   return null;
@@ -402,6 +408,7 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <VersionCheckInit />
               <LanguageInit />
               <IntegrationsInit />
               <Router />

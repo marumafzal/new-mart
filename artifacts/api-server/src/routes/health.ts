@@ -4,6 +4,8 @@ import { sql } from "drizzle-orm";
 
 const router = Router();
 
+const SERVER_EPOCH = Math.round(Date.now() / 1000 - process.uptime());
+
 router.get("/", async (req, res) => {
   let dbStatus: "ok" | "error" = "ok";
   try {
@@ -16,6 +18,7 @@ router.get("/", async (req, res) => {
     uptime: process.uptime(),
     db: dbStatus,
     timestamp: new Date().toISOString(),
+    serverEpoch: SERVER_EPOCH,
   });
 });
 

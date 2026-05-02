@@ -1987,6 +1987,7 @@ export default function Users() {
                   <TableHead className="font-semibold text-[#1A56DB]/80">User</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80">Phone</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80">Roles</TableHead>
+                  <TableHead className="font-semibold text-[#1A56DB]/80 text-center">KYC</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Wallet</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-center">Status</TableHead>
                   <TableHead className="font-semibold text-[#1A56DB]/80 text-right">Joined</TableHead>
@@ -2004,7 +2005,7 @@ export default function Users() {
                   </>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-40">
+                    <TableCell colSpan={9} className="h-40">
                       <div className="flex flex-col items-center justify-center gap-2 text-center">
                         <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
                           <UsersIcon className="w-6 h-6 text-muted-foreground" />
@@ -2064,6 +2065,24 @@ export default function Users() {
                               <Badge key={r} variant="outline" className={`text-[10px] capitalize px-1.5 py-0.5 border ${ROLE_COLORS[r] || "bg-gray-100 text-gray-700 border-gray-200"}`}>{r}</Badge>
                             ))}
                           </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {(() => {
+                            const ks = (user.kycStatus || user.approvalStatus || "none").toLowerCase();
+                            const kycBadgeClass: Record<string, string> = {
+                              verified: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                              approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                              pending:  "bg-amber-50 text-amber-700 border-amber-200",
+                              rejected: "bg-red-50 text-red-700 border-red-200",
+                              resubmit: "bg-orange-50 text-orange-700 border-orange-200",
+                              none:     "bg-gray-50 text-gray-500 border-gray-200",
+                            };
+                            return (
+                              <Badge variant="outline" className={`text-[10px] font-semibold capitalize px-1.5 py-0 ${kycBadgeClass[ks] || kycBadgeClass.none}`}>
+                                {ks === "none" ? "—" : ks}
+                              </Badge>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-right">
                           <span className="font-bold text-foreground">{formatCurrency(user.walletBalance)}</span>

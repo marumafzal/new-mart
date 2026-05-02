@@ -18,7 +18,7 @@ function exportDashboard(
   trend: { date: string; revenue: number }[],
   onError: (msg: string) => void,
 ) {
-  fetcher("/dashboard-export").then((data: any) => {
+  fetcher("/fleet/dashboard-export").then((data: any) => {
     const enriched = { ...data, trend: data.trend ?? trend };
     const blob = new Blob([JSON.stringify(enriched, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);

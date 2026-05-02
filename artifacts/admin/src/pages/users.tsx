@@ -1198,12 +1198,28 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
 }
 
 /* ── CSV Export helper ── */
+function csvField(value: string | number | null | undefined): string {
+  let str = String(value ?? "");
+  // Neutralize formula injection: prefix a tab when value starts with =, +, -, or @
+  if (/^[=+\-@\t]/.test(str)) {
+    str = "\t" + str;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
 function exportUsersCSV(users: any[]) {
   const header = "ID,Name,Phone,Email,Role,Status,Wallet,Joined";
   const rows = users.map((u: any) =>
-    [u.id, u.name || "", u.phone || "", u.email || "", u.role || "customer",
-     u.isBanned ? "banned" : u.isActive ? "active" : "blocked",
-     u.walletBalance, u.createdAt?.slice(0,10) || ""].join(",")
+    [
+      csvField(u.id),
+      csvField(u.name || ""),
+      csvField(u.phone || ""),
+      csvField(u.email || ""),
+      csvField(u.role || "customer"),
+      csvField(u.isBanned ? "banned" : u.isActive ? "active" : "blocked"),
+      csvField(u.walletBalance),
+      csvField(u.createdAt?.slice(0,10) || ""),
+    ].join(",")
   );
   const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
   const a = document.createElement("a");

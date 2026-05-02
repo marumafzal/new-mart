@@ -37,7 +37,7 @@ import { requirePermission } from "../../../middlewares/require-permission.js";
 
 const router = Router();
 
-router.post("/users", async (req, res) => {
+router.post("/users", requirePermission("users.create"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { phone, name, role, city, area, email, username, tempPassword } = req.body;
 
@@ -64,8 +64,13 @@ router.post("/users", async (req, res) => {
       })
     );
 
-    // Fetch the created user
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, canonicalizePhone(phone))).limit(1);
+    // Fetch the created user by userId, falling back to email lookup
+    let user: typeof usersTable.$inferSelect | undefined;
+    if (result.userId) {
+      [user] = await db.select().from(usersTable).where(eq(usersTable.id, result.userId)).limit(1);
+    } else if (email) {
+      [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.trim().toLowerCase())).limit(1);
+    }
     sendSuccess(res, { user: user ? stripUser(user) : { id: result.userId } });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -182,9 +187,24 @@ router.get("/users", async (req, res) => {
     conditions.push(eq(usersTable.isBanned, true));
   }
 
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  // DB-level conditionTier filter: build a subquery condition so pagination happens in PostgreSQL
+  if (conditionTier === "has_conditions") {
+    conditions.push(sql`EXISTS (SELECT 1 FROM ${accountConditionsTable} WHERE ${accountConditionsTable.userId} = ${usersTable.id} AND ${accountConditionsTable.isActive} = true)`);
+  } else if (conditionTier === "clean") {
+    conditions.push(sql`NOT EXISTS (SELECT 1 FROM ${accountConditionsTable} WHERE ${accountConditionsTable.userId} = ${usersTable.id} AND ${accountConditionsTable.isActive} = true)`);
+  } else if (conditionTier === "warnings") {
+    conditions.push(sql`EXISTS (SELECT 1 FROM ${accountConditionsTable} ac WHERE ac.user_id = ${usersTable.id} AND ac.is_active = true GROUP BY ac.user_id HAVING MAX(CASE ac.severity::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END) = 1)`);
+  } else if (conditionTier === "restrictions") {
+    conditions.push(sql`EXISTS (SELECT 1 FROM ${accountConditionsTable} ac WHERE ac.user_id = ${usersTable.id} AND ac.is_active = true GROUP BY ac.user_id HAVING MAX(CASE ac.severity::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END) IN (2, 3))`);
+  } else if (conditionTier === "suspensions") {
+    conditions.push(sql`EXISTS (SELECT 1 FROM ${accountConditionsTable} ac WHERE ac.user_id = ${usersTable.id} AND ac.is_active = true GROUP BY ac.user_id HAVING MAX(CASE ac.severity::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END) = 4)`);
+  } else if (conditionTier === "bans") {
+    conditions.push(sql`EXISTS (SELECT 1 FROM ${accountConditionsTable} ac WHERE ac.user_id = ${usersTable.id} AND ac.is_active = true GROUP BY ac.user_id HAVING MAX(CASE ac.severity::text WHEN 'ban' THEN 5 WHEN 'suspension' THEN 4 WHEN 'restriction_strict' THEN 3 WHEN 'restriction_normal' THEN 2 WHEN 'warning' THEN 1 ELSE 0 END) = 5)`);
+  }
 
-  const baseQuery = db
+  // Rebuild whereClause now that conditionTier conditions are included
+  const finalWhere = conditions.length > 0 ? and(...conditions) : undefined;
+  const finalBaseQuery = db
     .select({
       user: usersTable,
       vendorProfile: vendorProfilesTable,
@@ -193,7 +213,7 @@ router.get("/users", async (req, res) => {
     .from(usersTable)
     .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
     .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
-    .where(whereClause)
+    .where(finalWhere)
     .orderBy(desc(usersTable.createdAt));
 
   const condCounts = await db.select({
@@ -207,7 +227,7 @@ router.get("/users", async (req, res) => {
 
   const condMap = new Map(condCounts.map(c => [c.userId, { count: Number(c.activeCount), maxSeverity: c.maxSeverityLabel }]));
 
-  const enrich = (rows: Awaited<typeof baseQuery>) => rows.map(({ user: u, vendorProfile, riderProfile }) => ({
+  const enrich = (rows: Awaited<typeof finalBaseQuery>) => rows.map(({ user: u, vendorProfile, riderProfile }) => ({
     ...stripUser(u),
     walletBalance: parseFloat(u.walletBalance ?? "0"),
     createdAt: u.createdAt.toISOString(),
@@ -233,19 +253,6 @@ router.get("/users", async (req, res) => {
     } : null,
   }));
 
-  const applyConditionTier = <T extends { conditionCount: number; maxConditionSeverity: string | null }>(users: T[]): T[] => {
-    if (conditionTier === "has_conditions") return users.filter(u => u.conditionCount > 0);
-    if (conditionTier === "warnings") return users.filter(u => u.maxConditionSeverity === "warning");
-    if (conditionTier === "restrictions") return users.filter(u => u.maxConditionSeverity === "restriction_normal" || u.maxConditionSeverity === "restriction_strict");
-    if (conditionTier === "suspensions") return users.filter(u => u.maxConditionSeverity === "suspension");
-    if (conditionTier === "bans") return users.filter(u => u.maxConditionSeverity === "ban");
-    if (conditionTier === "clean") return users.filter(u => u.conditionCount === 0);
-    return users;
-  };
-
-  let total: number;
-  let enrichedUsers: ReturnType<typeof enrich>;
-
   const globalStatsQuery = db.select({
     totalAll: count(),
     totalActive: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.isActive} = true AND ${usersTable.isBanned} = false)::int`,
@@ -253,42 +260,24 @@ router.get("/users", async (req, res) => {
     totalBlocked: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.isActive} = false AND ${usersTable.isBanned} = false)::int`,
   }).from(usersTable);
 
-  if (conditionTier) {
-    // conditionTier is a JS-side filter — must fetch all matching rows to get accurate total
-    const [allRows, [globalStats]] = await Promise.all([baseQuery, globalStatsQuery]);
-    const allEnriched = applyConditionTier(enrich(allRows));
-    total = allEnriched.length;
-    enrichedUsers = allEnriched.slice((pageNum - 1) * pageSize, pageNum * pageSize);
-    sendSuccess(res, {
-      users: enrichedUsers,
-      total,
-      page: pageNum,
-      pageSize,
-      activeCount: Number(globalStats?.totalActive ?? 0),
-      bannedCount: Number(globalStats?.totalBanned ?? 0),
-      blockedCount: Number(globalStats?.totalBlocked ?? 0),
-      totalCount: Number(globalStats?.totalAll ?? 0),
-    });
-  } else {
-    // Pure DB pagination: COUNT query + paginated fetch + global stats run in parallel
-    const [countResult, rows, [globalStats]] = await Promise.all([
-      db.select({ total: count() }).from(usersTable).where(whereClause),
-      baseQuery.limit(pageSize).offset((pageNum - 1) * pageSize),
-      globalStatsQuery,
-    ]);
-    total = Number(countResult[0]?.total ?? 0);
-    enrichedUsers = enrich(rows);
-    sendSuccess(res, {
-      users: enrichedUsers,
-      total,
-      page: pageNum,
-      pageSize,
-      activeCount: Number(globalStats?.totalActive ?? 0),
-      bannedCount: Number(globalStats?.totalBanned ?? 0),
-      blockedCount: Number(globalStats?.totalBlocked ?? 0),
-      totalCount: Number(globalStats?.totalAll ?? 0),
-    });
-  }
+  // Pure DB pagination: COUNT query + paginated fetch + global stats run in parallel
+  const [countResult, rows, [globalStats]] = await Promise.all([
+    db.select({ total: count() }).from(usersTable).where(finalWhere),
+    finalBaseQuery.limit(pageSize).offset((pageNum - 1) * pageSize),
+    globalStatsQuery,
+  ]);
+  const total = Number(countResult[0]?.total ?? 0);
+  const enrichedUsers = enrich(rows);
+  sendSuccess(res, {
+    users: enrichedUsers,
+    total,
+    page: pageNum,
+    pageSize,
+    activeCount: Number(globalStats?.totalActive ?? 0),
+    bannedCount: Number(globalStats?.totalBanned ?? 0),
+    blockedCount: Number(globalStats?.totalBlocked ?? 0),
+    totalCount: Number(globalStats?.totalAll ?? 0),
+  });
 });
 
 /* ── PATCH /admin/users/bulk-ban — ban/unban multiple users ── */
@@ -326,30 +315,55 @@ router.patch("/users/bulk-ban", requirePermission("users.ban"), async (req, res)
   sendSuccess(res, { success: true, affected: ids.length, action });
 });
 
-router.patch("/users/:id", async (req, res) => {
+router.patch("/users/:id", requirePermission("users.edit"), async (req, res) => {
+  const adminReq = req as AdminRequest;
   const { role, isActive, walletBalance } = req.body;
+  const userId = req.params["id"]!;
   const updates: Partial<typeof usersTable.$inferInsert> & { tokenVersion?: ReturnType<typeof sql> } = {};
   if (role !== undefined) { updates.roles = role; }
   if (isActive !== undefined) updates.isActive = isActive;
-  if (walletBalance !== undefined) updates.walletBalance = String(walletBalance);
 
   if (role === "vendor" || role === "rider") {
     updates.isActive = true;
     updates.approvalStatus = "approved";
   }
 
-  const [user] = await db
-    .update(usersTable)
-    .set({ ...(updates as typeof usersTable.$inferInsert), updatedAt: new Date() })
-    .where(eq(usersTable.id, req.params["id"]!))
-    .returning();
-
-  if (!user) { sendNotFound(res, "User not found"); return; }
-  /* Revoke sessions on role or status change so user re-authenticates with new role */
-  if (role !== undefined || isActive === false) {
-    revokeAllUserSessions(req.params["id"]!).catch(() => {});
+  // Route wallet balance changes through FinanceService to preserve audit trail
+  if (walletBalance !== undefined) {
+    const currentUser = await db.select({ walletBalance: usersTable.walletBalance }).from(usersTable).where(eq(usersTable.id, userId)).limit(1).then(r => r[0]);
+    if (!currentUser) { sendNotFound(res, "User not found"); return; }
+    const current = parseFloat(currentUser.walletBalance ?? "0");
+    const desired = parseFloat(String(walletBalance));
+    const diff = parseFloat((desired - current).toFixed(2));
+    if (diff !== 0) {
+      await FinanceService.createTransaction({
+        userId,
+        amount: Math.abs(diff),
+        type: diff > 0 ? "credit" : "debit",
+        reason: `Admin balance adjustment by ${adminReq.adminName || adminReq.adminId || "admin"}`,
+      });
+    }
   }
-  sendSuccess(res, { ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") });
+
+  if (Object.keys(updates).length > 0) {
+    const [user] = await db
+      .update(usersTable)
+      .set({ ...(updates as typeof usersTable.$inferInsert), updatedAt: new Date() })
+      .where(eq(usersTable.id, userId))
+      .returning();
+
+    if (!user) { sendNotFound(res, "User not found"); return; }
+    /* Revoke sessions on role or status change so user re-authenticates with new role */
+    if (role !== undefined || isActive === false) {
+      revokeAllUserSessions(userId).catch(() => {});
+    }
+    const [refreshed] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    sendSuccess(res, { ...stripUser(refreshed ?? user), walletBalance: parseFloat((refreshed ?? user).walletBalance ?? "0") });
+  } else {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (!user) { sendNotFound(res, "User not found"); return; }
+    sendSuccess(res, { ...stripUser(user), walletBalance: parseFloat(user.walletBalance ?? "0") });
+  }
 });
 
 /* ── Pending Approval Users ── */
@@ -369,7 +383,7 @@ router.get("/users/pending", async (_req, res) => {
 });
 
 /* ── Approve User ── */
-router.post("/users/:id/approve", async (req, res) => {
+router.post("/users/:id/approve", requirePermission("users.approve"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { note, skipDocCheck } = req.body ?? {};
   const userId = req.params["id"]!;
@@ -406,7 +420,7 @@ router.post("/users/:id/approve", async (req, res) => {
 });
 
 /* ── Reject User ── */
-router.post("/users/:id/reject", async (req, res) => {
+router.post("/users/:id/reject", requirePermission("users.approve"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { note } = req.body as { note?: string };
   const userId = req.params["id"]!;
@@ -434,7 +448,7 @@ router.post("/users/:id/reject", async (req, res) => {
 });
 
 /* ── Wallet Top-up ── */
-router.post("/users/:id/wallet-topup", async (req, res) => {
+router.post("/users/:id/wallet-topup", requirePermission("users.wallet"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const { amount, description } = req.body;
   const userId = req.params["id"]!;
@@ -518,7 +532,7 @@ router.get("/users/:id/activity", async (req, res) => {
 });
 
 /* ── Overview with user enrichment (orders + user info) ── */
-router.patch("/users/:id/security", async (req, res) => {
+router.patch("/users/:id/security", requirePermission("users.ban"), async (req, res) => {
   const { id } = req.params;
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -618,7 +632,7 @@ router.patch("/users/:id/security", async (req, res) => {
 });
 
 /* ── PATCH /admin/users/:id/identity — Admin update user identity (username, email, name) ── */
-router.patch("/users/:id/identity", async (req, res) => {
+router.patch("/users/:id/identity", requirePermission("users.edit"), async (req, res) => {
   const userId = req.params["id"]!;
   const body = req.body as Record<string, unknown>;
   const updates: Record<string, unknown> = { updatedAt: new Date() };

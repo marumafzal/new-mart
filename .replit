@@ -56,15 +56,9 @@ packages = ["psmisc", "tree", "uwhoisd"]
 [userenv]
 
 [userenv.shared]
-ADMIN_SECRET = "AJK-hig2QXaC_VG7OPZqgMT-VsVHtN8"
-ADMIN_JWT_SECRET = "QOHAcA0Y3m6yyQ1jW8FnQu995T5e8XupSnhKch6SF8RIKFn5KNZatDnFzqUDX2OL"
 VAPID_PUBLIC_KEY = "BEmlZZIGCb7ZhembOoH02qzZlnhkFrYkib27NwFgtXBFDcvtHhhWC2hfZEHU4JpDbfHIRgbrCiM_f9gEEc_JHLg"
-VAPID_PRIVATE_KEY = "b3egnGyDJYSVsOB4z-PGhf5YbGeuVKcHtNpJPQ-r-eM"
 VAPID_CONTACT_EMAIL = "mailto:admin@ajkmart.app"
-DATABASE_URL = "postgresql://neondb_owner:npg_5VFzHmZ6NTWn@ep-solitary-credit-a188hgj0-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
 PORT = "5000"
-JWT_SECRET = "PUkuIh+8NSn80k68j1sAR1zPGtK7xryE8LTbaM6hGA2jA2fHq1MJuyud4YYtSMtB"
-GEMINI_API_KEY = "AIzaSyDdujmMRDG4_z0z8zG908_f4jNHACg9EHk"
 
 [userenv.production]
 LOG_LEVEL = "warn"

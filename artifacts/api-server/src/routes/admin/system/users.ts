@@ -291,6 +291,41 @@ router.get("/users", async (req, res) => {
   }
 });
 
+/* ── PATCH /admin/users/bulk-ban — ban/unban multiple users ── */
+router.patch("/users/bulk-ban", requirePermission("users.ban"), async (req, res) => {
+  const { ids, action, reason } = req.body as { ids: string[]; action: "ban" | "unban"; reason?: string };
+  if (!ids?.length) { sendValidationError(res, "ids required"); return; }
+  if (action !== "ban" && action !== "unban") { sendValidationError(res, "action must be 'ban' or 'unban'"); return; }
+  const adminReq = req as AdminRequest;
+  for (const id of ids) {
+    if (action === "ban") {
+      const [u] = await db.select({ roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
+      await db.insert(accountConditionsTable).values({
+        id: generateId(),
+        userId: id,
+        userRole: u?.roles?.split(",")[0]?.trim() || "customer",
+        conditionType: "ban_hard",
+        severity: "ban",
+        category: "ban",
+        reason: reason || "Bulk banned by admin",
+        appliedBy: adminReq.adminId || "admin",
+      });
+    } else {
+      await db.update(accountConditionsTable).set({
+        isActive: false, liftedAt: new Date(), liftedBy: adminReq.adminId || "admin",
+        liftReason: "Bulk unbanned via admin", updatedAt: new Date(),
+      }).where(and(
+        eq(accountConditionsTable.userId, id),
+        eq(accountConditionsTable.isActive, true),
+        eq(accountConditionsTable.severity, "ban"),
+      ));
+    }
+    await reconcileUserFlags(id);
+  }
+  addAuditEntry({ action: `bulk_${action}`, ip: getClientIp(req), adminId: adminReq.adminId, details: `Bulk ${action}: ${ids.length} users`, result: "success" });
+  sendSuccess(res, { success: true, affected: ids.length, action });
+});
+
 router.patch("/users/:id", async (req, res) => {
   const { role, isActive, walletBalance } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> & { tokenVersion?: ReturnType<typeof sql> } = {};
@@ -938,40 +973,6 @@ router.patch("/users/:id/waive-debt", async (req, res) => {
   } catch (err: any) {
     sendError(res, err.message || "Failed to waive debt", 500);
   }
-});
-
-/* ── PATCH /admin/users/:id/bulk-ban — ban/unban multiple users ── */
-router.patch("/users/bulk-ban", requirePermission("users.ban"), async (req, res) => {
-  const { ids, action, reason } = req.body as { ids: string[]; action: "ban" | "unban"; reason?: string };
-  if (!ids?.length) { sendValidationError(res, "ids required"); return; }
-  const adminReq = req as AdminRequest;
-  for (const id of ids) {
-    if (action === "ban") {
-      const [u] = await db.select({ roles: usersTable.roles }).from(usersTable).where(eq(usersTable.id, id)).limit(1);
-      await db.insert(accountConditionsTable).values({
-        id: generateId(),
-        userId: id,
-        userRole: u?.roles?.split(",")[0]?.trim() || "customer",
-        conditionType: "ban_hard",
-        severity: "ban",
-        category: "ban",
-        reason: reason || "Bulk banned by admin",
-        appliedBy: adminReq.adminId || "admin",
-      });
-    } else {
-      await db.update(accountConditionsTable).set({
-        isActive: false, liftedAt: new Date(), liftedBy: adminReq.adminId || "admin",
-        liftReason: "Bulk unbanned via admin", updatedAt: new Date(),
-      }).where(and(
-        eq(accountConditionsTable.userId, id),
-        eq(accountConditionsTable.isActive, true),
-        eq(accountConditionsTable.severity, "ban"),
-      ));
-    }
-    await reconcileUserFlags(id);
-  }
-  addAuditEntry({ action: `bulk_${action}`, ip: getClientIp(req), adminId: adminReq.adminId, details: `Bulk ${action}: ${ids.length} users`, result: "success" });
-  sendSuccess(res, { success: true, affected: ids.length, action });
 });
 
 /* ── GET /admin/users/:id/sessions — list user's active sessions ── */

@@ -93,16 +93,16 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                 <span className="text-xs text-muted-foreground truncate">{userData.address}</span>
               </div>
             )}
-            {isRider && userData.vehicleType && (
+            {isRider && userData.riderProfile?.vehicleType && (
               <div className="flex items-center gap-2">
                 <Truck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
                 <span className="text-muted-foreground text-xs">Vehicle:</span>
-                <span className="font-semibold text-xs capitalize">{userData.vehicleType}</span>
+                <span className="font-semibold text-xs capitalize">{userData.riderProfile?.vehicleType}</span>
               </div>
             )}
-            {isRider && userData.vehiclePlate && (
+            {isRider && userData.riderProfile?.vehiclePlate && (
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">{userData.vehiclePlate}</span>
+                <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">{userData.riderProfile?.vehiclePlate}</span>
               </div>
             )}
             {isRider && userData.emergencyContact && (
@@ -111,11 +111,11 @@ function UserActivityModal({ userId, userName, user: userData, onClose }: { user
                 <span className="text-xs font-semibold">{userData.emergencyContact}</span>
               </div>
             )}
-            {isVendor && userData.businessType && (
+            {isVendor && userData.vendorProfile?.businessType && (
               <div className="flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-orange-600 flex-shrink-0" />
                 <span className="text-muted-foreground text-xs">Business:</span>
-                <span className="font-semibold text-xs capitalize">{userData.businessType}</span>
+                <span className="font-semibold text-xs capitalize">{userData.vendorProfile?.businessType}</span>
               </div>
             )}
             {(isRider || isVendor) && userData.bankName && (
@@ -2068,8 +2068,8 @@ export default function Users() {
                                 {user.username && <span className="flex items-center gap-0.5 text-[10px] font-mono text-violet-600">@{user.username}</span>}
                                 {user.email && <span className="flex items-center gap-0.5 text-[10px] text-blue-600 truncate max-w-[140px]"><Mail className="w-2.5 h-2.5 flex-shrink-0"/>{user.email}</span>}
                                 {user.city && <span className="flex items-center gap-0.5 text-[10px] text-[#1A56DB]"><MapPin className="w-2.5 h-2.5"/>{user.city}</span>}
-                                {userRoles.includes("rider") && user.vehiclePlate && <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-700 px-1.5 rounded">{user.vehiclePlate}</span>}
-                                {userRoles.includes("vendor") && user.businessType && <span className="text-[10px] text-orange-600 capitalize">{user.businessType}</span>}
+                                {userRoles.includes("rider") && user.riderProfile?.vehiclePlate && <span className="text-[10px] font-mono font-bold bg-emerald-100 text-emerald-700 px-1.5 rounded">{user.riderProfile?.vehiclePlate}</span>}
+                                {userRoles.includes("vendor") && user.vendorProfile?.businessType && <span className="text-[10px] text-orange-600 capitalize">{user.vendorProfile?.businessType}</span>}
                                 {user.cnic && <span className="flex items-center gap-0.5 text-[10px] text-amber-700"><CreditCard className="w-2.5 h-2.5"/>ID✓</span>}
                               </div>
                             </div>

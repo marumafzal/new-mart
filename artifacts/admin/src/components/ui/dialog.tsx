@@ -55,12 +55,6 @@ const DialogContent = React.forwardRef<
 ))
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
-/**
- * DialogHeader — full-width header with bottom border.
- * Uses negative horizontal/top margins to bleed to the edges of the
- * p-6 DialogContent, so body content between header and footer still
- * receives the DialogContent's built-in padding without any page changes.
- */
 const DialogHeader = ({
   className,
   ...props
@@ -75,11 +69,6 @@ const DialogHeader = ({
 )
 DialogHeader.displayName = "DialogHeader"
 
-/**
- * DialogFooter — full-width footer with top border, right-aligned buttons.
- * Uses negative horizontal/bottom margins to bleed to the edges of the
- * p-6 DialogContent.
- */
 const DialogFooter = ({
   className,
   ...props

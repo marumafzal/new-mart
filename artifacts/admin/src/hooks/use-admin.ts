@@ -96,6 +96,20 @@ export const useUpdateUser = () => {
   });
 };
 
+export const useUpdateUserSecurity = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; isActive?: boolean; isBanned?: boolean; banReason?: string | null; roles?: string; blockedServices?: string; securityNote?: string | null }) =>
+      fetcher(`/users/${id}/security`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"], exact: false });
+    },
+  });
+};
+
 export const useWalletTopup = () => {
   const queryClient = useQueryClient();
   return useMutation({

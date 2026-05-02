@@ -20,6 +20,8 @@ import {
   walletTransactionsTable,
   platformSettingsTable,
   authAuditLogTable,
+  vendorProfilesTable,
+  riderProfilesTable,
 } from "@workspace/db/schema";
 import { eq, and, sql, inArray, desc, gt } from "drizzle-orm";
 import { generateId } from "../lib/id.js";
@@ -240,10 +242,16 @@ export class UserService {
       throw new Error("User not found");
     }
 
+    const now = new Date();
     await db
       .update(usersTable)
-      .set({ kycStatus: "approved", isActive: true, isBanned: false, updatedAt: new Date() })
+      .set({ kycStatus: "verified", approvalStatus: "approved", isActive: true, isBanned: false, updatedAt: now })
       .where(eq(usersTable.id, userId));
+
+    await Promise.allSettled([
+      db.update(vendorProfilesTable).set({ updatedAt: now }).where(eq(vendorProfilesTable.userId, userId)),
+      db.update(riderProfilesTable).set({ updatedAt: now }).where(eq(riderProfilesTable.userId, userId)),
+    ]);
 
     logger.info({ userId }, "[UserService] User approved");
 
@@ -268,6 +276,7 @@ export class UserService {
       .update(usersTable)
       .set({
         kycStatus: "rejected",
+        approvalStatus: "rejected",
         isActive: false,
         approvalNote: reason,
         updatedAt: new Date(),

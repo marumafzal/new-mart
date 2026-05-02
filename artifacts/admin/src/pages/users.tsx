@@ -13,7 +13,7 @@ import { useLanguage } from "@/lib/useLanguage";
 import { tDual, type TranslationKey } from "@workspace/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { useUsers, useUpdateUser, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, useAdminViewOtp, useAdminVerifyContact, useAdminForcePasswordReset, useAdminKycByUserId, useAdminKycApprove, useAdminKycReject, useWaiveDebt, useAdminResetOtp, type CreateUserInput } from "@/hooks/use-admin";
+import { useUsers, useUpdateUser, useUpdateUserSecurity, useDeleteUser, useUserActivity, usePendingUsers, useApproveUser, useRejectUser, useRequestUserCorrection, useBulkBanUsers, useCreateUser, useAdminUserSessions, useRevokeUserSession, useRevokeAllUserSessions, useAdminViewOtp, useAdminVerifyContact, useAdminForcePasswordReset, useAdminKycByUserId, useAdminKycApprove, useAdminKycReject, useWaiveDebt, useAdminResetOtp, type CreateUserInput } from "@/hooks/use-admin";
 import { WalletAdjustModal } from "@/components/WalletAdjustModal";
 import { fetcher } from "@/lib/api";
 import { useAdminAuth } from "@/lib/adminAuthContext";
@@ -530,9 +530,9 @@ function SecurityModal({ user, onClose }: { user: any; onClose: () => void }) {
 
   const handleForcePasswordReset = () => {
     forcePasswordReset.mutate(user.id, {
-      onSuccess: () => {
+      onSuccess: (data: any) => {
         setRequirePasswordChange(true);
-        toast({ title: "Password reset required", description: "User will be prompted to change password on next login." });
+        toast({ title: "Password reset required", description: data?.message ?? "User will be prompted to change password on next login." });
       },
       onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
     });
@@ -1570,7 +1570,8 @@ export default function Users() {
   const [conditionTier, setConditionTier] = useState("all");
   const { data, isLoading, refetch, isFetching, isError } = useUsers(conditionTier !== "all" ? conditionTier : undefined);
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
-  const updateMutation   = useUpdateUser();
+  const updateMutation         = useUpdateUser();
+  const securityUpdateMutation = useUpdateUserSecurity();
   const deleteMutation   = useDeleteUser();
   const approveMutation  = useApproveUser();
   const rejectMutation   = useRejectUser();
@@ -2073,7 +2074,15 @@ export default function Users() {
                               <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">Banned</Badge>
                             ) : (
                               <div className="flex items-center justify-center gap-2">
-                                <Switch checked={user.isActive} onCheckedChange={(val) => handleUpdate(user.id, { isActive: val })} />
+                                <Switch checked={user.isActive} onCheckedChange={(val) => {
+                                  securityUpdateMutation.mutate({ id: user.id, isActive: val }, {
+                                    onSuccess: () => {
+                                      if (val) toast({ title: "User unblocked", description: "Account has been re-activated." });
+                                      else toast({ title: "User blocked", description: "Account has been deactivated." });
+                                    },
+                                    onError: (err: any) => toast({ title: "Update failed", description: err.message, variant: "destructive" }),
+                                  });
+                                }} />
                                 {user.isActive ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-400" />}
                               </div>
                             )}

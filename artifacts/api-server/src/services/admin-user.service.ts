@@ -156,6 +156,14 @@ export class UserService {
       isActive: true,
     });
 
+    // Auto-create blank profile row so leftJoin immediately returns a profile
+    // object instead of null, avoiding a data gap in the admin UI.
+    if (userRole === "vendor") {
+      await db.insert(vendorProfilesTable).values({ userId }).onConflictDoNothing();
+    } else if (userRole === "rider") {
+      await db.insert(riderProfilesTable).values({ userId }).onConflictDoNothing();
+    }
+
     logger.info({ userId, phone: canonPhone }, "[UserService] User created");
 
     return { userId };

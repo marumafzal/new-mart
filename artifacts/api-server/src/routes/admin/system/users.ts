@@ -357,6 +357,17 @@ router.patch("/users/:id", requirePermission("users.edit"), async (req, res) => 
     if (role !== undefined || isActive === false) {
       revokeAllUserSessions(userId).catch(() => {});
     }
+    // Upsert a blank profile row when role changes to vendor or rider so the
+    // admin UI immediately shows a profile section without requiring the user
+    // to fill it in first.
+    if (role !== undefined) {
+      if (String(role).includes("vendor")) {
+        await db.insert(vendorProfilesTable).values({ userId }).onConflictDoNothing();
+      }
+      if (String(role).includes("rider")) {
+        await db.insert(riderProfilesTable).values({ userId }).onConflictDoNothing();
+      }
+    }
     const [refreshed] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
     sendSuccess(res, { ...stripUser(refreshed ?? user), walletBalance: parseFloat((refreshed ?? user).walletBalance ?? "0") });
   } else {
@@ -368,17 +379,41 @@ router.patch("/users/:id", requirePermission("users.edit"), async (req, res) => 
 
 /* ── Pending Approval Users ── */
 router.get("/users/pending", async (_req, res) => {
-  const users = await db.select().from(usersTable)
+  const rows = await db
+    .select({
+      user: usersTable,
+      vendorProfile: vendorProfilesTable,
+      riderProfile: riderProfilesTable,
+    })
+    .from(usersTable)
+    .leftJoin(vendorProfilesTable, eq(usersTable.id, vendorProfilesTable.userId))
+    .leftJoin(riderProfilesTable, eq(usersTable.id, riderProfilesTable.userId))
     .where(eq(usersTable.approvalStatus, "pending"))
     .orderBy(desc(usersTable.createdAt));
+
   sendSuccess(res, {
-    users: users.map(({ otpCode: _otp, otpExpiry: _exp, passwordHash: _ph, emailOtpCode: _eotp, emailOtpExpiry: _eexp, ...u }) => ({
-      ...u,
+    users: rows.map(({ user: u, vendorProfile, riderProfile }) => ({
+      ...stripUser(u),
       walletBalance: parseFloat(u.walletBalance ?? "0"),
       createdAt: u.createdAt.toISOString(),
       updatedAt: u.updatedAt.toISOString(),
+      vendorProfile: vendorProfile?.userId != null ? {
+        storeName: vendorProfile.storeName,
+        businessType: vendorProfile.businessType,
+        businessName: vendorProfile.businessName,
+        ntn: vendorProfile.ntn,
+        storeCategory: vendorProfile.storeCategory,
+        storeIsOpen: vendorProfile.storeIsOpen,
+      } : null,
+      riderProfile: riderProfile?.userId != null ? {
+        vehicleType: riderProfile.vehicleType,
+        vehiclePlate: riderProfile.vehiclePlate,
+        drivingLicense: riderProfile.drivingLicense,
+        vehicleRegNo: riderProfile.vehicleRegNo,
+        documents: riderProfile.documents,
+      } : null,
     })),
-    total: users.length,
+    total: rows.length,
   });
 });
 

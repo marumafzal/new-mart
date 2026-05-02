@@ -52,6 +52,7 @@ export const PERMISSIONS = [
   { id: "users.ban",        label: "Ban / unban users", category: "users" },
   { id: "users.impersonate", label: "Impersonate users", category: "users", highRisk: true },
   { id: "users.approve",    label: "Approve / reject pending accounts", category: "users" },
+  { id: "users.wallet",     label: "Top-up / adjust user wallets", category: "users" },
 
   // ── Orders ────────────────────────────────────────────────────────
   { id: "orders.view",     label: "View orders", category: "orders" },

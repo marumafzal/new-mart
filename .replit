@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "bash", "postgresql-16", "python-3.11"]
+modules = ["nodejs-20", "web", "bash", "python-3.11", "postgresql-16"]
 
 run = "nix develop --command bash -lc 'pnpm install && pnpm run start:all'"
 
@@ -17,6 +17,27 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "check-permissions"
+
+[[workflows.workflow]]
+name = "check-permissions"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node artifacts/api-server/scripts/check-permissions.mjs"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"

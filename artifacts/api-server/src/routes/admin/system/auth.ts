@@ -78,6 +78,7 @@ import { UserService } from "../../../services/admin-user.service.js";
 import { AuditService } from "../../../services/admin-audit.service.js";
 import { requirePermission } from "../../../middlewares/require-permission.js";
 import { logAdminAudit } from "../../../middlewares/admin-audit.js";
+import { resolveAdminPermissions } from "../../../services/permissions.service.js";
 
 const router = Router();
 router.post("/auth", async (req, res) => {
@@ -244,7 +245,7 @@ router.get("/admin-accounts", requirePermission("system.roles.manage"), async (_
   });
 });
 
-router.post("/admin-accounts", async (req, res) => {
+router.post("/admin-accounts", requirePermission("system.roles.manage"), async (req, res) => {
   const adminReq = req as AdminRequest;
   const body = req.body as Record<string, unknown>;
 
@@ -306,6 +307,32 @@ router.patch("/admin-accounts/:id", async (req, res) => {
   const targetId = req.params["id"]!;
   const adminReq = req as AdminRequest;
   const isSelfEdit = adminReq.adminId === targetId;
+
+  // Self-edits of own credentials/profile (name, username, email, password)
+  // are permitted without system.roles.manage. Editing another account or
+  // touching privileged fields (role / permissions / isActive) always requires it.
+  const requiresRolesPermission =
+    !isSelfEdit ||
+    body.role !== undefined ||
+    body.permissions !== undefined ||
+    body.isActive !== undefined;
+
+  if (requiresRolesPermission && adminReq.adminRole !== "super") {
+    const perms: string[] =
+      Array.isArray(adminReq.adminPermissions) && adminReq.adminPermissions.length > 0
+        ? adminReq.adminPermissions
+        : await resolveAdminPermissions(adminReq.adminId ?? null, adminReq.adminRole);
+    if (!perms.includes("system.roles.manage")) {
+      res.status(403).json({
+        success: false,
+        error: "Forbidden",
+        detail: "Missing permission: system.roles.manage",
+        code: "PERMISSION_DENIED",
+        required: ["system.roles.manage"],
+      });
+      return;
+    }
+  }
   if (body.name !== undefined) updates.name = body.name;
   if (body.username !== undefined) updates.username = body.username;
   if (body.email !== undefined) {
@@ -366,7 +393,7 @@ router.patch("/admin-accounts/:id", async (req, res) => {
   });
 });
 
-router.delete("/admin-accounts/:id", async (req, res) => {
+router.delete("/admin-accounts/:id", requirePermission("system.roles.manage"), async (req, res) => {
   await db
     .delete(adminAccountsTable)
     .where(eq(adminAccountsTable.id, req.params["id"]!));

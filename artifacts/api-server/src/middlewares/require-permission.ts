@@ -14,6 +14,7 @@
  */
 import type { Request, Response, NextFunction } from "express";
 import { resolveAdminPermissions } from "../services/permissions.service.js";
+import { assertPermissionId } from "@workspace/auth-utils/permissions";
 
 function isSuper(req: Request): boolean {
   return req.adminRole === "super";
@@ -30,6 +31,7 @@ async function effectivePerms(req: Request): Promise<string[]> {
 }
 
 export function requirePermission(permission: string) {
+  assertPermissionId(permission); // throws at startup if ID is unknown
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.adminId && !req.adminRole) {
       return res.status(401).json({ success: false, error: "Authentication required" });
@@ -53,6 +55,7 @@ export function requirePermission(permission: string) {
 }
 
 export function requireAnyPermission(permissions: string[]) {
+  for (const p of permissions) assertPermissionId(p); // startup guard
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.adminId && !req.adminRole) {
       return res.status(401).json({ success: false, error: "Authentication required" });
@@ -75,6 +78,7 @@ export function requireAnyPermission(permissions: string[]) {
 }
 
 export function requireAllPermissions(permissions: string[]) {
+  for (const p of permissions) assertPermissionId(p); // startup guard
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.adminId && !req.adminRole) {
       return res.status(401).json({ success: false, error: "Authentication required" });

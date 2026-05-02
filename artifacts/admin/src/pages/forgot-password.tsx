@@ -1,13 +1,6 @@
-/**
- * Public "Forgot password?" page.
- * Posts the email to /api/admin/auth/forgot-password and always shows the
- * same generic confirmation regardless of whether the email exists. The
- * server-side rate limiter handles abuse.
- */
 import { useState } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Mail } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, Mail, ShoppingBag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 export default function ForgotPassword() {
@@ -29,9 +22,6 @@ export default function ForgotPassword() {
       });
       if (!response.ok && response.status !== 200) {
         const data = await response.json().catch(() => ({}));
-        // We still tell the user "if it exists you'll get a link" for
-        // any 4xx response — except for blatantly invalid inputs (400 with
-        // a useful error) which we surface so they can fix the typo.
         if (response.status === 400 && data?.error) {
           setError(String(data.error));
         } else {
@@ -41,8 +31,6 @@ export default function ForgotPassword() {
         setSubmitted(true);
       }
     } catch (err) {
-      // Network failure: still show the success screen so we don't leak
-      // anything; surface a quiet message in console for ops.
       console.error("[forgot-password] network error:", err);
       setSubmitted(true);
     } finally {
@@ -51,77 +39,102 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="bg-card border rounded-2xl shadow-xl p-8">
-          <div className="mb-6">
-            <Link href="/login">
-              <a className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground" data-testid="link-back-to-login">
-                <ArrowLeft className="h-4 w-4 mr-1.5" />
-                Back to sign in
-              </a>
-            </Link>
-          </div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#0f1117] relative overflow-hidden px-4">
 
-          <h1 className="text-2xl font-bold mb-2">Reset your password</h1>
-          <p className="text-sm text-muted-foreground mb-6">
-            Enter the email associated with your admin account and we'll email
-            you a single-use link to choose a new password. The link expires in
-            30 minutes.
+      {/* Background glows */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute top-[-15%] left-[-10%] h-[45%] w-[45%] rounded-full bg-amber-500/10 blur-[120px]" />
+        <div className="absolute bottom-[-15%] right-[-10%] h-[45%] w-[45%] rounded-full bg-orange-500/8 blur-[120px]" />
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{ backgroundImage: "radial-gradient(circle, #fff 1px, transparent 1px)", backgroundSize: "28px 28px" }}
+        />
+      </div>
+
+      <div className="relative z-10 w-full max-w-[400px]">
+
+        {/* Brand */}
+        <div className="mb-7 flex flex-col items-center text-center">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/30">
+            <ShoppingBag className="h-7 w-7 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Reset password</h1>
+          <p className="mt-1.5 text-[13px] text-white/50">
+            {submitted ? "Check your inbox" : "We'll send a reset link to your email"}
           </p>
+        </div>
+
+        {/* Card */}
+        <div className="rounded-2xl border border-white/[0.07] bg-white/[0.04] p-7 shadow-2xl backdrop-blur-md">
 
           {submitted ? (
-            <div className="space-y-4 text-center" data-testid="forgot-password-confirmation">
-              <div className="mx-auto w-14 h-14 rounded-full bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                <CheckCircle2 className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+            <div className="space-y-5 text-center" data-testid="forgot-password-confirmation">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/30">
+                <CheckCircle2 className="h-6 w-6 text-emerald-400" />
               </div>
-              <h2 className="text-lg font-semibold">Check your email</h2>
-              <p className="text-sm text-muted-foreground">
-                If <span className="font-medium">{email}</span> matches an admin
-                account, a password reset link has been sent. It expires in 30
-                minutes and can only be used once.
-              </p>
+              <div>
+                <p className="text-[14px] font-semibold text-white/90">Link sent</p>
+                <p className="mt-1.5 text-[13px] leading-relaxed text-white/45">
+                  If <span className="font-medium text-white/70">{email}</span> matches an admin account, a reset link has been sent. It expires in 30 minutes and can only be used once.
+                </p>
+              </div>
               <Link href="/login">
-                <Button variant="outline" className="w-full" data-testid="button-back-to-login">
+                <button
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.05] py-2.5 text-[13px] font-medium text-white/70 hover:bg-white/[0.08] hover:text-white/90 transition-all focus-visible:outline-none"
+                  data-testid="button-back-to-login"
+                >
                   Return to sign in
-                </Button>
+                </button>
               </Link>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="email">
-                  Email
+            <form onSubmit={handleSubmit} className="space-y-5">
+
+              {/* Back link */}
+              <Link href="/login">
+                <a className="inline-flex items-center gap-1.5 text-[12px] font-medium text-white/40 hover:text-white/70 transition-colors focus-visible:outline-none" data-testid="link-back-to-login">
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back to sign in
+                </a>
+              </Link>
+
+              <p className="text-[13px] leading-relaxed text-white/45">
+                Enter your admin account email and we'll send a single-use reset link. Expires in 30 minutes.
+              </p>
+
+              {/* Email */}
+              <div className="space-y-1.5">
+                <label htmlFor="fp-email" className="block text-[11px] font-semibold uppercase tracking-widest text-white/40">
+                  Email address
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                  </div>
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/25" />
                   <Input
-                    id="email"
+                    id="fp-email"
                     type="email"
                     inputMode="email"
                     autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
-                    className="pl-9 h-11"
+                    className="h-11 rounded-xl border-white/10 bg-white/[0.06] pl-9 text-sm text-white placeholder:text-white/25 focus:border-amber-400/60 focus:ring-amber-400/15 focus:bg-white/[0.08] transition-all"
                     required
+                    autoFocus
                     data-testid="input-forgot-email"
                   />
                 </div>
               </div>
 
               {error && (
-                <p className="text-sm text-destructive" data-testid="text-forgot-error">
+                <p className="rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-[13px] text-red-400" data-testid="text-forgot-error">
                   {error}
                 </p>
               )}
 
-              <Button
+              <button
                 type="submit"
-                className="w-full h-11"
                 disabled={submitting || !email.trim()}
+                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-2.5 text-[14px] font-bold text-white shadow-lg shadow-amber-500/25 transition-all hover:bg-amber-400 hover:shadow-amber-400/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                 data-testid="button-send-reset-link"
               >
                 {submitting ? (
@@ -129,13 +142,17 @@ export default function ForgotPassword() {
                 ) : (
                   <>
                     Send reset link
-                    <ArrowRight className="h-4 w-4 ml-2" />
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </>
                 )}
-              </Button>
+              </button>
             </form>
           )}
         </div>
+
+        <p className="mt-6 text-center text-[11px] text-white/20">
+          AJKMart Admin &copy; {new Date().getFullYear()}
+        </p>
       </div>
     </div>
   );

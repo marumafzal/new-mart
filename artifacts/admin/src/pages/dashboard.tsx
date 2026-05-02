@@ -79,6 +79,16 @@ function updatedAgo(ts: number): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+const SERVICE_SERIES = [
+  { key: "mart",     label: "Mart",     color: "#f97316" },
+  { key: "rides",    label: "Rides",    color: "#6366f1" },
+  { key: "pharmacy", label: "Pharmacy", color: "#22c55e" },
+  { key: "parcel",   label: "Parcel",   color: "#a855f7" },
+  { key: "van",      label: "Van",      color: "#14b8a6" },
+] as const;
+
+type ServiceKey = typeof SERVICE_SERIES[number]["key"];
+
 export default function Dashboard() {
   const { toast } = useToast();
   const { language } = useLanguage();
@@ -87,6 +97,12 @@ export default function Dashboard() {
   const gradId = useId().replace(/:/g, "rev");
   const [isExporting, setIsExporting] = useState(false);
   const [errorDismissed, setErrorDismissed] = useState(false);
+  const [visibleSeries, setVisibleSeries] = useState<Record<ServiceKey, boolean>>({
+    mart: true, rides: true, pharmacy: true, parcel: true, van: true,
+  });
+
+  const toggleSeries = (key: ServiceKey) =>
+    setVisibleSeries(prev => ({ ...prev, [key]: !prev[key] }));
   const { data, isLoading, isFetching, isError: statsError, dataUpdatedAt } = useStats();
   const { data: trendData, isError: trendError } = useRevenueTrend();
   const { data: lbData, isError: lbError }    = useLeaderboard();
@@ -101,7 +117,20 @@ export default function Dashboard() {
     ]);
   }, [qc]);
 
-  const rawTrend: { date: string; revenue: number; orderCount?: number; rideCount?: number; sosCount?: number }[] =
+  type TrendDay = {
+    date: string;
+    revenue: number;
+    orderCount?: number;
+    rideCount?: number;
+    sosCount?: number;
+    mart?: number;
+    rides?: number;
+    pharmacy?: number;
+    parcel?: number;
+    van?: number;
+  };
+
+  const rawTrend: TrendDay[] =
     Array.isArray(trendData?.trend) ? trendData.trend : [];
 
   const trend = [...rawTrend].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -330,13 +359,82 @@ export default function Dashboard() {
 
       {/* 7-Day Revenue Trend chart */}
       <Card className="rounded-2xl border-border/50 shadow-sm p-4 sm:p-6">
-        <h2 className="text-base sm:text-lg font-bold mb-4 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-indigo-500" /> 7-Day Revenue Trend
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-indigo-500" /> 7-Day Revenue Trend
+          </h2>
+          {/* Series toggle legend */}
+          {trend.length > 0 && trend.some(d => SERVICE_SERIES.some(s => s.key in d && typeof d[s.key] === "number")) && (
+            <div className="flex flex-wrap gap-2">
+              {SERVICE_SERIES.map(s => (
+                <button
+                  key={s.key}
+                  role="checkbox"
+                  aria-checked={visibleSeries[s.key]}
+                  aria-label={`Toggle ${s.label} series`}
+                  onClick={() => toggleSeries(s.key)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                    visibleSeries[s.key]
+                      ? "border-transparent text-white"
+                      : "border-border bg-transparent text-muted-foreground"
+                  }`}
+                  style={visibleSeries[s.key] ? { backgroundColor: s.color } : {}}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: visibleSeries[s.key] ? "rgba(255,255,255,0.8)" : s.color }}
+                  />
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {trend.length === 0 ? (
-          <div className="h-44 flex items-center justify-center text-muted-foreground text-sm">No trend data available</div>
+          <div className="h-52 flex items-center justify-center text-muted-foreground text-sm">No trend data available</div>
+        ) : trend.some(d => SERVICE_SERIES.some(s => s.key in d && typeof d[s.key] === "number")) ? (
+          /* Multi-series chart when per-service data is present */
+          <div className="h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trend} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <defs>
+                  {SERVICE_SERIES.map(s => (
+                    <linearGradient key={s.key} id={`${gradId}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor={s.color} stopOpacity={0.25} />
+                      <stop offset="95%" stopColor={s.color} stopOpacity={0} />
+                    </linearGradient>
+                  ))}
+                </defs>
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                  tickFormatter={d => { const dt = new Date(d); return dt.toString() === "Invalid Date" ? "" : dt.toLocaleDateString("en-US", { weekday: "short" }); }} />
+                <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                  tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} width={40} />
+                <Tooltip
+                  contentStyle={{ borderRadius: "12px", fontSize: "12px", border: "1px solid hsl(var(--border))" }}
+                  formatter={(v: number, name: string) => [`Rs. ${Math.round(v).toLocaleString()}`, name.charAt(0).toUpperCase() + name.slice(1)]}
+                  labelFormatter={l => { const dt = new Date(l); return dt.toString() === "Invalid Date" ? "" : dt.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }); }}
+                />
+                {SERVICE_SERIES.map(s =>
+                  visibleSeries[s.key] ? (
+                    <Area
+                      key={s.key}
+                      type="monotone"
+                      dataKey={s.key}
+                      name={s.label}
+                      stroke={s.color}
+                      strokeWidth={2}
+                      fill={`url(#${gradId}-${s.key})`}
+                      dot={false}
+                      activeDot={{ r: 4, fill: s.color }}
+                    />
+                  ) : null
+                )}
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         ) : (
-          <div className="h-44">
+          /* Fallback: single total line when per-service data is absent */
+          <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trend} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <defs>
@@ -351,7 +449,7 @@ export default function Dashboard() {
                   tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} width={40} />
                 <Tooltip
                   contentStyle={{ borderRadius: "12px", fontSize: "12px", border: "1px solid hsl(var(--border))" }}
-                  formatter={(v: any) => [`Rs. ${Math.round(v).toLocaleString()}`, T("revenue")]}
+                  formatter={(v: number) => [`Rs. ${Math.round(v).toLocaleString()}`, T("revenue")]}
                   labelFormatter={l => { const dt = new Date(l); return dt.toString() === "Invalid Date" ? "" : dt.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }); }}
                 />
                 <Area type="monotone" dataKey="revenue" stroke="#6366F1" strokeWidth={2}

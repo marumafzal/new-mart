@@ -6,6 +6,7 @@ import {
   notificationsTable,
   ordersTable, ridesTable, rideBidsTable, rideServiceTypesTable, popularLocationsTable, schoolRoutesTable, schoolSubscriptionsTable, liveLocationsTable, rideEventLogsTable, rideNotifiedRidersTable, locationLogsTable, locationHistoryTable,
   vendorProfilesTable, riderProfilesTable,
+  pharmacyOrdersTable, parcelBookingsTable, vanBookingsTable,
 } from "@workspace/db/schema";
 import { eq, desc, count, sum, and, gte, lte, sql, or, ilike, asc, isNull, isNotNull, avg, ne } from "drizzle-orm";
 import {
@@ -640,13 +641,35 @@ router.get("/revenue-trend", async (_req: Request, res: Response) => {
       db.select({ cnt: count() })
         .from(notificationsTable)
         .where(and(eq(notificationsTable.type, "sos"), gte(notificationsTable.createdAt, from), lte(notificationsTable.createdAt, to))),
-    ]).then(([[orderRev], [rideRev], [orderCnt], [rideCnt], [sosCnt]]) => ({
-      date: dateStr,
-      revenue: parseFloat(orderRev?.total ?? "0") + parseFloat(rideRev?.total ?? "0"),
-      orderCount: orderCnt?.cnt ?? 0,
-      rideCount:  rideCnt?.cnt  ?? 0,
-      sosCount:   sosCnt?.cnt   ?? 0,
-    }));
+      /* Per-service revenue breakdowns */
+      db.select({ total: sum(pharmacyOrdersTable.total) })
+        .from(pharmacyOrdersTable)
+        .where(and(eq(pharmacyOrdersTable.status, "delivered"), gte(pharmacyOrdersTable.createdAt, from), lte(pharmacyOrdersTable.createdAt, to))),
+      db.select({ total: sum(parcelBookingsTable.fare) })
+        .from(parcelBookingsTable)
+        .where(and(eq(parcelBookingsTable.status, "delivered"), gte(parcelBookingsTable.createdAt, from), lte(parcelBookingsTable.createdAt, to))),
+      db.select({ total: sum(vanBookingsTable.fare) })
+        .from(vanBookingsTable)
+        .where(and(eq(vanBookingsTable.status, "completed"), gte(vanBookingsTable.createdAt, from), lte(vanBookingsTable.createdAt, to))),
+    ]).then(([[orderRev], [rideRev], [orderCnt], [rideCnt], [sosCnt], [pharmacyRev], [parcelRev], [vanRev]]) => {
+      const mart     = parseFloat(orderRev?.total    ?? "0");
+      const rides    = parseFloat(rideRev?.total     ?? "0");
+      const pharmacy = parseFloat(pharmacyRev?.total ?? "0");
+      const parcel   = parseFloat(parcelRev?.total   ?? "0");
+      const van      = parseFloat(vanRev?.total      ?? "0");
+      return {
+        date: dateStr,
+        revenue: mart + rides + pharmacy + parcel + van,
+        mart,
+        rides,
+        pharmacy,
+        parcel,
+        van,
+        orderCount: orderCnt?.cnt ?? 0,
+        rideCount:  rideCnt?.cnt  ?? 0,
+        sosCount:   sosCnt?.cnt   ?? 0,
+      };
+    });
   });
   const days = await Promise.all(dayPromises);
   sendSuccess(res, { trend: days });

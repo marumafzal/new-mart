@@ -1,11 +1,3 @@
-/**
- * Optional post-login popup for the seeded super-admin while they are
- * still on the default credentials. Lets them update username and/or
- * password, or skip. Owns its `open` state locally because a derived
- * `open` would auto-close mid-submit when the password API clears
- * `usingDefaultCredentials` — that would hide partial-failure errors
- * for a subsequent username PATCH.
- */
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { AlertCircle, CheckCircle2, Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
@@ -14,7 +6,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -22,17 +13,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminAuth } from "@/lib/adminAuthContext";
 
-/**
- * Documented default seed password — kept in sync with
- * `DEFAULT_SEED_PASSWORD` in `admin-seed.service.ts` and the helper
- * text on the login page. Used as the implicit "current password"
- * when `usingDefaultCredentials=true` so the popup only asks for the
- * fields the user actually needs to fill in (new username / new
- * password / confirm).
- */
 const DOCUMENTED_DEFAULT_PASSWORD = "Toqeerkhan@123.com";
 
-/** Same rules the API enforces (validatePasswordStrength). */
 function validateStrength(pw: string): string | null {
   if (pw.length < 8) return "Password must be at least 8 characters.";
   if (!/[A-Z]/.test(pw)) return "Password must contain at least 1 uppercase letter.";
@@ -42,18 +24,6 @@ function validateStrength(pw: string): string | null {
 
 type StrengthLevel = 0 | 1 | 2 | 3 | 4;
 
-/**
- * Scores password strength using exactly the same 3 criteria that
- * validateStrength enforces, so the meter can never reach "Strong"
- * for a password that would fail server validation.
- *
- * Bar mapping:
- *  0 – nothing typed
- *  1 – something typed but < 8 chars         → Weak
- *  2 – ≥ 8 chars                              → Fair  (length rule ✓)
- *  3 – ≥ 8 chars + uppercase                  → Good  (+ uppercase rule ✓)
- *  4 – ≥ 8 chars + uppercase + number         → Strong (all server rules ✓)
- */
 function computeStrength(pw: string): StrengthLevel {
   if (!pw) return 0;
   if (pw.length < 8) return 1;
@@ -227,12 +197,12 @@ export function FirstLoginCredentialsDialog() {
       }}
     >
       <DialogContent
-        className="sm:max-w-lg overflow-hidden p-0"
+        className="sm:max-w-lg p-0 [&>button[aria-label='Close\\ dialog']]:text-white/80 [&>button[aria-label='Close\\ dialog']]:hover:bg-white/20 [&>button[aria-label='Close\\ dialog']]:hover:text-white [&>button[aria-label='Close\\ dialog']]:focus:ring-white/50"
         data-testid="dialog-first-login-credentials"
       >
-        {/* Accent header band */}
-        <div className="relative bg-gradient-to-br from-amber-500 via-amber-400 to-orange-400 dark:from-amber-600 dark:via-amber-500 dark:to-orange-500 px-6 pt-7 pb-6">
-          <div className="flex items-center gap-4">
+        {/* Gradient header — fills full width because DialogContent is p-0 */}
+        <div className="bg-gradient-to-br from-amber-500 via-amber-400 to-orange-400 dark:from-amber-600 dark:via-amber-500 dark:to-orange-500 px-6 pt-7 pb-6">
+          <div className="flex items-center gap-4 pr-8">
             <div className="w-12 h-12 rounded-xl bg-white/20 ring-2 ring-white/30 backdrop-blur-sm flex items-center justify-center shrink-0 shadow-lg">
               <KeyRound className="h-6 w-6 text-white" />
             </div>
@@ -247,8 +217,8 @@ export function FirstLoginCredentialsDialog() {
           </div>
         </div>
 
-        {/* Form body */}
-        <form onSubmit={handleSubmit} className="px-6 pb-4 pt-5 space-y-4">
+        {/* Form body — owns its own horizontal padding */}
+        <form onSubmit={handleSubmit} className="px-6 pt-5 pb-0 space-y-4">
 
           {/* Username section */}
           <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 space-y-2">
@@ -380,8 +350,8 @@ export function FirstLoginCredentialsDialog() {
             </div>
           )}
 
-          {/* Footer */}
-          <DialogFooter className="pt-1 flex-col sm:flex-row gap-2 sm:gap-2">
+          {/* Footer — negative horizontal margin bleeds to DialogContent edge (p-0) */}
+          <div className="-mx-6 px-6 py-4 border-t border-border flex flex-col sm:flex-row items-center gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -414,7 +384,7 @@ export function FirstLoginCredentialsDialog() {
                 "Save changes"
               )}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

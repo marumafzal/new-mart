@@ -31,23 +31,26 @@ export interface PermissionDef {
   label: string;
   category: PermissionCategory;
   description?: string;
+  /** High-risk permissions are flagged in the UI with a red badge. */
+  highRisk?: boolean;
 }
 
 export const PERMISSIONS = [
   // ── System ────────────────────────────────────────────────────────
   { id: "system.settings.view",  label: "View platform settings", category: "system" },
   { id: "system.settings.edit",  label: "Edit platform settings", category: "system" },
-  { id: "system.secrets.manage", label: "Manage secrets / integrations", category: "system" },
+  { id: "system.secrets.manage", label: "Manage secrets / integrations", category: "system", highRisk: true },
   { id: "system.roles.manage",   label: "Manage roles & permissions", category: "system" },
   { id: "system.audit.view",     label: "View audit log", category: "system" },
   { id: "system.maintenance",    label: "Toggle maintenance mode", category: "system" },
 
   // ── Users ─────────────────────────────────────────────────────────
   { id: "users.view",       label: "View users", category: "users" },
+  { id: "users.create",     label: "Create users", category: "users" },
   { id: "users.edit",       label: "Edit user profiles", category: "users" },
-  { id: "users.delete",     label: "Delete users", category: "users" },
+  { id: "users.delete",     label: "Delete users", category: "users", highRisk: true },
   { id: "users.ban",        label: "Ban / unban users", category: "users" },
-  { id: "users.impersonate", label: "Impersonate users", category: "users" },
+  { id: "users.impersonate", label: "Impersonate users", category: "users", highRisk: true },
   { id: "users.approve",    label: "Approve / reject pending accounts", category: "users" },
 
   // ── Orders ────────────────────────────────────────────────────────
@@ -62,8 +65,8 @@ export const PERMISSIONS = [
   { id: "finance.wallet.topup",      label: "Top-up user wallets", category: "finance" },
   { id: "finance.wallet.adjust",     label: "Adjust wallet balances", category: "finance" },
   { id: "finance.withdrawals.view",  label: "View withdrawal requests", category: "finance" },
-  { id: "finance.withdrawals.approve", label: "Approve withdrawals", category: "finance" },
-  { id: "finance.payouts.release",   label: "Release vendor / rider payouts", category: "finance" },
+  { id: "finance.withdrawals.approve", label: "Approve withdrawals", category: "finance", highRisk: true },
+  { id: "finance.payouts.release",   label: "Release vendor / rider payouts", category: "finance", highRisk: true },
   { id: "finance.deposits.review",   label: "Review deposit requests", category: "finance" },
   { id: "finance.kyc.view",          label: "View KYC submissions", category: "finance" },
   { id: "finance.kyc.approve",       label: "Approve KYC submissions", category: "finance" },

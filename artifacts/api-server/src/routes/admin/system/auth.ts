@@ -219,7 +219,7 @@ router.post("/auth", async (req, res) => {
 });
 
 router.use(adminAuth);
-router.get("/admin-accounts", async (_req, res) => {
+router.get("/admin-accounts", requirePermission("system.roles.manage"), async (_req, res) => {
   const accounts = await db
     .select({
       id: adminAccountsTable.id,

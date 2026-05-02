@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared";
-import { Shield, Plus, Save, Trash2, RefreshCw, Search, Lock, Users, KeyRound } from "lucide-react";
+import { Shield, Plus, Save, Trash2, RefreshCw, Search, Lock, Users, KeyRound, Pencil } from "lucide-react";
 import { fetchAdmin } from "@/lib/adminFetcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,16 +16,13 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useAbortableEffect, isAbortError } from "@/lib/useAbortableEffect";
-import { ConfirmDialog, PromptDialog } from "@/components/ConfirmDialog";
-import { useLanguage } from "@/lib/useLanguage";
-import { tDual } from "@workspace/i18n";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface PermissionDef {
   id: string;
   category: string;
-  /** Human label from the catalog. */
   label?: string;
-  /** Optional longer description. */
   description?: string;
   highRisk?: boolean;
 }
@@ -61,16 +58,32 @@ export default function RolesPermissionsPage() {
   const [draftPerms, setDraftPerms] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
   const [tab, setTab] = useState<"roles" | "admins">("roles");
-  const [newRoleStep, setNewRoleStep] = useState<{ stage: "slug" | "name"; slug: string; name: string } | null>(null);
   const [confirmRemoveRole, setConfirmRemoveRole] = useState(false);
-  const { language } = useLanguage();
 
-  /* ── Admin assignments tab state ────────────────────────────── */
+  /* ── Single-dialog create role ──────────────────────────────────── */
+  const [showCreateRole, setShowCreateRole] = useState(false);
+  const [newSlug, setNewSlug] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  /* ── Inline edit role name/description ─────────────────────────── */
+  const [showEditRole, setShowEditRole] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  /* ── Unsaved-changes guard ──────────────────────────────────────── */
+  const [pendingRole, setPendingRole] = useState<RbacRole | null>(null);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+
+  /* ── Admin assignments tab state ────────────────────────────────── */
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [adminRoleMap, setAdminRoleMap] = useState<Record<string, string[]>>({});
   const [activeAdminId, setActiveAdminId] = useState<string | null>(null);
   const [activeAdminEffective, setActiveAdminEffective] = useState<string[]>([]);
   const [adminsLoading, setAdminsLoading] = useState(false);
+  const [adminSearch, setAdminSearch] = useState("");
 
   const activeRole = useMemo(
     () => roles.find(r => r.id === activeRoleId) ?? null,
@@ -111,13 +124,11 @@ export default function RolesPermissionsPage() {
 
   useAbortableEffect((signal) => { void reload(signal); }, []);
 
-  /* ── Admin assignments ──────────────────────────────────────── */
+  /* ── Admin assignments ──────────────────────────────────────────── */
   const loadAdmins = async () => {
     setAdminsLoading(true);
     try {
       const res = await fetchAdmin("/admin-accounts");
-      // The admin-accounts endpoint returns `{ accounts: [...] }`, but be
-      // defensive for variants we've seen elsewhere in this codebase.
       const list: AdminAccount[] =
         res?.data?.accounts
         ?? res?.accounts
@@ -127,7 +138,6 @@ export default function RolesPermissionsPage() {
         ?? (Array.isArray(res) ? res : [])
         ?? [];
       setAdmins(Array.isArray(list) ? list : []);
-      // Hydrate roles for each admin in parallel (best-effort).
       const map: Record<string, string[]> = {};
       await Promise.all((Array.isArray(list) ? list : []).map(async a => {
         try {
@@ -169,12 +179,22 @@ export default function RolesPermissionsPage() {
       if (activeAdminId === adminId) await selectAdmin({ id: adminId } as AdminAccount);
     } catch (err) {
       toast({ title: "Update failed", description: String(err), variant: "destructive" });
-      // revert
       void loadAdmins();
     }
   };
 
-  const selectRole = (role: RbacRole) => {
+  /* Attempt to switch to a different role; show discard dialog if dirty */
+  const trySelectRole = (role: RbacRole) => {
+    if (role.id === activeRoleId) return;
+    if (dirty) {
+      setPendingRole(role);
+      setShowDiscardDialog(true);
+    } else {
+      doSelectRole(role);
+    }
+  };
+
+  const doSelectRole = (role: RbacRole) => {
     setActiveRoleId(role.id);
     setDraftPerms(new Set(role.permissions));
   };
@@ -184,6 +204,18 @@ export default function RolesPermissionsPage() {
     setDraftPerms(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCategoryAll = (perms: PermissionDef[], selectAll: boolean) => {
+    if (!canManage) return;
+    setDraftPerms(prev => {
+      const next = new Set(prev);
+      for (const p of perms) {
+        if (selectAll) next.add(p.id);
+        else next.delete(p.id);
+      }
       return next;
     });
   };
@@ -205,20 +237,58 @@ export default function RolesPermissionsPage() {
     }
   };
 
-  const createRoleStep1 = () => setNewRoleStep({ stage: "slug", slug: "", name: "" });
-  const submitNewRole = async (slug: string, name: string) => {
-    setNewRoleStep(null);
+  const openCreateRole = () => {
+    setNewSlug("");
+    setNewName("");
+    setNewDesc("");
+    setShowCreateRole(true);
+  };
+
+  const submitNewRole = async () => {
+    const slug = newSlug.trim();
+    const name = newName.trim() || slug;
+    if (!slug) return;
+    setCreating(true);
     try {
       const res = await fetchAdmin("/system/rbac/roles", {
         method: "POST",
-        body: JSON.stringify({ slug, name: name || slug }),
+        body: JSON.stringify({ slug, name, description: newDesc.trim() || undefined }),
       });
       const role = (res?.data?.role ?? res?.role) as RbacRole | undefined;
-      toast({ title: "Role created", description: name || slug });
+      toast({ title: "Role created", description: name });
+      setShowCreateRole(false);
+      setFilter("");
       await reload();
-      if (role) setActiveRoleId(role.id);
+      if (role) { setActiveRoleId(role.id); setDraftPerms(new Set()); }
     } catch (err) {
       toast({ title: "Create failed", description: String(err), variant: "destructive" });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const openEditRole = () => {
+    if (!activeRole) return;
+    setEditName(activeRole.name);
+    setEditDesc(activeRole.description ?? "");
+    setShowEditRole(true);
+  };
+
+  const submitEditRole = async () => {
+    if (!activeRole) return;
+    setEditSaving(true);
+    try {
+      await fetchAdmin(`/system/rbac/roles/${activeRole.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: editName.trim() || undefined, description: editDesc.trim() === "" ? null : editDesc.trim() }),
+      });
+      toast({ title: "Role updated" });
+      setShowEditRole(false);
+      await reload();
+    } catch (err) {
+      toast({ title: "Update failed", description: String(err), variant: "destructive" });
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -255,6 +325,16 @@ export default function RolesPermissionsPage() {
     return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
+  const filteredAdmins = useMemo(() => {
+    if (!adminSearch) return admins;
+    const q = adminSearch.toLowerCase();
+    return admins.filter(a =>
+      (a.name ?? "").toLowerCase().includes(q) ||
+      (a.username ?? "").toLowerCase().includes(q) ||
+      (a.email ?? "").toLowerCase().includes(q),
+    );
+  }, [admins, adminSearch]);
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <PageHeader
@@ -269,7 +349,7 @@ export default function RolesPermissionsPage() {
               <RefreshCw className={`h-4 w-4 mr-2 ${(loading || adminsLoading) ? "animate-spin" : ""}`} /> Reload
             </Button>
             {canManage && tab === "roles" && (
-              <Button onClick={createRoleStep1}>
+              <Button onClick={openCreateRole}>
                 <Plus className="h-4 w-4 mr-2" /> New role
               </Button>
             )}
@@ -297,7 +377,8 @@ export default function RolesPermissionsPage() {
 
       {tab === "admins" ? (
         <AdminAssignments
-          admins={admins}
+          admins={filteredAdmins}
+          allAdmins={admins}
           roles={roles}
           adminRoleMap={adminRoleMap}
           activeAdminId={activeAdminId}
@@ -306,19 +387,21 @@ export default function RolesPermissionsPage() {
           onToggleRole={toggleAdminRole}
           canManage={canManage}
           loading={adminsLoading}
+          search={adminSearch}
+          onSearchChange={setAdminSearch}
         />
       ) : (
       <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6">
-        {/* Roles list */}
-        <aside className="border rounded-lg bg-white">
-          <div className="p-3 border-b text-xs uppercase tracking-wider text-muted-foreground">
+        {/* Roles list — scrollable */}
+        <aside className="border rounded-lg bg-white flex flex-col">
+          <div className="p-3 border-b text-xs uppercase tracking-wider text-muted-foreground shrink-0">
             Roles ({roles.length})
           </div>
-          <ul className="divide-y">
+          <ul className="divide-y max-h-[70vh] overflow-y-auto">
             {roles.map(r => (
               <li key={r.id}>
                 <button
-                  onClick={() => selectRole(r)}
+                  onClick={() => trySelectRole(r)}
                   className={`w-full text-left px-3 py-2 hover:bg-slate-50 ${activeRoleId === r.id ? "bg-indigo-50" : ""}`}
                   data-testid={`role-${r.slug}`}
                 >
@@ -340,18 +423,25 @@ export default function RolesPermissionsPage() {
           </ul>
         </aside>
 
-        {/* Permission editor */}
-        <section className="border rounded-lg bg-white">
+        {/* Permission editor — scrollable */}
+        <section className="border rounded-lg bg-white flex flex-col">
           {!activeRole ? (
             <div className="p-6 text-sm text-muted-foreground">Select a role to view its permissions.</div>
           ) : (
             <>
-              <div className="p-4 border-b flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <h2 className="font-semibold">{activeRole.name}</h2>
-                  <p className="text-xs text-muted-foreground">
-                    {activeRole.description || "No description"} · {draftPerms.size} of {catalog.length} permissions
-                  </p>
+              <div className="p-4 border-b flex items-center justify-between gap-3 flex-wrap shrink-0">
+                <div className="flex items-center gap-2">
+                  <div>
+                    <h2 className="font-semibold">{activeRole.name}</h2>
+                    <p className="text-xs text-muted-foreground">
+                      {activeRole.description || "No description"} · {draftPerms.size} of {catalog.length} permissions
+                    </p>
+                  </div>
+                  {canManage && !activeRole.isBuiltIn && (
+                    <Button variant="ghost" size="sm" onClick={openEditRole} title="Edit role name / description">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="relative">
@@ -377,41 +467,66 @@ export default function RolesPermissionsPage() {
               </div>
 
               <div className="p-4 space-y-6 max-h-[70vh] overflow-y-auto">
-                {grouped.map(([category, perms]) => (
-                  <div key={category}>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                      {category}
-                    </h3>
-                    <ul className="space-y-1">
-                      {perms.map(p => {
-                        const checked = draftPerms.has(p.id);
-                        return (
-                          <li key={p.id}>
-                            <label className={`flex items-start gap-3 px-3 py-2 rounded-md cursor-pointer ${checked ? "bg-indigo-50/50" : "hover:bg-slate-50"}`}>
-                              <input
-                                type="checkbox"
-                                className="mt-1"
-                                checked={checked}
-                                onChange={() => togglePerm(p.id)}
-                                disabled={!canManage}
-                                data-testid={`perm-${p.id}`}
-                              />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <code className="text-sm font-mono">{p.id}</code>
-                                  {p.highRisk && (
-                                    <Badge variant="destructive" className="text-[10px]">high-risk</Badge>
-                                  )}
+                {grouped.map(([category, perms]) => {
+                  const allChecked = perms.every(p => draftPerms.has(p.id));
+                  const noneChecked = perms.every(p => !draftPerms.has(p.id));
+                  return (
+                    <div key={category}>
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          {category}
+                        </h3>
+                        {canManage && (
+                          <div className="flex gap-2">
+                            <button
+                              className="text-[11px] text-indigo-600 hover:underline disabled:opacity-40"
+                              disabled={allChecked}
+                              onClick={() => toggleCategoryAll(perms, true)}
+                            >
+                              Select all
+                            </button>
+                            <span className="text-[11px] text-muted-foreground">·</span>
+                            <button
+                              className="text-[11px] text-muted-foreground hover:underline disabled:opacity-40"
+                              disabled={noneChecked}
+                              onClick={() => toggleCategoryAll(perms, false)}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      <ul className="space-y-1">
+                        {perms.map(p => {
+                          const checked = draftPerms.has(p.id);
+                          return (
+                            <li key={p.id}>
+                              <label className={`flex items-start gap-3 px-3 py-2 rounded-md cursor-pointer ${checked ? "bg-indigo-50/50" : "hover:bg-slate-50"}`}>
+                                <input
+                                  type="checkbox"
+                                  className="mt-1"
+                                  checked={checked}
+                                  onChange={() => togglePerm(p.id)}
+                                  disabled={!canManage}
+                                  data-testid={`perm-${p.id}`}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <code className="text-sm font-mono">{p.id}</code>
+                                    {p.highRisk && (
+                                      <Badge variant="destructive" className="text-[10px]">high-risk</Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">{p.label || p.description || ""}</div>
                                 </div>
-                                <div className="text-xs text-muted-foreground">{p.label || p.description || ""}</div>
-                              </div>
-                            </label>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ))}
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })}
                 {!grouped.length && (
                   <div className="text-sm text-muted-foreground">No permissions match the filter.</div>
                 )}
@@ -422,38 +537,109 @@ export default function RolesPermissionsPage() {
       </div>
       )}
 
-      <PromptDialog
-        open={!!newRoleStep && newRoleStep.stage === "slug"}
-        title={tDual("newRoleSlugTitle", language)}
-        description={tDual("newRoleSlugLabel", language)}
-        placeholder={tDual("newRoleSlugPlaceholder", language)}
-        required
-        defaultValue={newRoleStep?.slug ?? ""}
-        onClose={() => setNewRoleStep(null)}
-        onSubmit={(slug) => {
-          const trimmed = slug.trim();
-          if (!trimmed) return;
-          setNewRoleStep({ stage: "name", slug: trimmed, name: trimmed });
+      {/* ── Create role dialog (single form) ────────────────────────── */}
+      <Dialog open={showCreateRole} onOpenChange={o => { if (!o && !creating) setShowCreateRole(false); }}>
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create new role</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Slug <span className="text-red-500">*</span></label>
+              <Input
+                autoFocus
+                placeholder="e.g. billing_manager"
+                value={newSlug}
+                onChange={e => setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))}
+                disabled={creating}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers and underscores only.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Display name</label>
+              <Input
+                placeholder="e.g. Billing Manager"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                disabled={creating}
+                onKeyDown={e => { if (e.key === "Enter" && newSlug.trim()) void submitNewRole(); }}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Description <span className="text-muted-foreground font-normal">(optional)</span></label>
+              <Input
+                placeholder="Short description of this role's purpose"
+                value={newDesc}
+                onChange={e => setNewDesc(e.target.value)}
+                disabled={creating}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateRole(false)} disabled={creating}>Cancel</Button>
+            <Button onClick={() => void submitNewRole()} disabled={!newSlug.trim() || creating}>
+              {creating ? "Creating…" : "Create role"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit role dialog ─────────────────────────────────────────── */}
+      <Dialog open={showEditRole} onOpenChange={o => { if (!o && !editSaving) setShowEditRole(false); }}>
+        <DialogContent className="w-[95vw] max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit role</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Display name</label>
+              <Input
+                autoFocus
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                disabled={editSaving}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Description <span className="text-muted-foreground font-normal">(optional)</span></label>
+              <Input
+                value={editDesc}
+                onChange={e => setEditDesc(e.target.value)}
+                disabled={editSaving}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditRole(false)} disabled={editSaving}>Cancel</Button>
+            <Button onClick={() => void submitEditRole()} disabled={!editName.trim() || editSaving}>
+              {editSaving ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Discard unsaved changes guard ───────────────────────────── */}
+      <ConfirmDialog
+        open={showDiscardDialog}
+        title="Discard unsaved changes?"
+        description="You have unsaved permission changes on this role. Discard them and switch roles?"
+        confirmLabel="Discard"
+        cancelLabel="Stay"
+        variant="destructive"
+        onConfirm={() => {
+          setShowDiscardDialog(false);
+          if (pendingRole) { doSelectRole(pendingRole); setPendingRole(null); }
         }}
+        onClose={() => { setShowDiscardDialog(false); setPendingRole(null); }}
       />
-      <PromptDialog
-        open={!!newRoleStep && newRoleStep.stage === "name"}
-        title={tDual("newRoleSlugTitle", language)}
-        description={tDual("newRoleNameLabel", language)}
-        placeholder={tDual("newRoleNameLabel", language)}
-        defaultValue={newRoleStep?.name ?? ""}
-        onClose={() => setNewRoleStep(null)}
-        onSubmit={(name) => {
-          if (!newRoleStep) return;
-          void submitNewRole(newRoleStep.slug, name.trim());
-        }}
-      />
+
+      {/* ── Delete role confirmation ─────────────────────────────────── */}
       <ConfirmDialog
         open={confirmRemoveRole}
         onClose={() => setConfirmRemoveRole(false)}
         onConfirm={performRemoveRole}
-        title={tDual("deleteRoleTitle", language)}
-        description={activeRole ? `Delete role "${activeRole.name}"?` : ""}
+        title="Delete role"
+        description={activeRole ? `Delete role "${activeRole.name}"? This cannot be undone.` : ""}
         confirmLabel="Delete"
         variant="destructive"
       />
@@ -463,6 +649,7 @@ export default function RolesPermissionsPage() {
 
 interface AdminAssignmentsProps {
   admins: AdminAccount[];
+  allAdmins: AdminAccount[];
   roles: RbacRole[];
   adminRoleMap: Record<string, string[]>;
   activeAdminId: string | null;
@@ -471,20 +658,33 @@ interface AdminAssignmentsProps {
   onToggleRole: (adminId: string, roleId: string) => void;
   canManage: boolean;
   loading: boolean;
+  search: string;
+  onSearchChange: (v: string) => void;
 }
 
 function AdminAssignments({
-  admins, roles, adminRoleMap, activeAdminId, activeAdminEffective,
-  onSelect, onToggleRole, canManage, loading,
+  admins, allAdmins, roles, adminRoleMap, activeAdminId, activeAdminEffective,
+  onSelect, onToggleRole, canManage, loading, search, onSearchChange,
 }: AdminAssignmentsProps) {
-  const active = admins.find(a => a.id === activeAdminId) ?? null;
+  const active = allAdmins.find(a => a.id === activeAdminId) ?? null;
   return (
     <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6">
-      <aside className="border rounded-lg bg-white">
-        <div className="p-3 border-b text-xs uppercase tracking-wider text-muted-foreground">
-          Admins ({admins.length}) {loading && <span className="ml-2">loading…</span>}
+      <aside className="border rounded-lg bg-white flex flex-col">
+        <div className="p-3 border-b text-xs uppercase tracking-wider text-muted-foreground shrink-0">
+          Admins ({allAdmins.length}) {loading && <span className="ml-2">loading…</span>}
         </div>
-        <ul className="divide-y max-h-[70vh] overflow-y-auto">
+        <div className="p-2 border-b shrink-0">
+          <div className="relative">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name or email…"
+              className="pl-8 h-9 text-sm"
+              value={search}
+              onChange={e => onSearchChange(e.target.value)}
+            />
+          </div>
+        </div>
+        <ul className="divide-y max-h-[60vh] overflow-y-auto">
           {admins.map(a => (
             <li key={a.id}>
               <button
@@ -503,7 +703,9 @@ function AdminAssignments({
             </li>
           ))}
           {!admins.length && !loading && (
-            <li className="p-3 text-sm text-muted-foreground">No admin accounts found.</li>
+            <li className="p-3 text-sm text-muted-foreground">
+              {search ? "No admins match the search." : "No admin accounts found."}
+            </li>
           )}
         </ul>
       </aside>

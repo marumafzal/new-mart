@@ -1623,7 +1623,7 @@ export const useAdminResetOtp = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) =>
-      fetcher(`/users/${userId}/otp/reset`, { method: "POST", body: "{}" }),
+      fetcher(`/users/${userId}/reset-otp`, { method: "POST", body: "{}" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin-users"], exact: false });
     },

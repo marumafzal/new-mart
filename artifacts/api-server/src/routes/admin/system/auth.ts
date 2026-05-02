@@ -83,9 +83,7 @@ import { resolveAdminPermissions } from "../../../services/permissions.service.j
 
 const router = Router();
 
-router.use(adminAuthLimiter);
-
-router.post("/auth", async (req, res) => {
+router.post("/auth", adminAuthLimiter, async (req, res) => {
   const body = (req.body ?? {}) as { username?: string; password?: string; secret?: string };
   const username = (body.username ?? "").trim();
   /* Backwards-compatible: accept "password" (new) or "secret" (legacy) */

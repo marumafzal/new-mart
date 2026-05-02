@@ -50,8 +50,6 @@ import { adminAuthLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
 
-router.use(adminAuthLimiter);
-
 // Rate limiting for login attempts: max 5 failed attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -156,7 +154,7 @@ function buildAdminResetUrl(rawToken: string): string {
  * Login with username and password
  * Returns: access token, user info, or MFA challenge
  */
-router.post('/auth/login', loginLimiter, async (req: Request, res: Response) => {
+router.post('/auth/login', adminAuthLimiter, loginLimiter, async (req: Request, res: Response) => {
   const ip = getClientIp(req);
   const userAgent = req.headers['user-agent'];
 
@@ -254,7 +252,7 @@ router.post('/auth/login', loginLimiter, async (req: Request, res: Response) => 
  * POST /api/admin/auth/2fa
  * Verify TOTP and complete login
  */
-router.post('/auth/2fa', verifyTotpLimiter, async (req: Request, res: Response) => {
+router.post('/auth/2fa', adminAuthLimiter, verifyTotpLimiter, async (req: Request, res: Response) => {
   const ip = getClientIp(req);
   const userAgent = req.headers['user-agent'];
 
@@ -509,6 +507,7 @@ router.post(
  */
 router.post(
   '/auth/forgot-password',
+  adminAuthLimiter,
   forgotPasswordLimiter,
   async (req: Request, res: Response) => {
     const ip = getClientIp(req);
@@ -612,6 +611,7 @@ router.post(
  */
 router.get(
   '/auth/reset-password/validate',
+  adminAuthLimiter,
   resetPasswordLimiter,
   async (req: Request, res: Response) => {
     const ip = getClientIp(req);
@@ -660,6 +660,7 @@ router.get(
  */
 router.post(
   '/auth/reset-password',
+  adminAuthLimiter,
   resetPasswordLimiter,
   async (req: Request, res: Response) => {
     const ip = getClientIp(req);

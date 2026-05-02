@@ -797,12 +797,21 @@ export default function RootLayout() {
     registerServiceWorker();
   }, []);
 
-  /* Run the API health check concurrently with font loading */
+  /* Run the API health check concurrently with font loading.
+     On failure, show a native Alert (for native/web parity) in addition to
+     the blocking ApiUnreachableScreen that renders below. */
   useEffect(() => {
     if (!_domain) return; // misconfig screen handles the no-domain case
     probeApiHealth().then(({ reachable, url }) => {
       setApiUrl(url);
       setApiReachable(reachable);
+      if (!reachable) {
+        Alert.alert(
+          "Cannot Reach Server",
+          "AJKMart could not connect to the API server. Please check your connection and tap Retry.",
+          [{ text: "OK", style: "cancel" }]
+        );
+      }
     });
   }, []);
 

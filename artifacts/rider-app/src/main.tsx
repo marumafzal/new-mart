@@ -12,8 +12,15 @@ initErrorReporter();
    instead of broken-image placeholders. */
 patchLeafletDefaultIcon();
 
+/* Mirror the BASE URL logic from src/lib/api.ts so the health probe targets
+   the same origin the rest of the app talks to (Capacitor-aware). */
+const _apiBase =
+  import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
+    ? `${(import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")}/api`
+    : `/api`;
+
 async function checkApiHealth(): Promise<{ reachable: boolean; url: string }> {
-  const url = "/api/health";
+  const url = `${_apiBase}/health`;
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);

@@ -49,23 +49,14 @@ function isPortInUse(p: number): Promise<boolean> {
  */
 function tryKillPort(p: number): boolean {
   try {
-    const result = execSync(`lsof -ti tcp:${p}`, { encoding: "utf-8" }).trim();
-    if (result) {
-      const pids = result.split("\n").filter(Boolean);
-      for (const pid of pids) {
-        try {
-          execSync(`kill -9 ${pid}`);
-          console.log(`[port:kill] Killed PID ${pid} that was using port ${p}`);
-        } catch (err) {
-          console.warn(`[port:kill] Failed to kill PID ${pid} on port ${p}:`, err instanceof Error ? err.message : String(err));
-        }
-      }
-      return true;
-    }
-  } catch (err) {
-    console.debug(`[port:kill] lsof not available or no process found on port ${p}`);
+    // fuser is available via psmisc (declared in nix packages in .replit)
+    execSync(`fuser -k ${p}/tcp`, { stdio: "ignore" });
+    console.log(`[port:kill] Freed port ${p} using fuser`);
+    return true;
+  } catch {
+    console.debug(`[port:kill] fuser: no process on port ${p}`);
+    return false;
   }
-  return false;
 }
 
 /**

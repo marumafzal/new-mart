@@ -220,6 +220,18 @@ async function profileReplit() {
   const replitDomain = process.env.REPLIT_DEV_DOMAIN || "";
   const expoDomain = process.env.REPLIT_EXPO_DEV_DOMAIN || replitDomain;
 
+  // Kill any stale processes holding the target ports from a previous run.
+  // fuser is provided by psmisc (declared in .replit nix packages).
+  if (!dryRun) {
+    const portsToFree = [apiPort, adminPort, vendorPort, riderPort, ajkPort];
+    log(`Freeing ports: ${portsToFree.join(", ")} …`);
+    for (const port of portsToFree) {
+      spawnSync("fuser", ["-k", `${port}/tcp`], { stdio: "ignore" });
+    }
+    // Give the OS a moment to release the sockets before we bind them.
+    spawnSync("sleep", ["0.8"]);
+  }
+
   const apiProxyTarget = `http://127.0.0.1:${apiPort}`;
   const services = [
     { name: "api", filter: "@workspace/api-server", script: "dev", env: { PORT: apiPort, NODE_ENV: "development" } },

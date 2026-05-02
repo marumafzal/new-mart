@@ -17,7 +17,7 @@ if (rawPort && (Number.isNaN(port) || port <= 0)) {
    most common deployment (path-routed behind the Replit proxy). Standalone
    deployments or local quick-starts override via env. */
 const basePath = process.env.BASE_PATH || "/rider/";
-const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:8080";
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:5000";
 
 export default defineConfig({
   base: basePath,
@@ -55,7 +55,9 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
-    hmr: { clientPort: 443, protocol: "wss" },
+    hmr: process.env.REPLIT_DEV_DOMAIN
+      ? { clientPort: 443, protocol: "wss", host: process.env.REPLIT_DEV_DOMAIN }
+      : { port: port },
     proxy: {
       "/api": {
         target: apiProxyTarget,

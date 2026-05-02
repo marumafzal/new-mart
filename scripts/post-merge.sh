@@ -1,6 +1,14 @@
 #!/bin/bash
 set -e
 
+# Decrypt .env non-interactively (no-op if already present or .env.enc missing)
+node scripts/auto-decrypt.mjs
+
+# Load env vars from .env into the shell environment for subsequent commands
+set -a
+[ -f .env ] && source .env
+set +a
+
 # Only run pnpm install if node_modules is missing or lockfile is newer than install marker
 INSTALL_MARKER="node_modules/.post-merge-install-marker"
 if [ ! -d "node_modules" ] || [ ! -f "$INSTALL_MARKER" ] || [ "pnpm-lock.yaml" -nt "$INSTALL_MARKER" ]; then

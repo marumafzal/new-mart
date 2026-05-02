@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "bash"]
+modules = ["nodejs-20", "web", "bash", "postgresql-16"]
 
 run = "nix develop --command bash -lc 'pnpm install && pnpm run start:all'"
 
@@ -38,7 +38,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm run replit-start"
+args = "node scripts/auto-decrypt.mjs && pnpm install --frozen-lockfile && pnpm run replit-start"
 waitForPort = 5000
 
 [agent]
@@ -65,6 +65,9 @@ ADMIN_SECRET = "AJK-hig2QXaC_VG7OPZqgMT-VsVHtN8"
 VAPID_PRIVATE_KEY = "b3egnGyDJYSVsOB4z-PGhf5YbGeuVKcHtNpJPQ-r-eM"
 GEMINI_API_KEY = "AIzaSyDdujmMRDG4_z0z8zG908_f4jNHACg9EHk"
 ADMIN_REFRESH_SECRET = "xs3F!d9#2kL@qW8^mY5&zR7*vT6nC4bV1_aP0eJ8hG3"
+VENDOR_JWT_SECRET = "n2BbD9mg0hqBDqy9ZrSZuyMktLfOhoF8EmNApQXLfxAf6oTI"
+RIDER_JWT_SECRET = "Y4aoCsbnO7s6sppjF2K8AzDrCh_G3e30DKjyEpMnlTojNRCj"
+ERROR_REPORT_HMAC_SECRET = "JdsnblX_RWWsDBmp5ZO9HX5gj3c0s942-Ws1YYL25z6utOA1"
 
 [userenv.production]
 LOG_LEVEL = "warn"

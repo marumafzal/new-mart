@@ -31,11 +31,26 @@ export const useStats = () => {
 };
 
 // Users
-export const useUsers = (conditionTier?: string) => {
-  const params = conditionTier ? `?conditionTier=${conditionTier}` : "";
+export const useUsers = (params?: {
+  conditionTier?: string;
+  status?: string;
+  search?: string;
+  role?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}) => {
+  const { conditionTier, status, search, role, dateFrom, dateTo } = params ?? {};
+  const qs = new URLSearchParams();
+  if (conditionTier) qs.set("conditionTier", conditionTier);
+  if (status && status !== "all") qs.set("status", status);
+  if (search) qs.set("search", search);
+  if (role && role !== "all") qs.set("role", role);
+  if (dateFrom) qs.set("dateFrom", dateFrom);
+  if (dateTo) qs.set("dateTo", dateTo);
+  const qsStr = qs.toString();
   return useQuery({
-    queryKey: ["admin-users", conditionTier || ""],
-    queryFn: () => fetcher(`/users${params}`),
+    queryKey: ["admin-users", conditionTier || "", status || "", search || "", role || "", dateFrom || "", dateTo || ""],
+    queryFn: () => fetcher(`/users${qsStr ? `?${qsStr}` : ""}`),
     refetchInterval: REFETCH_INTERVAL,
   });
 };
@@ -598,7 +613,12 @@ export const useVendorPayout = () => {
   return useMutation({
     mutationFn: ({ id, amount, description }: { id: string; amount: number; description?: string }) =>
       fetcher(`/vendors/${id}/payout`, { method: "POST", body: JSON.stringify({ amount, description }) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-vendors"] }); qc.invalidateQueries({ queryKey: ["admin-transactions"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-vendors"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
   });
 };
 
@@ -607,7 +627,12 @@ export const useVendorCredit = () => {
   return useMutation({
     mutationFn: ({ id, amount, description }: { id: string; amount: number; description?: string }) =>
       fetcher(`/vendors/${id}/credit`, { method: "POST", body: JSON.stringify({ amount, description }) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-vendors"] }); qc.invalidateQueries({ queryKey: ["admin-transactions"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-vendors"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
   });
 };
 
@@ -630,7 +655,12 @@ export const useRiderPayout = () => {
   return useMutation({
     mutationFn: ({ id, amount, description }: { id: string; amount: number; description?: string }) =>
       fetcher(`/riders/${id}/payout`, { method: "POST", body: JSON.stringify({ amount, description }) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-riders"] }); qc.invalidateQueries({ queryKey: ["admin-transactions"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-riders"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
   });
 };
 
@@ -639,7 +669,12 @@ export const useRiderBonus = () => {
   return useMutation({
     mutationFn: ({ id, amount, description }: { id: string; amount: number; description?: string }) =>
       fetcher(`/riders/${id}/bonus`, { method: "POST", body: JSON.stringify({ amount, description }) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-riders"] }); qc.invalidateQueries({ queryKey: ["admin-transactions"] }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-riders"] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-transactions"] });
+      qc.invalidateQueries({ queryKey: ["admin-stats"] });
+    },
   });
 };
 

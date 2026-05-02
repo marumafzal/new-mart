@@ -1428,14 +1428,18 @@ function KycDocModal({ user, onClose }: { user: any; onClose: () => void }) {
           )}
         </div>
 
-        {/* KYC status mismatch: user appears pending but no API record found */}
-        {!kycLoading && !kycRecord && (user.kycStatus === "pending" || user.approvalStatus === "pending") && (
+        {/* No KYC record found — always show this notice when the API has no record */}
+        {!kycLoading && !kycRecord && (
           <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-800">
-              User's KYC status is <strong>{user.kycStatus || user.approvalStatus}</strong> but no active KYC submission was found in the system.
-              The user may need to re-submit their documents, or the record may have been deleted.
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-amber-800">No KYC record on file</p>
+              <p className="text-xs text-amber-700">
+                {user.kycStatus === "pending" || user.approvalStatus === "pending"
+                  ? "User's status is pending but no KYC submission was found. They may have submitted via the legacy upload flow. Use the Approve / Reject buttons in the Pending Approvals section to act on this account."
+                  : "This user has not submitted a KYC application through the system yet. KYC Approve / Reject is unavailable until they submit."}
+              </p>
+            </div>
           </div>
         )}
 
@@ -1568,7 +1572,24 @@ export default function Users() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const [conditionTier, setConditionTier] = useState("all");
-  const { data, isLoading, refetch, isFetching, isError } = useUsers(conditionTier !== "all" ? conditionTier : undefined);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo]     = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+  const { data, isLoading, refetch, isFetching, isError } = useUsers({
+    conditionTier: conditionTier !== "all" ? conditionTier : undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    search: debouncedSearch || undefined,
+    role: roleFilter !== "all" ? roleFilter : undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+  });
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
   const updateMutation         = useUpdateUser();
   const securityUpdateMutation = useUpdateUserSecurity();
@@ -1580,11 +1601,6 @@ export default function Users() {
   const qc = useQueryClient();
   const waiveDebtMutation = useWaiveDebt();
 
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo]     = useState("");
   const [walletUser, setWalletUser] = useState<any>(null);
   const [deleteUser, setDeleteUser] = useState<any>(null);
   const [activityUser, setActivityUser] = useState<any>(null);
@@ -1655,9 +1671,10 @@ export default function Users() {
     return matchSearch && matchRole && matchStatus && matchDate;
   });
 
-  const bannedCount  = users.filter((u: any) => u.isBanned).length;
-  const blockedCount = users.filter((u: any) => !u.isActive && !u.isBanned).length;
-  const activeCount  = users.filter((u: any) => u.isActive && !u.isBanned).length;
+  const bannedCount  = data?.bannedCount  ?? users.filter((u: any) => u.isBanned).length;
+  const blockedCount = data?.blockedCount ?? users.filter((u: any) => !u.isActive && !u.isBanned).length;
+  const activeCount  = data?.activeCount  ?? users.filter((u: any) => u.isActive && !u.isBanned).length;
+  const totalCount   = data?.totalCount   ?? data?.total ?? users.length;
 
   const allSelected = filtered.length > 0 && filtered.every((u: any) => selectedIds.has(u.id));
   const toggleAll = () => {
@@ -1683,7 +1700,7 @@ export default function Users() {
   const handlePullRefresh = useCallback(async () => {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["admin-users"] }),
-      qc.invalidateQueries({ queryKey: ["admin-pending"] }),
+      qc.invalidateQueries({ queryKey: ["admin-users-pending"] }),
     ]);
   }, [qc]);
 
@@ -1692,7 +1709,7 @@ export default function Users() {
       <PageHeader
         icon={UsersIcon}
         title="Users"
-        subtitle={`${users.length} total${activeCount > 0 ? ` · ${activeCount} active` : ""}${bannedCount > 0 ? ` · ${bannedCount} banned` : ""}${blockedCount > 0 ? ` · ${blockedCount} blocked` : ""}`}
+        subtitle={`${totalCount} total${activeCount > 0 ? ` · ${activeCount} active` : ""}${bannedCount > 0 ? ` · ${bannedCount} banned` : ""}${blockedCount > 0 ? ` · ${blockedCount} blocked` : ""}`}
         iconBgClass="bg-blue-100"
         iconColorClass="text-blue-600"
         actions={
@@ -2167,7 +2184,7 @@ export default function Users() {
           </div>
           {!isLoading && filtered.length > 0 && (
             <div className="border-t border-border/50 px-4 py-3 bg-muted/20 text-xs text-muted-foreground">
-              Showing {filtered.length} of {users.length} users
+              Showing {filtered.length} of {data?.total ?? users.length} users{data?.totalCount && data.totalCount !== (data?.total ?? 0) ? ` (${data.totalCount} total)` : ""}
             </div>
           )}
         </Card>

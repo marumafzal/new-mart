@@ -144,6 +144,8 @@ router.get("/users", async (req, res) => {
   const search = ((req.query?.search as string) ?? "").trim();
   const role = ((req.query?.role as string) ?? "").trim().toLowerCase();
   const status = ((req.query?.status as string) ?? "").trim().toLowerCase();
+  const dateFrom = ((req.query?.dateFrom as string) ?? "").trim();
+  const dateTo = ((req.query?.dateTo as string) ?? "").trim();
   const rawPage = parseInt((req.query?.page as string) ?? "1", 10);
   const rawLimit = parseInt((req.query?.limit as string) ?? "50", 10);
   const pageNum = Math.max(1, Number.isFinite(rawPage) ? rawPage : 1);
@@ -155,15 +157,29 @@ router.get("/users", async (req, res) => {
     conditions.push(eq(usersTable.totpEnabled, true));
   }
   if (search) {
-    conditions.push(or(ilike(usersTable.name, `%${search}%`), ilike(usersTable.email, `%${search}%`))!);
+    conditions.push(or(
+      ilike(usersTable.name, `%${search}%`),
+      ilike(usersTable.email, `%${search}%`),
+      ilike(usersTable.phone, `%${search}%`),
+    )!);
   }
   if (role) {
     conditions.push(ilike(usersTable.roles, `%${role}%`));
   }
+  if (dateFrom) {
+    const fromDate = new Date(dateFrom);
+    if (!isNaN(fromDate.getTime())) conditions.push(gte(usersTable.createdAt, fromDate));
+  }
+  if (dateTo) {
+    const toDate = new Date(dateTo + "T23:59:59");
+    if (!isNaN(toDate.getTime())) conditions.push(lte(usersTable.createdAt, toDate));
+  }
   if (status === "active") {
     conditions.push(and(eq(usersTable.isActive, true), eq(usersTable.isBanned, false))!);
   } else if (status === "blocked") {
-    conditions.push(or(eq(usersTable.isActive, false), eq(usersTable.isBanned, true))!);
+    conditions.push(and(eq(usersTable.isActive, false), eq(usersTable.isBanned, false))!);
+  } else if (status === "banned") {
+    conditions.push(eq(usersTable.isBanned, true));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -230,28 +246,49 @@ router.get("/users", async (req, res) => {
   let total: number;
   let enrichedUsers: ReturnType<typeof enrich>;
 
+  const globalStatsQuery = db.select({
+    totalAll: count(),
+    totalActive: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.isActive} = true AND ${usersTable.isBanned} = false)::int`,
+    totalBanned: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.isBanned} = true)::int`,
+    totalBlocked: sql<number>`COUNT(*) FILTER (WHERE ${usersTable.isActive} = false AND ${usersTable.isBanned} = false)::int`,
+  }).from(usersTable);
+
   if (conditionTier) {
     // conditionTier is a JS-side filter — must fetch all matching rows to get accurate total
-    const allRows = await baseQuery;
+    const [allRows, [globalStats]] = await Promise.all([baseQuery, globalStatsQuery]);
     const allEnriched = applyConditionTier(enrich(allRows));
     total = allEnriched.length;
     enrichedUsers = allEnriched.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+    sendSuccess(res, {
+      users: enrichedUsers,
+      total,
+      page: pageNum,
+      pageSize,
+      activeCount: Number(globalStats?.totalActive ?? 0),
+      bannedCount: Number(globalStats?.totalBanned ?? 0),
+      blockedCount: Number(globalStats?.totalBlocked ?? 0),
+      totalCount: Number(globalStats?.totalAll ?? 0),
+    });
   } else {
-    // Pure DB pagination: COUNT query + paginated fetch run in parallel
-    const [countResult, rows] = await Promise.all([
+    // Pure DB pagination: COUNT query + paginated fetch + global stats run in parallel
+    const [countResult, rows, [globalStats]] = await Promise.all([
       db.select({ total: count() }).from(usersTable).where(whereClause),
       baseQuery.limit(pageSize).offset((pageNum - 1) * pageSize),
+      globalStatsQuery,
     ]);
     total = Number(countResult[0]?.total ?? 0);
     enrichedUsers = enrich(rows);
+    sendSuccess(res, {
+      users: enrichedUsers,
+      total,
+      page: pageNum,
+      pageSize,
+      activeCount: Number(globalStats?.totalActive ?? 0),
+      bannedCount: Number(globalStats?.totalBanned ?? 0),
+      blockedCount: Number(globalStats?.totalBlocked ?? 0),
+      totalCount: Number(globalStats?.totalAll ?? 0),
+    });
   }
-
-  sendSuccess(res, {
-    users: enrichedUsers,
-    total,
-    page: pageNum,
-    pageSize,
-  });
 });
 
 router.patch("/users/:id", async (req, res) => {

@@ -113,10 +113,16 @@ export default defineConfig(async ({ mode }) => {
       },
     },
   },
+  optimizeDeps: {
+    force: true,
+  },
   server: {
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    headers: {
+      "Cache-Control": "no-store",
+    },
     hmr: process.env.REPLIT_DEV_DOMAIN
       ? { clientPort: 443, protocol: "wss", host: process.env.REPLIT_DEV_DOMAIN }
       : { port: port },

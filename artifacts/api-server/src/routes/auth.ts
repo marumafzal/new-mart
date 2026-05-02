@@ -48,6 +48,7 @@ import { clearSpoofHits } from "./rider.js";
 import { canonicalizePhone } from "@workspace/phone-utils";
 import { isAuthMethodEnabled, isAuthMethodEnabledStrict } from "@workspace/auth-utils/server";
 import { validateBody as sharedValidateBody } from "../middleware/validate.js";
+import { authLimiter } from "../middleware/rate-limit.js";
 
 /* OTP rate limiting is handled per-account + per-IP inside the route handler
    using the admin-configurable settings (security_otp_max_per_phone,
@@ -232,6 +233,8 @@ async function isValidCanonicalPhone(phone: string): Promise<boolean> {
 }
 
 const router: IRouter = Router();
+
+router.use(authLimiter);
 
 /* ══════════════════════════════════════════════════════════════
    GET /auth/config

@@ -21,8 +21,11 @@ import {
   getProviderConfig, validatePaymentAmount,
   isSupportedGateway, SUPPORTED_GATEWAYS,
 } from "../lib/payment-providers.js";
+import { paymentLimiter } from "../middleware/rate-limit.js";
 
 const router: IRouter = Router();
+
+router.use(paymentLimiter);
 
 const paymentInitiateSchema = z.object({
   gateway: z.string().min(1, "gateway is required"),

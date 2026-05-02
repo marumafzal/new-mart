@@ -20,6 +20,7 @@ import { purgeStaleAdminPasswordResetTokens } from "./services/admin-password.se
 import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-password-watch.service.js";
 import { ensureErrorResolutionTables } from "./routes/error-reports.js";
 import router from "./routes/index.js";
+import { globalLimiter } from "./middleware/rate-limit.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -277,6 +278,7 @@ export function createServer() {
     });
   }
 
+  app.use("/api", globalLimiter);
   app.use("/api", router);
 
   /* ── JSON 404 for unmatched /api/* routes ─────────────────────────────── */

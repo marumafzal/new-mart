@@ -46,8 +46,11 @@ import {
 } from '../middlewares/admin-audit.js';
 import { verify2faChallengeToken } from '../utils/admin-jwt.js';
 import { verifyRefreshToken } from '../utils/admin-jwt.js';
+import { adminAuthLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
+
+router.use(adminAuthLimiter);
 
 // Rate limiting for login attempts: max 5 failed attempts per 15 minutes per IP
 const loginLimiter = rateLimit({

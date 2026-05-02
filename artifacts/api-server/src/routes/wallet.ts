@@ -15,6 +15,7 @@ import { sendSuccess, sendCreated, sendAccepted, sendError, sendNotFound, sendFo
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { verifyTotpToken, decryptTotpSecret } from "../services/totp.js";
+import { paymentLimiter } from "../middleware/rate-limit.js";
 
 /* ── IS_PRODUCTION guard — independent of NODE_ENV for simulate-topup hardening ── */
 const IS_PRODUCTION = process.env["IS_PRODUCTION"] === "true" || process.env["NODE_ENV"] === "production";
@@ -101,6 +102,8 @@ function broadcastWalletUpdate(userId: string, newBalance: number) {
 }
 
 const router: IRouter = Router();
+
+router.use(paymentLimiter);
 
 /* ── deriveStatus — reads structured status prefix stored at the start of reference ──
    Format: "<status>:<rest>" where status is one of: approved | rejected | pending

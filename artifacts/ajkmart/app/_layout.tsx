@@ -774,14 +774,15 @@ function RootLayoutNav() {
 
 async function probeApiHealth(): Promise<{ reachable: boolean; url: string }> {
   const url = `${API_BASE}/health`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
     return { reachable: res.ok, url };
   } catch {
     return { reachable: false, url };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

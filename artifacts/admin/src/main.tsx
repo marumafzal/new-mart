@@ -3,6 +3,7 @@ import { useState } from "react";
 import App from "./App";
 import "./index.css";
 import { loadPlatformConfig } from "./lib/platformConfig";
+import { checkApiHealth } from "./lib/checkApiHealth";
 
 if (import.meta.env.DEV) {
   window.addEventListener("unhandledrejection", (event) => {
@@ -14,19 +15,6 @@ if (import.meta.env.DEV) {
 }
 
 loadPlatformConfig();
-
-async function checkApiHealth(): Promise<{ reachable: boolean; url: string }> {
-  const url = "/api/health";
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    return { reachable: res.ok, url };
-  } catch {
-    return { reachable: false, url };
-  }
-}
 
 (async () => {
   const container = document.getElementById("root")!;

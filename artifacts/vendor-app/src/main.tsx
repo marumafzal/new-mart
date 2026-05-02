@@ -3,28 +3,9 @@ import { useState } from "react";
 import App from "./App";
 import "./index.css";
 import { initErrorReporter } from "./lib/error-reporter";
+import { checkApiHealth } from "./lib/checkApiHealth";
 
 initErrorReporter();
-
-/* Mirror the BASE URL logic from src/lib/api.ts so the health probe targets
-   the same origin the rest of the app talks to (Capacitor-aware). */
-const _apiBase =
-  import.meta.env.VITE_CAPACITOR === "true" && import.meta.env.VITE_API_BASE_URL
-    ? `${(import.meta.env.VITE_API_BASE_URL as string).replace(/\/+$/, "")}/api`
-    : `${(import.meta.env.BASE_URL || "/").replace(/\/$/, "")}/api`;
-
-async function checkApiHealth(): Promise<{ reachable: boolean; url: string }> {
-  const url = `${_apiBase}/health`;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    return { reachable: res.ok, url };
-  } catch {
-    return { reachable: false, url };
-  }
-}
 
 (async () => {
   const container = document.getElementById("root")!;

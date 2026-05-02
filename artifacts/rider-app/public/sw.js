@@ -1,42 +1,36 @@
-/* AJKMart Rider App — Service Worker v1 */
-const CACHE = "rider-v1";
-const STATIC = ["/rider/", "/rider/index.html"];
+/* AJKMart Rider App — SW v2 (network-first, no caching) */
+/* Clears all old caches on install/activate so stale assets never persist. */
+/* Push-notification handlers are preserved for rider delivery alerts.      */
 
-self.addEventListener("install", (e) => {
+self.addEventListener("install", function (e) {
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.addAll(STATIC)).then(() => self.skipWaiting())
+    caches.keys().then(function (keys) {
+      return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+    }).then(function () { return self.skipWaiting(); })
   );
 });
 
-self.addEventListener("activate", (e) => {
+self.addEventListener("activate", function (e) {
   e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys().then(function (keys) {
+      return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+    }).then(function () { return self.clients.claim(); })
   );
 });
 
-self.addEventListener("fetch", (e) => {
-  const url = new URL(e.request.url);
-  if (url.pathname.startsWith("/api/")) {
-    e.respondWith(fetch(e.request).catch(() => new Response("Offline", { status: 503 })));
-    return;
-  }
+/* Network-first: all requests go straight to the network — no caching. */
+self.addEventListener("fetch", function (e) {
   e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request).then((res) => {
-      if (res.ok && e.request.method === "GET") {
-        const clone = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, clone));
-      }
-      return res;
-    }).catch(() => caches.match("/rider/") || new Response("Offline", { status: 503 })))
+    fetch(e.request).catch(function () {
+      return new Response("Offline", { status: 503 });
+    })
   );
 });
 
-self.addEventListener("push", (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || "AJKMart Rider";
-  const options = {
+self.addEventListener("push", function (event) {
+  var data = event.data ? event.data.json() : {};
+  var title = data.title || "AJKMart Rider";
+  var options = {
     body: data.body || "",
     icon: "/rider/favicon.svg",
     badge: "/rider/favicon.svg",
@@ -46,9 +40,9 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-self.addEventListener("notificationclick", (event) => {
+self.addEventListener("notificationclick", function (event) {
   event.notification.close();
-  const rideId = event.notification.data?.rideId;
-  const url = rideId ? `/rider/active/${rideId}` : "/rider/";
+  var rideId = event.notification.data && event.notification.data.rideId;
+  var url = rideId ? "/rider/active/" + rideId : "/rider/";
   event.waitUntil(clients.openWindow(url));
 });

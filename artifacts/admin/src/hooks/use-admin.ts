@@ -38,8 +38,10 @@ export const useUsers = (params?: {
   role?: string;
   dateFrom?: string;
   dateTo?: string;
+  page?: number;
+  limit?: number;
 }) => {
-  const { conditionTier, status, search, role, dateFrom, dateTo } = params ?? {};
+  const { conditionTier, status, search, role, dateFrom, dateTo, page = 1, limit = 50 } = params ?? {};
   const qs = new URLSearchParams();
   if (conditionTier) qs.set("conditionTier", conditionTier);
   if (status && status !== "all") qs.set("status", status);
@@ -47,9 +49,11 @@ export const useUsers = (params?: {
   if (role && role !== "all") qs.set("role", role);
   if (dateFrom) qs.set("dateFrom", dateFrom);
   if (dateTo) qs.set("dateTo", dateTo);
+  qs.set("page", String(page));
+  qs.set("limit", String(limit));
   const qsStr = qs.toString();
   return useQuery({
-    queryKey: ["admin-users", conditionTier || "", status || "", search || "", role || "", dateFrom || "", dateTo || ""],
+    queryKey: ["admin-users", conditionTier || "", status || "", search || "", role || "", dateFrom || "", dateTo || "", page, limit],
     queryFn: () => fetcher(`/users${qsStr ? `?${qsStr}` : ""}`),
     refetchInterval: REFETCH_INTERVAL,
   });

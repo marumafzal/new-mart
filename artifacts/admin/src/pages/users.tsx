@@ -6,7 +6,7 @@ import {
   Ban, KeyRound, Save, AlertTriangle, MapPin, CreditCard, Truck, Building2,
   Download, FileText, CalendarDays, Eye, AlertCircle, MessageSquare,
   Users as UsersIcon, Loader2, AtSign, Phone, Mail, User as UserIcon,
-  Gavel, Lock, Copy, UserPlus, Monitor, ChevronDown,
+  Gavel, Lock, Copy, UserPlus, Monitor, ChevronDown, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { PageHeader, StatCard, FilterBar, ActionBar } from "@/components/shared";
 import { useLanguage } from "@/lib/useLanguage";
@@ -1594,11 +1594,14 @@ export default function Users() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo]     = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 50;
   const [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
+  useEffect(() => { setCurrentPage(1); }, [conditionTier, statusFilter, debouncedSearch, roleFilter, dateFrom, dateTo]);
   const { data, isLoading, refetch, isFetching, isError } = useUsers({
     conditionTier: conditionTier !== "all" ? conditionTier : undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
@@ -1606,6 +1609,8 @@ export default function Users() {
     role: roleFilter !== "all" ? roleFilter : undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
+    page: currentPage,
+    limit: PAGE_SIZE,
   });
   const { data: pendingData, refetch: refetchPending } = usePendingUsers();
   const updateMutation         = useUpdateUser();
@@ -2199,9 +2204,39 @@ export default function Users() {
               </TableBody>
             </Table>
           </div>
-          {!isLoading && filtered.length > 0 && (
-            <div className="border-t border-border/50 px-4 py-3 bg-muted/20 text-xs text-muted-foreground">
-              Showing {filtered.length} of {data?.total ?? users.length} users{data?.totalCount && data.totalCount !== (data?.total ?? 0) ? ` (${data.totalCount} total)` : ""}
+          {!isLoading && (
+            <div className="border-t border-border/50 px-4 py-3 bg-muted/20 flex items-center justify-between gap-3 flex-wrap">
+              <p className="text-xs text-muted-foreground">
+                {filtered.length > 0
+                  ? <>Showing <span className="font-semibold text-foreground">{(currentPage - 1) * PAGE_SIZE + 1}–{(currentPage - 1) * PAGE_SIZE + filtered.length}</span> of <span className="font-semibold text-foreground">{data?.total ?? users.length}</span> users{data?.totalCount && data.totalCount !== (data?.total ?? 0) ? ` (${data.totalCount} total)` : ""}</>
+                  : "No users found"
+                }
+              </p>
+              {(data?.total ?? 0) > PAGE_SIZE && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1 || isFetching}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    className="h-8 px-3 rounded-lg gap-1 text-xs"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Page <span className="font-semibold text-foreground">{currentPage}</span> of <span className="font-semibold text-foreground">{Math.ceil((data?.total ?? 0) / PAGE_SIZE)}</span>
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= Math.ceil((data?.total ?? 0) / PAGE_SIZE) || isFetching}
+                    onClick={() => setCurrentPage(p => p + 1)}
+                    className="h-8 px-3 rounded-lg gap-1 text-xs"
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </Card>

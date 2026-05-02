@@ -3,6 +3,9 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import { readFileSync } from "fs";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import { runSqlMigrations } from "./services/sqlMigrationRunner.js";
 import {
   seedPermissionCatalog,
@@ -17,6 +20,9 @@ import { purgeStaleAdminPasswordResetTokens } from "./services/admin-password.se
 import { detectAndNotifyOutOfBandPasswordResets } from "./services/admin-password-watch.service.js";
 import { ensureErrorResolutionTables } from "./routes/error-reports.js";
 import router from "./routes/index.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * Run DB migrations + RBAC seed/backfill before the server begins
@@ -117,6 +123,31 @@ export function createServer() {
   
   // Trust proxy (for proper IP detection behind reverse proxy/load balancer)
   app.set('trust proxy', 1);
+
+  /* ── Dev-only: serve sw.js files directly with Clear-Site-Data so the
+        browser clears its SW cache on every update check. SW script fetches
+        bypass the SW's own fetch handler (per spec), so this header is
+        ALWAYS received by the browser regardless of any cached SW. ──────── */
+  if (process.env.NODE_ENV !== "production") {
+    const swFiles: Record<string, string> = {
+      "/admin/sw.js":  resolve(__dirname, "../../admin/public/sw.js"),
+      "/vendor/sw.js": resolve(__dirname, "../../vendor-app/public/sw.js"),
+      "/rider/sw.js":  resolve(__dirname, "../../rider-app/public/sw.js"),
+    };
+    for (const [urlPath, filePath] of Object.entries(swFiles)) {
+      app.get(urlPath, (_req, res) => {
+        try {
+          const content = readFileSync(filePath, "utf-8");
+          res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("Clear-Site-Data", '"cache", "storage"');
+          res.send(content);
+        } catch {
+          res.status(404).send("/* sw.js not found */");
+        }
+      });
+    }
+  }
 
   /* ── Dev-only: proxy sibling apps so the api-server preview can render
         admin / vendor / rider / customer (Expo) at their respective paths.

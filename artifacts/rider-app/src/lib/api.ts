@@ -459,7 +459,13 @@ export const api = {
   getCancelStats: () => apiFetch("/rider/cancel-stats"),
   getIgnoreStats: () => apiFetch("/rider/ignore-stats"),
   getPenaltyHistory: () => apiFetch("/rider/penalty-history"),
-  getHistory:   () => apiFetch("/rider/history"),
+  getHistory:   (opts: { limit?: number; offset?: number } = {}): Promise<{ history: Array<{ id: string; kind: "order" | "ride"; type: string; status: string; earnings: number; amount: number; address?: string; createdAt: string }>; hasMore: boolean; limit: number; offset: number }> => {
+    const params = new URLSearchParams();
+    if (opts.limit  !== undefined) params.set("limit",  String(opts.limit));
+    if (opts.offset !== undefined) params.set("offset", String(opts.offset));
+    const qs = params.toString();
+    return apiFetch(`/rider/history${qs ? `?${qs}` : ""}`);
+  },
   getEarnings:  (): Promise<{ today: { earnings: number; deliveries: number }; week: { earnings: number; deliveries: number }; month: { earnings: number; deliveries: number }; dailyGoal: number | null }> => apiFetch("/rider/earnings"),
   getMyReviews: () => apiFetch("/rider/reviews"),
 

@@ -28,6 +28,33 @@ import router from "./routes/index.js";
  * block the platform from coming up, but it is logged loudly.
  */
 export async function runStartupTasks(): Promise<void> {
+  /* ── HMAC secret presence check ───────────────────────────────────────────
+     ERROR_REPORT_HMAC_SECRET must be set so the server can verify HMAC-signed
+     error reports sent by rider/vendor/customer apps. A missing secret means
+     all incoming reports will be rejected (or pass unsigned). In production
+     this is a hard requirement; in development it is a loud warning only. */
+  if (!process.env.ERROR_REPORT_HMAC_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "\n" +
+        "╔══════════════════════════════════════════════════════════════════╗\n" +
+        "║  FATAL CONFIG ERROR: ERROR_REPORT_HMAC_SECRET is not set.       ║\n" +
+        "║  Error reports from rider/vendor/customer apps cannot be         ║\n" +
+        "║  verified. Set this secret in your environment before deploying. ║\n" +
+        "╚══════════════════════════════════════════════════════════════════╝\n"
+      );
+      throw new Error("ERROR_REPORT_HMAC_SECRET must be set in production");
+    } else {
+      console.warn(
+        "[startup] WARNING: ERROR_REPORT_HMAC_SECRET is not set. " +
+        "Error report HMAC verification will be skipped. " +
+        "Set this secret before deploying to production."
+      );
+    }
+  } else {
+    console.log("[startup] ERROR_REPORT_HMAC_SECRET is configured.");
+  }
+
   await runSqlMigrations();
   try {
     await seedPermissionCatalog();

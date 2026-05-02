@@ -19,7 +19,18 @@ if (rawPort && (Number.isNaN(port) || port <= 0)) {
 const basePath = process.env.BASE_PATH || "/rider/";
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://127.0.0.1:5000";
 
-export default defineConfig({
+export default defineConfig(async ({ mode }) => {
+  /* Build-time HMAC secret check — warn loudly if the secret is absent in
+     production so it is never silently missing in a deployed build. */
+  if (mode === "production" && !process.env.VITE_ERROR_REPORT_HMAC_SECRET) {
+    console.warn(
+      "\n[vite:rider] WARNING: VITE_ERROR_REPORT_HMAC_SECRET is not set.\n" +
+      "  Error reports from the rider app will NOT be sent (HMAC signing disabled).\n" +
+      "  Set this variable in your build environment before deploying.\n"
+    );
+  }
+
+  return {
   base: basePath,
   plugins: [
     react(),
@@ -50,6 +61,57 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) {
+            return "vendor-react";
+          }
+          if (id.includes("node_modules/@tanstack/")) {
+            return "vendor-query";
+          }
+          if (id.includes("node_modules/socket.io-client") || id.includes("node_modules/engine.io-client") || id.includes("node_modules/@socket.io/")) {
+            return "vendor-socket";
+          }
+          if (id.includes("node_modules/lucide-react")) {
+            return "vendor-icons";
+          }
+          if (id.includes("node_modules/@sentry/")) {
+            return "vendor-sentry";
+          }
+          if (id.includes("node_modules/firebase") || id.includes("node_modules/@firebase/")) {
+            return "vendor-firebase";
+          }
+          if (id.includes("node_modules/leaflet") || id.includes("node_modules/react-leaflet") || id.includes("node_modules/@react-leaflet/")) {
+            return "vendor-maps";
+          }
+          if (id.includes("node_modules/@capacitor/")) {
+            return "vendor-capacitor";
+          }
+          if (id.includes("node_modules/framer-motion")) {
+            return "vendor-motion";
+          }
+          if (id.includes("node_modules/zod")) {
+            return "vendor-zod";
+          }
+          if (id.includes("node_modules/date-fns")) {
+            return "vendor-dates";
+          }
+          if (id.includes("node_modules/cmdk")) {
+            return "vendor-cmdk";
+          }
+          if (id.includes("node_modules/@react-oauth/") || id.includes("node_modules/oauth")) {
+            return "vendor-oauth";
+          }
+          if (id.includes("node_modules/wouter")) {
+            return "vendor-router";
+          }
+          if (id.includes("/lib/i18n/") || id.includes("@workspace/i18n")) {
+            return "vendor-i18n";
+          }
+        },
+      },
+    },
   },
   server: {
     port,
@@ -81,4 +143,5 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
   },
+  };
 });

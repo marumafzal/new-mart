@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardList, Package, Bike, Car, UtensilsCrossed,
   ShoppingCart, CreditCard, Calendar, RefreshCw,
@@ -9,6 +9,7 @@ import { usePlatformConfig } from "../lib/useConfig";
 import { useLanguage } from "../lib/useLanguage";
 import { tDual } from "@workspace/i18n";
 import { PullToRefresh } from "../components/PullToRefresh";
+
 function formatDate(d: string | Date) {
   const date = new Date(d);
   return date.toLocaleDateString("en-PK", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -23,33 +24,45 @@ type HistoryItem = {
   address?: string; createdAt: string;
 };
 
+const PAGE_SIZE = 50;
+
 export default function History() {
-  const [period, setPeriod]       = useState<FilterPeriod>("all");
-  const [kind,   setKind]         = useState<FilterKind>("all");
-  const [visibleCount, setVisibleCount] = useState(20);
-  const [expandedId, setExpandedId]     = useState<string | null>(null);
-  const PAGE_SIZE = 20;
+  const [period, setPeriod] = useState<FilterPeriod>("all");
+  const [kind,   setKind]   = useState<FilterKind>("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const { language } = useLanguage();
   const T = (key: Parameters<typeof tDual>[0]) => tDual(key, language);
   const { config } = usePlatformConfig();
   const formatCurrency = (n: number) => `${config.platform.currencySymbol ?? "Rs."} ${Math.round(n).toLocaleString()}`;
   const qc = useQueryClient();
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+    refetch,
+    isFetching,
+  } = useInfiniteQuery({
     queryKey: ["rider-history"],
-    queryFn: () => api.getHistory(),
+    queryFn: ({ pageParam }: { pageParam: number }) =>
+      api.getHistory({ limit: PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, _allPages, lastPageParam: number) =>
+      lastPage.hasMore ? lastPageParam + PAGE_SIZE : undefined,
     refetchInterval: false,
   });
 
-  const raw: HistoryItem[] = data?.history || [];
+  /* Accumulate all loaded pages into a flat list */
+  const raw: HistoryItem[] = data?.pages.flatMap(p => p.history) ?? [];
 
   const now      = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  /* Use calendar-day based week start rather than rolling 7×24h offset so that
-     the "week" filter always starts at midnight 7 days ago, not an arbitrary time */
   const weekStartDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
   const weekStart = weekStartDate;
 
+  /* Client-side filters applied to accumulated pages */
   const filtered = raw.filter(item => {
     const d = new Date(item.createdAt);
     if (period === "today" && d < todayStart) return false;
@@ -58,9 +71,6 @@ export default function History() {
     if (kind === "ride"    && item.kind !== "ride")  return false;
     return true;
   });
-
-  const visibleItems = filtered.slice(0, visibleCount);
-  const hasMore = visibleCount < filtered.length;
 
   const totalEarnings  = filtered.reduce((s, i) => s + (i.earnings || 0), 0);
   const completedItems = filtered.filter(i => i.status === "delivered" || i.status === "completed");
@@ -93,6 +103,8 @@ export default function History() {
     await qc.invalidateQueries({ queryKey: ["rider-history"] });
   }, [qc]);
 
+  const totalLoaded = raw.length;
+
   return (
     <PullToRefresh onRefresh={handlePullRefresh} className="min-h-screen bg-[#F5F6F8]">
       <div className="bg-gradient-to-br from-gray-900 via-gray-900 to-gray-800 px-5 pb-8 rounded-b-[2rem] relative overflow-hidden"
@@ -103,11 +115,11 @@ export default function History() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-white/40 text-xs font-semibold tracking-widest uppercase mb-1">
-                <Calendar size={11} className="inline mr-1"/> {raw.length} {T("totalRecords")}
+                <Calendar size={11} className="inline mr-1"/> {totalLoaded} {T("totalRecords")}
               </p>
               <h1 className="text-2xl font-extrabold text-white tracking-tight">{T("history")}</h1>
             </div>
-            <button onClick={() => { refetch(); setVisibleCount(PAGE_SIZE); }} disabled={isFetching}
+            <button onClick={() => { refetch(); }} disabled={isFetching}
               className="w-10 h-10 rounded-2xl bg-white/[0.08] border border-white/[0.06] flex items-center justify-center disabled:opacity-50 transition-opacity active:bg-white/[0.12]">
               <RefreshCw size={16} className={`text-white/60 ${isFetching ? "animate-spin" : ""}`}/>
             </button>
@@ -135,7 +147,7 @@ export default function History() {
       <div className="px-4 pt-4 space-y-3 sticky top-0 bg-[#F5F6F8] pb-2 z-10">
         <div className="flex bg-white rounded-full p-1 shadow-sm gap-1 border border-gray-100">
           {PERIOD_TABS.map(tab => (
-            <button key={tab.key} onClick={() => { setPeriod(tab.key); setVisibleCount(PAGE_SIZE); }}
+            <button key={tab.key} onClick={() => setPeriod(tab.key)}
               className={`flex-1 py-2.5 text-xs font-bold rounded-full transition-all ${period === tab.key ? "bg-gray-900 text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
               {tab.label}
             </button>
@@ -143,7 +155,7 @@ export default function History() {
         </div>
         <div className="flex gap-2">
           {KIND_TABS.map(tab => (
-            <button key={tab.key} onClick={() => { setKind(tab.key); setVisibleCount(PAGE_SIZE); }}
+            <button key={tab.key} onClick={() => setKind(tab.key)}
               className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all ${kind === tab.key ? "bg-gray-900 text-white shadow-sm" : "bg-white text-gray-500 border border-gray-200"}`}>
               {tab.icon} {tab.label}
             </button>
@@ -186,7 +198,7 @@ export default function History() {
               return T("earlier");
             };
             let lastGroup = "";
-            return visibleItems.map((item: HistoryItem) => {
+            return filtered.map((item: HistoryItem) => {
               const d = new Date(item.createdAt);
               const group = getGroup(d);
               const showHeader = group !== lastGroup;
@@ -233,7 +245,6 @@ export default function History() {
                         </span>
                       </div>
                     </div>
-                    {/* Expanded detail panel */}
                     {isExpanded && (
                       <div className="border-t border-gray-100 px-4 py-3 space-y-2 bg-gray-50/50">
                         {item.address && (
@@ -274,10 +285,21 @@ export default function History() {
             });
           })()
         )}
-        {!isLoading && hasMore && (
-          <button onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
-            className="w-full py-3 text-sm font-bold text-gray-600 bg-white rounded-2xl border border-gray-200 shadow-sm active:bg-gray-50 transition-colors">
-            {T("showMore")} ({filtered.length - visibleCount} {T("remaining")})
+
+        {/* Show more button — fetches the next page from the server */}
+        {!isLoading && hasNextPage && (
+          <button
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="w-full py-3 text-sm font-bold text-gray-600 bg-white rounded-2xl border border-gray-200 shadow-sm active:bg-gray-50 transition-colors disabled:opacity-60"
+          >
+            {isFetchingNextPage ? (
+              <span className="flex items-center justify-center gap-2">
+                <RefreshCw size={14} className="animate-spin"/> {T("loading") || "Loading…"}
+              </span>
+            ) : (
+              T("showMore")
+            )}
           </button>
         )}
       </div>

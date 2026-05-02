@@ -1735,22 +1735,28 @@ router.get("/history", async (req, res) => {
   const rawOffset = parseInt(String(req.query["offset"] || "0"),  10);
   const limitParam  = Math.min(isNaN(rawLimit)  || rawLimit  < 1  ? 50  : rawLimit,  200);
   const offsetParam = isNaN(rawOffset) || rawOffset < 0 ? 0 : rawOffset;
-  const fetchCount = limitParam + offsetParam;
+  /* Fetch one extra item beyond the page to detect whether more pages exist.
+     We pull offsetParam + limitParam + 1 from each table so the merge+sort+slice
+     has enough raw material to fill the current page and detect overflow. */
+  const fetchCount = limitParam + offsetParam + 1;
   const [orders, rides] = await Promise.all([
     db.select().from(ordersTable).where(and(eq(ordersTable.riderId, riderId), eq(ordersTable.status, "delivered"))).orderBy(desc(ordersTable.updatedAt)).limit(fetchCount),
     db.select().from(ridesTable).where(and(eq(ridesTable.riderId, riderId), or(eq(ridesTable.status, "completed"), eq(ridesTable.status, "cancelled")))).orderBy(desc(ridesTable.updatedAt)).limit(fetchCount),
   ]);
 
-  const combined = [
+  const sorted = [
     ...orders.map(o => ({ kind: "order" as const, id: o.id, status: o.status, amount: safeNum(o.total), earnings: parseFloat((safeNum(o.total) * riderKeepPct).toFixed(2)), address: o.deliveryAddress, type: o.type, createdAt: o.createdAt })),
     /* Cancelled rides have no earnings — the rider was never paid. Returning a
        non-zero earnings value for cancelled rides caused totalEarnings on the
        frontend to be inflated by fare×keepPct for every cancelled ride. */
     ...rides.map(r => ({ kind: "ride" as const, id: r.id, status: r.status, amount: safeNum(r.fare), earnings: r.status === "cancelled" ? 0 : parseFloat((safeNum(r.fare) * riderKeepPct).toFixed(2)), address: r.dropAddress, type: r.type, createdAt: r.createdAt })),
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-   .slice(offsetParam, offsetParam + limitParam);
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  sendSuccess(res, { history: combined });
+  const paged = sorted.slice(offsetParam, offsetParam + limitParam + 1);
+  const hasMore = paged.length > limitParam;
+  const combined = paged.slice(0, limitParam);
+
+  sendSuccess(res, { history: combined, hasMore, limit: limitParam, offset: offsetParam });
 });
 
 /* ── GET /rider/reviews — Reviews received by this rider (excludes hidden/deleted) ── */

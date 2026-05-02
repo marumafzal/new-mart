@@ -552,6 +552,47 @@ function MisconfigScreen() {
   );
 }
 
+function ApiUnreachableScreen({ url, onRetry, retrying }: { url: string; onRetry: () => void; retrying: boolean }) {
+  return (
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32, backgroundColor: "#0f172a" }}>
+      <View style={{
+        width: 90, height: 90, borderRadius: 45,
+        backgroundColor: "rgba(239,68,68,0.15)",
+        alignItems: "center", justifyContent: "center", marginBottom: 24,
+      }}>
+        <Text style={{ fontSize: 44 }}>⚠️</Text>
+      </View>
+      <Text style={{ color: "#f1f5f9", fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 12 }}>
+        Cannot Reach Server
+      </Text>
+      <Text style={{ color: "#94a3b8", fontSize: 14, textAlign: "center", lineHeight: 22, marginBottom: 8 }}>
+        AJKMart could not connect to the API server. Please check your connection and try again.
+      </Text>
+      <Text style={{
+        color: "#64748b", fontSize: 11, fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+        textAlign: "center", marginBottom: 32, paddingHorizontal: 8,
+      }}>
+        {url}
+      </Text>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={onRetry}
+        disabled={retrying}
+        style={{
+          backgroundColor: retrying ? "#3b82f688" : "#3b82f6",
+          borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32,
+          alignItems: "center", width: "100%",
+        }}
+      >
+        {retrying
+          ? <ActivityIndicator color="#fff" />
+          : <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Retry Connection</Text>
+        }
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function RootLayoutNav() {
   const { isSuspended, user, token } = useAuth();
   const { config } = usePlatformConfig();
@@ -731,12 +772,38 @@ function RootLayoutNav() {
   );
 }
 
+async function probeApiHealth(): Promise<{ reachable: boolean; url: string }> {
+  const url = `${API_BASE}/health`;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return { reachable: res.ok, url };
+  } catch {
+    return { reachable: false, url };
+  }
+}
+
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
+  /* null = not yet checked, true = reachable, false = unreachable */
+  const [apiReachable, setApiReachable] = useState<boolean | null>(_domain ? null : true);
+  const [apiUrl, setApiUrl] = useState(`${API_BASE}/health`);
+  const [retrying, setRetrying] = useState(false);
 
   /* Register PWA service worker on web */
   useEffect(() => {
     registerServiceWorker();
+  }, []);
+
+  /* Run the API health check concurrently with font loading */
+  useEffect(() => {
+    if (!_domain) return; // misconfig screen handles the no-domain case
+    probeApiHealth().then(({ reachable, url }) => {
+      setApiUrl(url);
+      setApiReachable(reachable);
+    });
   }, []);
 
   useEffect(() => {
@@ -788,7 +855,19 @@ export default function RootLayout() {
     };
   }, []);
 
-  if (!ready) {
+  const handleRetry = async () => {
+    setRetrying(true);
+    const result = await probeApiHealth();
+    setApiUrl(result.url);
+    if (result.reachable) {
+      setApiReachable(true);
+    } else {
+      setRetrying(false);
+    }
+  };
+
+  /* Show splash while fonts are loading or the health probe is still pending */
+  if (!ready || (_domain && apiReachable === null)) {
     return (
       <WebShell>
         <View style={{ flex: 1, backgroundColor: "#0047B3", alignItems: "center", justifyContent: "center", gap: 20 }}>
@@ -812,6 +891,14 @@ export default function RootLayout() {
     return (
       <WebShell>
         <MisconfigScreen />
+      </WebShell>
+    );
+  }
+
+  if (apiReachable === false) {
+    return (
+      <WebShell>
+        <ApiUnreachableScreen url={apiUrl} onRetry={handleRetry} retrying={retrying} />
       </WebShell>
     );
   }

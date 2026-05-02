@@ -49,7 +49,7 @@ import { adminAuth } from "./admin-shared.js";
 
 const router: IRouter = Router();
 
-router.use(healthRouter);
+router.use("/health", healthRouter);
 
 /**
  * Legacy customer-facing /api/auth router (OTP, login, refresh, 2FA, social

@@ -1,4 +1,5 @@
 import { Component, type ReactNode, useEffect, useState, useRef } from "react";
+import { useVersionCheck } from "@/hooks/useVersionCheck";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./lib/auth";
@@ -264,10 +265,16 @@ function AppRoutes() {
   );
 }
 
+function VersionCheckInit() {
+  useVersionCheck();
+  return null;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <VersionCheckInit />
         <AuthProvider>
           <WouterRouter base={(() => {
               /* Use BASE_URL exactly as Vite computed it from vite.config's

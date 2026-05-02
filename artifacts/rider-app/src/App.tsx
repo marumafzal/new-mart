@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useVersionCheck } from "@/hooks/useVersionCheck";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { usePlatformConfig, getRiderModules } from "./lib/useConfig";
@@ -402,10 +403,16 @@ function AppRoutes() {
   );
 }
 
+function VersionCheckInit() {
+  useVersionCheck();
+  return null;
+}
+
 function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <VersionCheckInit />
         <LanguageProvider>
           <AuthProvider>
             <SocketProvider>

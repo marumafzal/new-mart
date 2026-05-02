@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development tsx --enable-source-maps ./src/index.ts",
+    "dev": "NODE_ENV=development node ./scripts/start-with-restart.mjs",
     "build": "node ./build.mjs",
     "start": "tsx --enable-source-maps ./src/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",

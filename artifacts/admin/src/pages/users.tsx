@@ -1618,7 +1618,7 @@ export default function Users() {
     return () => clearTimeout(t);
   }, [search]);
   useEffect(() => { setCurrentPage(1); }, [conditionTier, statusFilter, debouncedSearch, roleFilter, dateFrom, dateTo]);
-  const { data, isLoading, refetch, isFetching, isError } = useUsers({
+  const { data, isLoading, refetch, isFetching, isError, error } = useUsers({
     conditionTier: conditionTier !== "all" ? conditionTier : undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     search: debouncedSearch || undefined,
@@ -1962,7 +1962,7 @@ export default function Users() {
             </div>
             <div>
               <p className="font-semibold text-red-800">Failed to load users</p>
-              <p className="text-sm text-red-600 mt-1">Your session may have expired. Please log in again.</p>
+              <p className="text-sm text-red-600 mt-1">{(error as Error)?.message || "Something went wrong. Please retry or re-login."}</p>
             </div>
             <div className="flex gap-2 mt-2">
               <Button variant="outline" size="sm" onClick={() => refetch()} className="rounded-xl border-red-200 text-red-700 hover:bg-red-100">

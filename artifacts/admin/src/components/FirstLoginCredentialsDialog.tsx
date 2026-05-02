@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { AlertCircle, CheckCircle2, Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  ShieldCheck,
+  ArrowRight,
+} from "lucide-react";
 
 import {
   Dialog,
@@ -32,28 +41,12 @@ function computeStrength(pw: string): StrengthLevel {
   return 4;
 }
 
-const STRENGTH_LABELS: Record<StrengthLevel, string> = {
-  0: "",
-  1: "Weak",
-  2: "Fair",
-  3: "Good",
-  4: "Strong",
-};
-
-const STRENGTH_COLORS: Record<StrengthLevel, string> = {
-  0: "",
-  1: "bg-red-500",
-  2: "bg-orange-400",
-  3: "bg-yellow-400",
-  4: "bg-emerald-500",
-};
-
-const STRENGTH_TEXT_COLORS: Record<StrengthLevel, string> = {
-  0: "",
-  1: "text-red-500",
-  2: "text-orange-400",
-  3: "text-yellow-500",
-  4: "text-emerald-600 dark:text-emerald-400",
+const STRENGTH_META: Record<StrengthLevel, { label: string; bar: string; text: string }> = {
+  0: { label: "", bar: "", text: "" },
+  1: { label: "Weak", bar: "bg-red-500", text: "text-red-500" },
+  2: { label: "Fair", bar: "bg-orange-400", text: "text-orange-400" },
+  3: { label: "Good", bar: "bg-amber-400", text: "text-amber-500" },
+  4: { label: "Strong", bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
 };
 
 export function FirstLoginCredentialsDialog() {
@@ -72,13 +65,8 @@ export function FirstLoginCredentialsDialog() {
 
   const [open, setOpen] = useState(wantsToShow);
 
-  useEffect(() => {
-    if (wantsToShow) setOpen(true);
-  }, [wantsToShow]);
-
-  useEffect(() => {
-    if (!state.accessToken) setOpen(false);
-  }, [state.accessToken]);
+  useEffect(() => { if (wantsToShow) setOpen(true); }, [wantsToShow]);
+  useEffect(() => { if (!state.accessToken) setOpen(false); }, [state.accessToken]);
 
   const [username, setUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -130,10 +118,7 @@ export function FirstLoginCredentialsDialog() {
         return;
       }
       const strengthError = validateStrength(newPassword);
-      if (strengthError) {
-        setFormError(strengthError);
-        return;
-      }
+      if (strengthError) { setFormError(strengthError); return; }
       if (newPassword === DOCUMENTED_DEFAULT_PASSWORD) {
         setFormError("The new password must be different from the default.");
         return;
@@ -149,19 +134,15 @@ export function FirstLoginCredentialsDialog() {
           setNewPassword("");
           setConfirmPassword("");
         } catch (err) {
-          setFormError(
-            err instanceof Error ? err.message : "Failed to update your password.",
-          );
+          setFormError(err instanceof Error ? err.message : "Failed to update your password.");
           return;
         }
       }
-
       if (wantsUsernameChange) {
         try {
           await updateOwnProfile({ username: trimmedUsername });
         } catch (err) {
-          const baseMsg =
-            err instanceof Error ? err.message : "Failed to update your username.";
+          const baseMsg = err instanceof Error ? err.message : "Failed to update your username.";
           setFormError(
             passwordSavedThisSession
               ? `Password was updated, but username change failed: ${baseMsg}`
@@ -170,7 +151,6 @@ export function FirstLoginCredentialsDialog() {
           return;
         }
       }
-
       toast({
         title: "Credentials updated",
         description:
@@ -188,202 +168,237 @@ export function FirstLoginCredentialsDialog() {
   };
 
   const strengthLevel = computeStrength(newPassword);
+  const sm = STRENGTH_META[strengthLevel];
 
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => {
-        if (!next && !submitting) handleSkip();
-      }}
+      onOpenChange={(next) => { if (!next && !submitting) handleSkip(); }}
     >
       <DialogContent
-        className="sm:max-w-lg p-0 [&>button[aria-label='Close\\ dialog']]:text-white/80 [&>button[aria-label='Close\\ dialog']]:hover:bg-white/20 [&>button[aria-label='Close\\ dialog']]:hover:text-white [&>button[aria-label='Close\\ dialog']]:focus:ring-white/50"
+        className="sm:max-w-md p-0 overflow-hidden rounded-2xl border-0 shadow-2xl
+          [&>button[aria-label='Close\\ dialog']]:top-3.5 [&>button[aria-label='Close\\ dialog']]:right-3.5
+          [&>button[aria-label='Close\\ dialog']]:h-7 [&>button[aria-label='Close\\ dialog']]:w-7
+          [&>button[aria-label='Close\\ dialog']]:rounded-full
+          [&>button[aria-label='Close\\ dialog']]:bg-white/15
+          [&>button[aria-label='Close\\ dialog']]:text-white
+          [&>button[aria-label='Close\\ dialog']]:hover:bg-white/25
+          [&>button[aria-label='Close\\ dialog']]:hover:text-white
+          [&>button[aria-label='Close\\ dialog']]:backdrop-blur-sm"
         data-testid="dialog-first-login-credentials"
       >
-        {/* Gradient header — fills full width because DialogContent is p-0 */}
-        <div className="bg-gradient-to-br from-amber-500 via-amber-400 to-orange-400 dark:from-amber-600 dark:via-amber-500 dark:to-orange-500 px-6 pt-7 pb-6">
-          <div className="flex items-center gap-4 pr-8">
-            <div className="w-12 h-12 rounded-xl bg-white/20 ring-2 ring-white/30 backdrop-blur-sm flex items-center justify-center shrink-0 shadow-lg">
-              <KeyRound className="h-6 w-6 text-white" />
+        {/* ── Header ───────────────────────────────────────────── */}
+        <div className="relative bg-gradient-to-br from-amber-500 via-amber-400 to-orange-500 px-6 pt-6 pb-5">
+          {/* subtle grid texture */}
+          <div
+            className="pointer-events-none absolute inset-0 opacity-10"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(0deg,transparent,transparent 19px,rgba(255,255,255,.4) 19px,rgba(255,255,255,.4) 20px),repeating-linear-gradient(90deg,transparent,transparent 19px,rgba(255,255,255,.4) 19px,rgba(255,255,255,.4) 20px)",
+            }}
+          />
+          <div className="relative flex items-start gap-4 pr-7">
+            {/* icon badge */}
+            <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20 shadow-lg ring-1 ring-white/30 backdrop-blur-sm">
+              <KeyRound className="h-5 w-5 text-white" />
             </div>
             <div>
-              <DialogTitle className="text-lg font-semibold text-white leading-tight">
+              <DialogTitle className="text-base font-bold text-white leading-tight tracking-tight">
                 Secure your admin account
               </DialogTitle>
-              <DialogDescription className="text-sm text-amber-100/90 mt-0.5 leading-snug">
-                You're using default credentials. Set a unique username and password to protect your panel.
+              <DialogDescription className="mt-1 text-[13px] leading-snug text-white/80">
+                You're using default credentials — set a unique username and password.
               </DialogDescription>
+              {/* security badge */}
+              <span className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-white/90 backdrop-blur-sm">
+                <ShieldCheck className="h-3 w-3" />
+                Action required
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Form body — owns its own horizontal padding */}
-        <form onSubmit={handleSubmit} className="px-6 pt-5 pb-0 space-y-4">
+        {/* ── Body ─────────────────────────────────────────────── */}
+        <form onSubmit={handleSubmit} className="bg-background">
 
-          {/* Username section */}
-          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 space-y-2">
-            <div className="flex items-center gap-1.5 mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="px-6 pt-5 pb-1 space-y-5">
+
+            {/* Username */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="flcd-username"
+                className="block text-[11px] font-semibold uppercase tracking-widest text-muted-foreground"
+              >
                 Username
-              </span>
+              </label>
+              <Input
+                id="flcd-username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={state.user?.username ?? "admin"}
+                autoComplete="username"
+                disabled={submitting}
+                className="h-10 rounded-lg border-border/70 bg-muted/40 text-sm focus:border-amber-400 focus:ring-amber-400/20 transition-colors"
+                data-testid="input-new-username"
+              />
+              <p className="text-[12px] text-muted-foreground/70">
+                Leave unchanged to keep the current username.
+              </p>
             </div>
-            <Input
-              id="flcd-username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder={state.user?.username ?? "admin"}
-              autoComplete="username"
-              disabled={submitting}
-              data-testid="input-new-username"
-            />
-            <p className="text-xs text-muted-foreground">
-              Leave unchanged to keep the current username.
-            </p>
-          </div>
 
-          {/* Password section */}
-          {passwordSavedThisSession ? (
-            <div
-              className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 flex items-start gap-3"
-              data-testid="text-password-saved"
-            >
-              <div className="w-8 h-8 rounded-full bg-emerald-500/15 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            {/* Password section */}
+            {passwordSavedThisSession ? (
+              <div
+                className="flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3"
+                data-testid="text-password-saved"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                    Password updated
+                  </p>
+                  <p className="text-[12px] text-emerald-600/70 dark:text-emerald-400/70">
+                    Now save a new username, or skip for now.
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                  Password updated successfully
-                </p>
-                <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
-                  Finish by saving a new username, or click Skip for now.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 space-y-3">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  New Password
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium sr-only" htmlFor="flcd-new">
-                  New password
-                </label>
-                <div className="relative">
-                  <Input
-                    id="flcd-new"
-                    type={showPasswords ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="At least 8 chars, 1 uppercase, 1 number"
-                    autoComplete="new-password"
-                    disabled={submitting}
-                    className="pr-10"
-                    data-testid="input-new-password"
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-y-0 right-0 w-9 flex items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    onClick={() => setShowPasswords((v) => !v)}
-                    aria-label={showPasswords ? "Hide password" : "Show password"}
-                    aria-pressed={showPasswords}
+            ) : (
+              <div className="space-y-4">
+                {/* new password */}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="flcd-new"
+                    className="block text-[11px] font-semibold uppercase tracking-widest text-muted-foreground"
                   >
-                    {showPasswords
-                      ? <EyeOff className="h-4 w-4" />
-                      : <Eye className="h-4 w-4" />}
-                  </button>
+                    New password
+                  </label>
+                  <div className="relative">
+                    <Input
+                      id="flcd-new"
+                      type={showPasswords ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Min 8 chars, 1 uppercase, 1 number"
+                      autoComplete="new-password"
+                      disabled={submitting}
+                      className="h-10 rounded-lg border-border/70 bg-muted/40 pr-10 text-sm focus:border-amber-400 focus:ring-amber-400/20 transition-colors"
+                      data-testid="input-new-password"
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 flex w-9 items-center justify-center rounded-r-lg text-muted-foreground/60 hover:text-muted-foreground transition-colors focus-visible:outline-none"
+                      onClick={() => setShowPasswords((v) => !v)}
+                      aria-label={showPasswords ? "Hide password" : "Show password"}
+                      aria-pressed={showPasswords}
+                    >
+                      {showPasswords ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+
+                  {/* strength meter */}
+                  {newPassword.length > 0 && (
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex gap-1">
+                        {([1, 2, 3, 4] as const).map((bar) => (
+                          <div
+                            key={bar}
+                            className={`h-1 flex-1 rounded-full transition-all duration-300 ${
+                              strengthLevel >= bar ? sm.bar : "bg-border/60"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      {strengthLevel > 0 && (
+                        <p className={`text-[11px] font-semibold ${sm.text}`}>
+                          {sm.label}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Password strength indicator */}
-                {newPassword.length > 0 && (
-                  <div className="space-y-1.5">
-                    <div className="flex gap-1">
-                      {([1, 2, 3, 4] as const).map((bar) => (
-                        <div
-                          key={bar}
-                          className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${
-                            strengthLevel >= bar
-                              ? STRENGTH_COLORS[strengthLevel]
-                              : "bg-border"
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    {strengthLevel > 0 && (
-                      <p className={`text-xs font-medium ${STRENGTH_TEXT_COLORS[strengthLevel]}`}>
-                        {STRENGTH_LABELS[strengthLevel]}
-                      </p>
-                    )}
-                  </div>
-                )}
+                {/* confirm password */}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="flcd-confirm"
+                    className="block text-[11px] font-semibold uppercase tracking-widest text-muted-foreground"
+                  >
+                    Confirm password
+                  </label>
+                  <Input
+                    id="flcd-confirm"
+                    type={showPasswords ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter the new password"
+                    autoComplete="new-password"
+                    disabled={submitting}
+                    className="h-10 rounded-lg border-border/70 bg-muted/40 text-sm focus:border-amber-400 focus:ring-amber-400/20 transition-colors"
+                    data-testid="input-confirm-password"
+                  />
+                </div>
               </div>
+            )}
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium" htmlFor="flcd-confirm">
-                  Confirm new password
-                </label>
-                <Input
-                  id="flcd-confirm"
-                  type={showPasswords ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter the new password"
-                  autoComplete="new-password"
-                  disabled={submitting}
-                  data-testid="input-confirm-password"
-                />
+            {/* Error */}
+            {formError && (
+              <div
+                className="flex items-start gap-2.5 rounded-xl border border-destructive/25 bg-destructive/8 px-3.5 py-2.5"
+                data-testid="text-credentials-error"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <p className="text-[13px] leading-snug text-destructive">{formError}</p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Error banner */}
-          {formError && (
-            <div
-              className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 flex items-start gap-2.5"
-              data-testid="text-credentials-error"
-            >
-              <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
-              <p className="text-sm text-destructive leading-snug">{formError}</p>
-            </div>
-          )}
-
-          {/* Footer — negative horizontal margin bleeds to DialogContent edge (p-0) */}
-          <div className="-mx-6 px-6 py-4 border-t border-border flex flex-col sm:flex-row items-center gap-2">
-            <Button
+          {/* ── Footer ─────────────────────────────────────────── */}
+          <div className="mt-4 flex items-center justify-between border-t border-border/60 bg-muted/20 px-6 py-4 gap-3">
+            {/* left: full-screen link */}
+            <button
               type="button"
-              variant="ghost"
-              onClick={() => {
-                handleSkip();
-                setLocation("/set-new-password");
-              }}
+              onClick={() => { handleSkip(); setLocation("/set-new-password"); }}
               disabled={submitting}
-              className="sm:mr-auto text-muted-foreground hover:text-foreground text-sm"
+              className="flex items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded disabled:opacity-40"
               data-testid="button-open-full-screen"
             >
-              Open the full password screen
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleSkip}
-              disabled={submitting}
-              data-testid="button-skip-credentials"
-            >
-              Skip for now
-            </Button>
-            <Button type="submit" disabled={submitting} data-testid="button-save-credentials">
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving…
-                </>
-              ) : (
-                "Save changes"
-              )}
-            </Button>
+              Full screen
+              <ArrowRight className="h-3 w-3" />
+            </button>
+
+            {/* right: skip + save */}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSkip}
+                disabled={submitting}
+                className="h-8 rounded-lg border-border/70 px-4 text-[13px] font-medium hover:border-border"
+                data-testid="button-skip-credentials"
+              >
+                Skip
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={submitting}
+                className="h-8 rounded-lg bg-amber-500 px-4 text-[13px] font-semibold text-white hover:bg-amber-600 active:bg-amber-700 focus-visible:ring-amber-400/40 border-0"
+                data-testid="button-save-credentials"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  "Save changes"
+                )}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

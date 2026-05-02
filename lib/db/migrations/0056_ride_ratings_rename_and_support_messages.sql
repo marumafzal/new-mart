@@ -28,9 +28,9 @@ BEGIN
 END
 $$;
 
--- Drop the old index on user_id if it still exists after the rename
-DROP INDEX IF EXISTS ride_ratings_customer_id_idx;
--- Recreate with the canonical name expected by the schema
+-- Drop the old index named after user_id if it still exists after the rename
+DROP INDEX IF EXISTS ride_ratings_user_id_idx;
+-- Ensure the canonical index expected by the schema exists
 CREATE INDEX IF NOT EXISTS ride_ratings_customer_id_idx ON ride_ratings(customer_id);
 
 -- Drop the legacy FK on user_id if it survived the rename

@@ -147,7 +147,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, readonly PermissionId[]> =
   super_admin: PERMISSION_IDS,
 
   support_admin: [
-    "users.view", "users.edit", "users.ban", "users.approve",
+    "users.view", "users.create", "users.edit", "users.ban", "users.approve",
     "orders.view", "orders.cancel",
     "fleet.rides.view", "fleet.parcel.view", "fleet.pharmacy.view",
     "support.chat.view", "support.chat.respond", "support.broadcast.send",

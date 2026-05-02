@@ -220,6 +220,47 @@ async function profileReplit() {
   const replitDomain = process.env.REPLIT_DEV_DOMAIN || "";
   const expoDomain = process.env.REPLIT_EXPO_DEV_DOMAIN || replitDomain;
 
+  // Detect whether Replit artifact workflows are managing individual services.
+  // When [[artifacts]] entries are present in .replit, the platform auto-creates
+  // a dedicated workflow for each artifact — each one binds its own port.
+  // Launching those same services here would cause "address already in use" errors.
+  const replitConfigPath = path.join(root, ".replit");
+  let hasArtifactWorkflows = false;
+  try {
+    const replitConfig = fs.readFileSync(replitConfigPath, "utf8");
+    hasArtifactWorkflows = replitConfig.includes("[[artifacts]]");
+  } catch { /* .replit missing — assume no artifact workflows */ }
+
+  if (hasArtifactWorkflows) {
+    log("Artifact workflows detected — each service is managed by its own Replit workflow.");
+    log("Skipping service launches from this launcher to prevent duplicate port bindings.");
+
+    const base = replitDomain ? `https://${replitDomain}` : `http://localhost:${apiPort}`;
+    const expoBase = expoDomain ? `https://${expoDomain}` : `http://localhost:${ajkPort}`;
+    printTable([
+      ["Service", "Port", "URL", "Managed by"],
+      ["api", apiPort, `${base}/api`, "artifact workflow"],
+      ["admin", adminPort, `${base}/admin/`, "artifact workflow"],
+      ["vendor", vendorPort, `${base}/vendor/`, "artifact workflow"],
+      ["rider", riderPort, `${base}/rider/`, "artifact workflow"],
+      ["ajkmart (web)", ajkPort, expoBase + "/", "artifact workflow"],
+    ]);
+    log("If a preview is unavailable, check the individual artifact workflow logs for that service.");
+
+    // Keep this process alive so the "Start application" workflow stays running.
+    // Actual services are started by their respective artifact workflows.
+    // Exit cleanly on SIGTERM/SIGINT (sent by Replit when the workflow is stopped).
+    if (!dryRun) {
+      process.on("SIGINT", () => process.exit(0));
+      process.on("SIGTERM", () => process.exit(0));
+      await new Promise(() => {}); // wait indefinitely until a signal fires
+    }
+    return;
+  }
+
+  // No artifact workflows — start all services directly (non-artifact Replit import
+  // or a plain replit environment without per-artifact workflows).
+
   // Kill any stale processes holding the target ports from a previous run.
   // fuser is provided by psmisc (declared in .replit nix packages).
   if (!dryRun) {

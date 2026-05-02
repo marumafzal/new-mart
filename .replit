@@ -17,29 +17,6 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
-runButton = "Project"
-
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start application"
-
-[[workflows.workflow]]
-name = "Start application"
-author = "agent"
-mode = "parallel"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node scripts/auto-decrypt.mjs && pnpm install --frozen-lockfile && pnpm run replit-start"
-waitForPort = 5000
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"

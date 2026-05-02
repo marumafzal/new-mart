@@ -16,7 +16,9 @@ function formatAgo(d: Date | null): string {
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
-  return `${Math.floor(m / 60)}h ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 function isAtTop(): boolean {
@@ -145,14 +147,6 @@ export function PullToRefresh({ onRefresh, children, accentColor = "#1A56DB", cl
           </span>
         </div>
       </div>
-
-      {lastUpdated && agoText && !refreshing && (
-        <div className="flex items-center justify-center py-1">
-          <span className="text-[10px] font-medium text-gray-300">
-            Updated {agoText}
-          </span>
-        </div>
-      )}
 
       <div
         style={{

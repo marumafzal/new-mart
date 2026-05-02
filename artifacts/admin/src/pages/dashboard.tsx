@@ -1,7 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useState, useId } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader, StatCard } from "@/components/shared";
-import { Users, ShoppingBag, Car, Pill, Box, Package, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard } from "lucide-react";
+import { Users, ShoppingBag, Car, Pill, Box, Settings, TrendingUp, ArrowRight, Wallet, Download, Trophy, Star, AlertTriangle, DollarSign, LayoutDashboard, Loader2, X } from "lucide-react";
 import { Link } from "wouter";
 import { useStats, useRevenueTrend, useLeaderboard } from "@/hooks/use-admin";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -17,7 +17,9 @@ import { useToast } from "@/hooks/use-toast";
 function exportDashboard(
   trend: { date: string; revenue: number }[],
   onError: (msg: string) => void,
+  setExporting: (v: boolean) => void,
 ) {
+  setExporting(true);
   fetcher("/fleet/dashboard-export").then((data: any) => {
     const enriched = { ...data, trend: data.trend ?? trend };
     const blob = new Blob([JSON.stringify(enriched, null, 2)], { type: "application/json" });
@@ -26,8 +28,8 @@ function exportDashboard(
     a.href = url;
     a.download = `dashboard-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
-    URL.revokeObjectURL(url);
-  }).catch((err: any) => onError(err?.message || "Export failed"));
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  }).catch((err: any) => onError(err?.message || "Export failed")).finally(() => setExporting(false));
 }
 
 /* Shimmer skeleton block */
@@ -72,7 +74,9 @@ function updatedAgo(ts: number): string {
   if (diff < 60) return `${diff}s ago`;
   const m = Math.floor(diff / 60);
   if (m < 60)    return `${m}m ago`;
-  return `${Math.floor(m / 60)}h ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24)    return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 export default function Dashboard() {
@@ -80,9 +84,14 @@ export default function Dashboard() {
   const { language } = useLanguage();
   const T = (key: TranslationKey) => tDual(key, language);
   const qc = useQueryClient();
-  const { data, isLoading, dataUpdatedAt } = useStats();
-  const { data: trendData } = useRevenueTrend();
-  const { data: lbData }    = useLeaderboard();
+  const gradId = useId().replace(/:/g, "rev");
+  const [isExporting, setIsExporting] = useState(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
+  const { data, isLoading, isFetching, isError: statsError, dataUpdatedAt } = useStats();
+  const { data: trendData, isError: trendError } = useRevenueTrend();
+  const { data: lbData, isError: lbError }    = useLeaderboard();
+
+  const hasError = (statsError || trendError || lbError) && !errorDismissed;
 
   const handleRefresh = useCallback(async () => {
     await Promise.all([
@@ -92,19 +101,21 @@ export default function Dashboard() {
     ]);
   }, [qc]);
 
-  const trend: { date: string; revenue: number; orderCount?: number; rideCount?: number; sosCount?: number }[] =
+  const rawTrend: { date: string; revenue: number; orderCount?: number; rideCount?: number; sosCount?: number }[] =
     Array.isArray(trendData?.trend) ? trendData.trend : [];
 
-  const revenueSparkData = trend.length >= 2
+  const trend = [...rawTrend].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const revenueSparkData = trend.length >= 1
     ? trend.slice(-7).map(t => t.revenue || 0)
     : Array(7).fill(0);
-  const ridesSparkData = trend.length >= 2
+  const ridesSparkData = trend.length >= 1
     ? trend.slice(-7).map(t => t.rideCount ?? 0)
     : Array(7).fill(0);
-  const ordersSparkData = trend.length >= 2
+  const ordersSparkData = trend.length >= 1
     ? trend.slice(-7).map(t => t.orderCount ?? 0)
     : Array(7).fill(0);
-  const sosSparkData = trend.length >= 2
+  const sosSparkData = trend.length >= 1
     ? trend.slice(-7).map(t => t.sosCount ?? 0)
     : Array(7).fill(0);
 
@@ -166,6 +177,15 @@ export default function Dashboard() {
 
   return (
     <PullToRefresh onRefresh={handleRefresh} className="space-y-6 sm:space-y-8">
+      {hasError && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span className="flex-1">Some data may be unavailable — one or more requests failed. Try refreshing.</span>
+          <button onClick={() => setErrorDismissed(true)} className="shrink-0 hover:opacity-70">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <PageHeader
         icon={LayoutDashboard}
         title={T("overview")}
@@ -173,9 +193,14 @@ export default function Dashboard() {
         iconBgClass="bg-indigo-100"
         iconColorClass="text-indigo-600"
         actions={
-          <Button variant="outline" size="sm" onClick={() => exportDashboard(trend, (msg) => toast({ title: "Export failed", description: msg, variant: "destructive" }))} className="h-9 rounded-xl gap-2 shrink-0">
-            <Download className="w-4 h-4" /> {T("export")}
-          </Button>
+          <div className="flex items-center gap-2">
+            {isFetching && !isLoading && (
+              <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+            )}
+            <Button variant="outline" size="sm" disabled={isExporting} onClick={() => exportDashboard(trend, (msg) => toast({ title: "Export failed", description: msg, variant: "destructive" }), setIsExporting)} className="h-9 rounded-xl gap-2 shrink-0">
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} {T("export")}
+            </Button>
+          </div>
         }
       />
 
@@ -235,9 +260,6 @@ export default function Dashboard() {
         {/* Active SOS → /sos-alerts */}
         <Link href="/sos-alerts">
           <Card className={`rounded-2xl border-0 shadow-md overflow-hidden relative cursor-pointer transition-transform hover:-translate-y-0.5 ${activeSosCount > 0 ? "bg-gradient-to-br from-red-600 to-red-800" : "bg-gradient-to-br from-slate-500 to-slate-700"} text-white`}>
-            {activeSosCount > 0 && (
-              <div className="absolute inset-0 animate-pulse bg-red-400/10" style={{ animationDuration: "1s" }} />
-            )}
             <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-white/10" />
             <CardContent className="p-5 relative">
               <div className="flex items-start justify-between mb-3">
@@ -289,52 +311,56 @@ export default function Dashboard() {
       {/* Revenue Breakdown */}
       <div>
         <h2 className="text-lg sm:text-xl font-display font-bold text-foreground mb-3 sm:mb-4">{T("revenueBreakdown")}</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <Card className="col-span-2 sm:col-span-2 lg:col-span-1 rounded-2xl bg-gradient-to-br from-primary to-blue-700 text-white shadow-lg shadow-primary/20 border-none">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          <Card className="col-span-2 sm:col-span-3 lg:col-span-1 rounded-2xl bg-gradient-to-br from-primary to-blue-700 text-white shadow-lg shadow-primary/20 border-none">
             <CardContent className="p-4 sm:p-6">
               <p className="text-white/80 font-medium text-xs sm:text-sm mb-1 sm:mb-2 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4" /> {T("grandTotal")}
+                <TrendingUp className="w-4 h-4" /> {T("revenueBreakdown")}
               </p>
-              <h3 className="text-xl sm:text-2xl font-bold">{formatCurrency(data?.revenue?.total || 0)}</h3>
+              <p className="text-white/70 text-xs">across all services</p>
             </CardContent>
           </Card>
           <StatCard icon={ShoppingBag} label="Mart & Food" value={formatCurrency(data?.revenue?.orders || 0)} iconBgClass="bg-orange-100" iconColorClass="text-orange-600" />
           <StatCard icon={Car} label={T("ride")} value={formatCurrency(data?.revenue?.rides || 0)} iconBgClass="bg-blue-100" iconColorClass="text-blue-600" />
           <StatCard icon={Pill} label={T("pharmacy")} value={formatCurrency(data?.revenue?.pharmacy || 0)} iconBgClass="bg-green-100" iconColorClass="text-green-600" />
+          <StatCard icon={Box} label={T("parcel")} value={formatCurrency(data?.revenue?.parcel || 0)} iconBgClass="bg-purple-100" iconColorClass="text-purple-600" />
+          <StatCard icon={Car} label="Van" value={formatCurrency(data?.revenue?.van || 0)} iconBgClass="bg-teal-100" iconColorClass="text-teal-600" />
         </div>
       </div>
 
       {/* 7-Day Revenue Trend chart */}
-      {trend.length > 0 && (
-        <Card className="rounded-2xl border-border/50 shadow-sm p-4 sm:p-6">
-          <h2 className="text-base sm:text-lg font-bold mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-indigo-500" /> 7-Day Revenue Trend
-          </h2>
+      <Card className="rounded-2xl border-border/50 shadow-sm p-4 sm:p-6">
+        <h2 className="text-base sm:text-lg font-bold mb-4 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-indigo-500" /> 7-Day Revenue Trend
+        </h2>
+        {trend.length === 0 ? (
+          <div className="h-44 flex items-center justify-center text-muted-foreground text-sm">No trend data available</div>
+        ) : (
           <div className="h-44">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trend} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%"  stopColor="#6366F1" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="#6366F1" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                  tickFormatter={d => new Date(d).toLocaleDateString("en-US", { weekday: "short" })} />
+                  tickFormatter={d => { const dt = new Date(d); return dt.toString() === "Invalid Date" ? "" : dt.toLocaleDateString("en-US", { weekday: "short" }); }} />
                 <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                   tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} width={40} />
                 <Tooltip
                   contentStyle={{ borderRadius: "12px", fontSize: "12px", border: "1px solid hsl(var(--border))" }}
                   formatter={(v: any) => [`Rs. ${Math.round(v).toLocaleString()}`, T("revenue")]}
-                  labelFormatter={l => new Date(l).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                  labelFormatter={l => { const dt = new Date(l); return dt.toString() === "Invalid Date" ? "" : dt.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }); }}
                 />
                 <Area type="monotone" dataKey="revenue" stroke="#6366F1" strokeWidth={2}
-                  fill="url(#revGrad)" dot={{ fill: "#6366F1", r: 3 }} />
+                  fill={`url(#${gradId})`} dot={{ fill: "#6366F1", r: 3 }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </Card>
-      )}
+        )}
+      </Card>
 
       {/* Leaderboards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
@@ -351,15 +377,15 @@ export default function Dashboard() {
           <div>
             {!vendors.length ? (
               <div className="p-8 text-center text-muted-foreground text-sm">{T("noVendorData")}</div>
-            ) : vendors.map((v: any, idx: number) => (
+            ) : vendors.slice(0, 5).map((v: any, idx: number) => (
               <div key={v.id} className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 hover:bg-indigo-50/50 transition-colors">
                 <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0
                   ${idx === 0 ? "bg-amber-100 text-amber-700" : idx === 1 ? "bg-slate-100 text-slate-600" : idx === 2 ? "bg-orange-100 text-orange-600" : "bg-muted text-muted-foreground"}`}>
                   {idx + 1}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">{v.name || v.phone}</p>
-                  <p className="text-xs text-muted-foreground">{v.totalOrders} {T("myOrders").toLowerCase()}</p>
+                  <p className="font-semibold text-sm truncate">{v.name || v.phone || "Unknown Vendor"}</p>
+                  <p className="text-xs text-muted-foreground">{v.totalOrders ?? 0} {T("myOrders").toLowerCase()}</p>
                 </div>
                 <p className="font-bold text-sm text-foreground shrink-0">{formatCurrency(v.totalRevenue)}</p>
               </div>
@@ -380,15 +406,15 @@ export default function Dashboard() {
           <div>
             {!riders.length ? (
               <div className="p-8 text-center text-muted-foreground text-sm">{T("noRiderData")}</div>
-            ) : riders.map((r: any, idx: number) => (
+            ) : riders.slice(0, 5).map((r: any, idx: number) => (
               <div key={r.id} className="px-4 sm:px-6 py-3 sm:py-4 flex items-center gap-3 hover:bg-indigo-50/50 transition-colors">
                 <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0
                   ${idx === 0 ? "bg-amber-100 text-amber-700" : idx === 1 ? "bg-slate-100 text-slate-600" : idx === 2 ? "bg-orange-100 text-orange-600" : "bg-muted text-muted-foreground"}`}>
                   {idx + 1}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">{r.name || r.phone}</p>
-                  <p className="text-xs text-muted-foreground">{r.completedTrips} trips</p>
+                  <p className="font-semibold text-sm truncate">{r.name || r.phone || "Unknown Rider"}</p>
+                  <p className="text-xs text-muted-foreground">{r.completedTrips ?? 0} trips</p>
                 </div>
                 <p className="font-bold text-sm text-foreground shrink-0">{formatCurrency(r.totalEarned)}</p>
               </div>
@@ -413,11 +439,11 @@ export default function Dashboard() {
             {!data?.recentOrders?.length ? (
               <div className="p-8 text-center text-muted-foreground text-sm">{T("noRecentOrders")}</div>
             ) : (
-              data.recentOrders.map((order: any) => (
+              data.recentOrders.slice(0, 5).map((order: any) => (
                 <div key={order.id} className="px-4 sm:px-6 py-3 sm:py-4 hover:bg-indigo-50/40 transition-colors flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-sm">#{order.id.slice(-6).toUpperCase()}</span>
+                      <span className="font-semibold text-sm">#{String(order.id).slice(-6).toUpperCase()}</span>
                       <span className="capitalize text-[10px] font-medium text-muted-foreground px-1.5 py-0.5 bg-muted rounded-full">{order.type}</span>
                     </div>
                     <span className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</span>
@@ -446,11 +472,11 @@ export default function Dashboard() {
             {!data?.recentRides?.length ? (
               <div className="p-8 text-center text-muted-foreground text-sm">{T("noRecentRides")}</div>
             ) : (
-              data.recentRides.map((ride: any) => (
+              data.recentRides.slice(0, 5).map((ride: any) => (
                 <div key={ride.id} className="px-4 sm:px-6 py-3 sm:py-4 hover:bg-indigo-50/40 transition-colors flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-sm">#{ride.id.slice(-6).toUpperCase()}</span>
+                      <span className="font-semibold text-sm">#{String(ride.id).slice(-6).toUpperCase()}</span>
                       <span className="capitalize text-[10px] font-medium text-muted-foreground px-1.5 py-0.5 bg-muted rounded-full">{ride.type}</span>
                     </div>
                     <span className="text-xs text-muted-foreground">{formatDate(ride.createdAt)}</span>
@@ -474,7 +500,7 @@ export default function Dashboard() {
             { label: T("pharmacy"), href: "/pharmacy", icon: Pill, color: "text-pink-600", bg: "bg-pink-50 border-pink-200" },
             { label: T("parcel"), href: "/parcel", icon: Box, color: "text-orange-600", bg: "bg-orange-50 border-orange-200" },
             { label: T("transactions"), href: "/transactions", icon: Wallet, color: "text-sky-600", bg: "bg-sky-50 border-sky-200" },
-            { label: T("settings"), href: "/settings", icon: Package, color: "text-gray-600", bg: "bg-gray-50 border-gray-200" },
+            { label: T("settings"), href: "/settings", icon: Settings, color: "text-gray-600", bg: "bg-gray-50 border-gray-200" },
           ].map(item => (
             <Link key={item.href} href={item.href}>
               <div className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer active:scale-95 transition-transform ${item.bg}`}>
@@ -500,7 +526,7 @@ function StatusPill({ status }: { status: string }) {
   else if (s === "searching" || s === "bargaining") cls = "bg-blue-100 text-blue-700";
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${cls}`}>
-      {status.replace(/_/g, " ")}
+      {(status ?? "").replace(/_/g, " ")}
     </span>
   );
 }

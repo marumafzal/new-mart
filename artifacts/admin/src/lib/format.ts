@@ -2,8 +2,9 @@ import { format } from "date-fns";
 import { getCurrencySymbol } from "./platformConfig";
 import { escapeHtml } from "./escapeHtml";
 
-export const formatCurrency = (amount: number) => {
-  return `${getCurrencySymbol()} ${amount.toLocaleString()}`;
+export const formatCurrency = (amount: number | null | undefined) => {
+  const safe = typeof amount === "number" && isFinite(amount) ? amount : 0;
+  return `${getCurrencySymbol()} ${safe.toLocaleString()}`;
 };
 
 /**

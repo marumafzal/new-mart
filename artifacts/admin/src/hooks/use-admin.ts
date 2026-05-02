@@ -27,6 +27,7 @@ export const useStats = () => {
     queryKey: ["admin-stats"],
     queryFn: () => fetcher("/stats"),
     refetchInterval: REFETCH_INTERVAL,
+    staleTime: 30_000,
   });
 };
 

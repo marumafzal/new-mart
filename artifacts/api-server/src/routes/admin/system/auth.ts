@@ -78,9 +78,13 @@ import { UserService } from "../../../services/admin-user.service.js";
 import { AuditService } from "../../../services/admin-audit.service.js";
 import { requirePermission } from "../../../middlewares/require-permission.js";
 import { logAdminAudit } from "../../../middlewares/admin-audit.js";
+import { adminAuthLimiter } from "../../../middleware/rate-limit.js";
 import { resolveAdminPermissions } from "../../../services/permissions.service.js";
 
 const router = Router();
+
+router.use(adminAuthLimiter);
+
 router.post("/auth", async (req, res) => {
   const body = (req.body ?? {}) as { username?: string; password?: string; secret?: string };
   const username = (body.username ?? "").trim();

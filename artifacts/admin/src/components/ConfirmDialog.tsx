@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -29,20 +29,25 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={o => { if (!o && !busy) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-sm rounded-2xl">
+      <DialogContent className="w-[95vw] max-w-sm">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {variant === "destructive" && <AlertTriangle className="w-5 h-5 text-red-500" />}
+          <DialogTitle className="flex items-center gap-2.5">
+            {variant === "destructive" && (
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              </span>
+            )}
             {title}
           </DialogTitle>
         </DialogHeader>
         {description && (
-          <p className="text-sm text-muted-foreground mt-2 whitespace-pre-line">{description}</p>
+          <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+            {description}
+          </p>
         )}
-        <div className="flex gap-3 mt-4">
+        <DialogFooter>
           <Button
             variant="outline"
-            className="flex-1 rounded-xl"
             onClick={onClose}
             disabled={busy}
           >
@@ -50,13 +55,12 @@ export function ConfirmDialog({
           </Button>
           <Button
             variant={variant === "destructive" ? "destructive" : "default"}
-            className="flex-1 rounded-xl"
             onClick={onConfirm}
             disabled={busy}
           >
             {busy ? "Working..." : confirmLabel}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -102,38 +106,36 @@ export function PromptDialog({
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o && !busy) onClose(); }}>
-      <DialogContent className="w-[95vw] max-w-sm rounded-2xl">
+      <DialogContent className="w-[95vw] max-w-sm">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          {description && (
+            <p className="text-sm text-muted-foreground">{description}</p>
+          )}
         </DialogHeader>
-        {description && (
-          <p className="text-sm text-muted-foreground mt-2">{description}</p>
-        )}
         <Input
           autoFocus
           value={value}
           onChange={e => setValue(e.target.value)}
           placeholder={placeholder}
-          className="h-11 rounded-xl mt-3"
+          className="h-10 rounded-lg"
           onKeyDown={e => { if (e.key === "Enter") submit(); }}
         />
-        <div className="flex gap-3 mt-4">
+        <DialogFooter>
           <Button
             variant="outline"
-            className="flex-1 rounded-xl"
             onClick={onClose}
             disabled={busy}
           >
             {cancelLabel}
           </Button>
           <Button
-            className="flex-1 rounded-xl"
             onClick={submit}
             disabled={busy || (required && !value.trim())}
           >
             {busy ? "Working..." : confirmLabel}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
